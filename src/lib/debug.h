@@ -1,6 +1,14 @@
 #ifndef __LIB_DEBUG_H
 #define __LIB_DEBUG_H
 
+#include <stdint.h>
+
+/* This module requires that Pintos be compiled with 
+   -fno-omit-frame-pointer flag, since backtracing
+   requires that the %ebp register be saved during 
+   function calls. 
+   See GCC's documentation on -fomit-frame-pointer */
+
 /* GCC lets us add "attributes" to functions, function
    parameters, etc. to indicate their properties.
    See the GCC manual for details. */
@@ -18,6 +26,18 @@ void debug_panic (const char *file, int line, const char *function,
 void debug_backtrace (void);
 void debug_backtrace_all (void);
 
+#define PCS_MAX 15
+struct callerinfo {
+  struct thread *t;	/* The thread that made the call */
+  struct cpu *cpu;     	/* The cpu that t was executing on at the time
+			   It can be different from t->cpu if t was migrated */
+  uint32_t pcs[PCS_MAX];     /* The call stack (an array of program counters) of the thread
+			   that made the call. */
+};
+
+void callerinfo_init (struct callerinfo *);
+void savecallerinfo (struct callerinfo *);
+void printcallerinfo (struct callerinfo *); 
 #endif
 
 

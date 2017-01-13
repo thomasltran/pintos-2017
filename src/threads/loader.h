@@ -25,10 +25,11 @@
 #define LOADER_ARG_CNT_LEN 4
 
 /* GDT selectors defined by loader.
-   More selectors are defined by userprog/gdt.h. */
+   More selectors are defined by threads/gdt.h. */
 #define SEL_NULL        0x00    /* Null selector. */
 #define SEL_KCSEG       0x08    /* Kernel code selector. */
 #define SEL_KDSEG       0x10    /* Kernel data selector. */
+#define SEL_KCPU	    0x30 	/* Per-CPU var */
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>

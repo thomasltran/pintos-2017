@@ -736,6 +736,11 @@ If you move around the infinite loop in a ``binary search'' fashion, you
 can use this technique to pin down the exact spot that everything goes
 wrong.  It should only take a few minutes at most.
 
+An anticipated cause of triple faulting is a race in the
+scheduling or load balancing code, or overflowing the kernel stack. 
+A race condition that causes a triple fault is particularly nasty to
+debug, since it's impossible for Pintos to print a backtrace. 
+
 @node Modifying Bochs
 @section Modifying Bochs
 

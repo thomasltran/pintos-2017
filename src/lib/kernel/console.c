@@ -7,8 +7,10 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 
-static void vprintf_helper (char, void *);
-static void putchar_have_lock (uint8_t c);
+static void
+vprintf_helper (char, void *);
+static void
+putchar_have_lock (uint8_t c);
 
 /* The console lock.
    Both the vga and serial layers do their own locking, so it's
@@ -16,7 +18,6 @@ static void putchar_have_lock (uint8_t c);
    But this lock is useful to prevent simultaneous printf() calls
    from mixing their output, which looks confusing. */
 static struct lock console_lock;
-
 /* True in ordinary circumstances: we want to use the console
    lock to avoid mixing output between threads, as explained
    above.
@@ -28,8 +29,7 @@ static struct lock console_lock;
    it into the latter case.  In the latter case, if it is a buggy
    lock_acquire() implementation that caused the panic, we'll
    likely just recurse. */
-static bool use_console_lock;
-
+static bool use_console_lock = false;;
 /* It's possible, if you add enough debug output to Pintos, to
    try to recursively grab console_lock from a single thread.  As
    a real example, I added a printf() call to palloc_free().
@@ -55,6 +55,17 @@ static bool use_console_lock;
    problem by simulating a recursive lock with a depth
    counter. */
 static int console_lock_depth;
+/* A console spinlock that can be used as an alternative to the
+   console lock */
+static struct spinlock console_spinlock;
+/* True if serial_sleep is false. This makes threads acquire
+   a spinlock rather than a lock, so the thread that is printing
+   is guaranteed to not go into the scheduler. This also has
+   the effect of preventing threads from interleaving their 
+   print statements, but with the additional flexibility of 
+   being able to print inside the scheduler, from interrupt
+   handlers, or when interrupts are disabled */
+static bool use_console_spinlock = false;
 
 /* Number of characters written to console. */
 static int64_t write_cnt;
@@ -64,7 +75,11 @@ void
 console_init (void) 
 {
   lock_init (&console_lock);
-  use_console_lock = true;
+  spinlock_init (&console_spinlock);
+  if (serial_putc_sleep) 
+    use_console_lock = true;          
+  else 
+    use_console_spinlock = true;
 }
 
 /* Notifies the console that a kernel panic is underway,
@@ -74,11 +89,17 @@ void
 console_panic (void) 
 {
   use_console_lock = false;
+  use_console_spinlock = false;
 }
 
+void
+console_use_spinlock (void)
+{
+  use_console_spinlock = true;
+}
 /* Prints console statistics. */
 void
-console_print_stats (void) 
+console_print_stats (void)
 {
   printf ("Console: %lld characters output\n", write_cnt);
 }
@@ -87,12 +108,14 @@ console_print_stats (void)
 static void
 acquire_console (void) 
 {
-  if (!intr_context () && use_console_lock) 
+  if (use_console_spinlock)
+    spinlock_acquire (&console_spinlock);
+  else if (!intr_context () && use_console_lock)
     {
       if (lock_held_by_current_thread (&console_lock)) 
-        console_lock_depth++; 
+	 console_lock_depth++; 
       else
-        lock_acquire (&console_lock); 
+	 lock_acquire (&console_lock); 
     }
 }
 
@@ -100,23 +123,25 @@ acquire_console (void)
 static void
 release_console (void) 
 {
-  if (!intr_context () && use_console_lock) 
+  if (use_console_spinlock)
+    spinlock_release (&console_spinlock);
+  else if (!intr_context () && use_console_lock)
     {
       if (console_lock_depth > 0)
-        console_lock_depth--;
+	 console_lock_depth--;
       else
-        lock_release (&console_lock); 
+	 lock_release (&console_lock);
     }
 }
 
 /* Returns true if the current thread has the console lock,
    false otherwise. */
 static bool
-console_locked_by_current_thread (void) 
+console_locked_by_current_thread (void)
 {
-  return (intr_context ()
-          || !use_console_lock
-          || lock_held_by_current_thread (&console_lock));
+  return (intr_context () || !use_console_lock
+          || lock_held_by_current_thread (&console_lock)
+          || spinlock_held_by_current_cpu (&console_spinlock));
 }
 
 /* The standard vprintf() function,
@@ -168,7 +193,7 @@ putchar (int c)
   
   return c;
 }
-
+
 /* Helper function for vprintf(). */
 static void
 vprintf_helper (char c, void *char_cnt_) 

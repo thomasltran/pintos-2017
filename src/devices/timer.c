@@ -7,7 +7,9 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
+#include "threads/cpu.h"
+#include "devices/trap.h"
+
 /* See [8254] for hardware details of the 8254 timer chip. */
 
 #if TIMER_FREQ < 19
@@ -23,6 +25,8 @@ static int64_t ticks;
 /* Number of loops per timer tick.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
+/* The current time wall clock time in nanoseconds */
+static uint64_t cur_time = 0;
 
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
@@ -35,8 +39,7 @@ static void real_time_delay (int64_t num, int32_t denom);
 void
 timer_init (void) 
 {
-  pit_configure_channel (0, 2, TIMER_FREQ);
-  intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+  intr_register_ext (0x20 + IRQ_TIMER, timer_interrupt, "8254 Timer");
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -70,9 +73,7 @@ timer_calibrate (void)
 int64_t
 timer_ticks (void) 
 {
-  enum intr_level old_level = intr_disable ();
   int64_t t = ticks;
-  intr_set_level (old_level);
   return t;
 }
 
@@ -89,9 +90,9 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  int64_t start = timer_ticks ();
-
   ASSERT (intr_get_level () == INTR_ON);
+  
+  int64_t start = timer_ticks ();
   while (timer_elapsed (start) < ticks) 
     thread_yield ();
 }
@@ -165,12 +166,16 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  ticks++;
+  if (get_cpu ()->id == 0) {
+    ticks++;
+    timer_settime (timer_ticks () * NSEC_PER_SEC / TIMER_FREQ);
+  }
+    
   thread_tick ();
 }
 
@@ -243,4 +248,17 @@ real_time_delay (int64_t num, int32_t denom)
      the possibility of overflow. */
   ASSERT (denom % 1000 == 0);
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
+}
+
+void
+timer_settime(uint64_t time) 
+{
+  cur_time = time;
+}
+
+/* Return current time in nanosec units */
+uint64_t
+timer_gettime ()
+{
+  return cur_time;
 }

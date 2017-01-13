@@ -1,0 +1,246 @@
+Week 9/12
+Meeting:
+Proposal of CFS used by Linux, seems easy to test and practical for students to implement, also very applicable to real-world applications
+Consists of two parts, load balancer and scheduler. 
+1) Load balancer. Currently has a single work stealing algorithm similar to the threadpool. Incorrect, since it doesn't take load avg into account. Look for an approach to avoid thrashing processes back and forth on CPU's (e.g. the 1/2/1 example) We can test the load balancer by observing how many clock ticks each CPU spends executing kernel threads (as opposed to idle threads)
+2) Scheduler. We want an algorithm based on WFQ - so the question is: how to ensure fairness to io bound processes? With pure WFQ, IO bound processes are guaranteed to have less cpu time and therefore will always be prioritized before cpu bound processes. On the other hand, we do want io bound processes to get a boost in priority once it has been scheduled, so how much?
+3) Still need to clean up the code.
+
+Plan for this week:
+1) Run pintos in Bochs 
+2) Find a suitable load balancing algorithm, and implement it in PintOS
+3) Look at Linux's CFS implementation - find out how to deal with IO bound processes
+
+Status reports:
+Bochs does not support gdb stub with SMP
+Looked at "Decade of wasted cores"
+Looked at load balancing policies over several versions of linux. Starting from 2.6.7, load balancing became much more complicated, since scheduling domains was introduced. The 2.6.6 load balancer (combined with O(1) scheduler) is much more practical for students to implement.
+2.6.6 load balancer:
+ - Runs periodically on each CPU, with emergency load balance occuring when cores go idle
+ - Finds "busiest CPU" and finds the "imbalance" between current core and busiest core.
+ - If imbalance is over 25% of src processor, steal imbalance/2 tasks
+ - Expired array is given priority (avoids cache hot processes), high priority tasks also given priority, avoids violating processor affinity
+ - Workload of dest. cpu (processor pulling tasks) is max(nr_running, pre_cpu_load) and workload of src(victim) is min(nr_running, pre_cpu_load), where pre_cpu_load is nr_running of previous rebalance attempt. This reduces the bounding of tasks between processors
+ - Only steals 1 task during idle rebalance 
+2.6.23 CFS scheduler:
+ - bonus is given to sleepers (see enqueue_sleeper) after they are awoken, increasing their vruntime
+ - task_new_fair: share the fairness runtimes between parent and child. 
+ - takes leftmost node of RB tree, cacheing it for performance
+
+My proposal is to have students implement a scheduler that is a combination of the 2.6.23 scheduler and 2.6.6 load balancer
+We can use single-core tests to test the CFS component using Bochs, that way we can get deterministic output and more constrained testing boundaries. For the load balancing component we may have no choice but to use qemu.
+Question: If we go with CFS scheduler, how can we write tests such that the base code (that uses time slices) fails while a CFS implementation passes? Need some way to simulate io bound processes
+Question: During thread_unblock, which CPU does the new task go? Should it go to the CPU the task previously ran on (cache aff. but more complex race conditions) or the CPU that unblocked that thread? I would advocate the latter 
+Question: Load balancing in idle vs schedule? Both? Only pull 1 task in idle? Should we use prev_cpu_load?
+
+Kernel debugging features that might be useful for students (featured in Linux):
+ - Kernel leak detector
+ - Deadlock detector
+ - Detect stack corruption on calls to schedule()
+ - Sleep inside atomic section detector
+
+Week 9/19
+Meeting:
+1) Look at supporting gdb-stub with Bochs SMP
+2) Decide how to test load balancer and CFS. Avoid requiring kernel reports if possible
+3) Look into IPI and idle threads. See how Linux does it.
+4) Look into Linux's timer interrupt policies (no longer a set frequency)
+5) Decide a specification for CFS, decide whether nice and priority should be involved
+6) How to test IO bound threads?
+7) Decide how idle interacts with load balancing. Load balance at every idle tick? Pull 1 task when idle?
+
+Jiffies: 
+ - # of ticks that have occured since system booted
+3) IPI and idle threads:
+ - Linux executes "hlt" when idle. When a task is unblocked, resched_task is called which can send the RESCHEDULE_VECTOR ipi
+4) Dynamic ticks:
+ - Can be set with a config option
+ - Allows idle to sleep without interruption from periodic timer tick (awakes by IPI)
+ - Gives possibility of fully tickless kernels where time slice is controlled by scheduler
+5) CFS
+ - ideal_runtime = max(sched_latency/#runnable, sched_min_granularity)
+7) Load balancing and idle:
+ - Load balancing occurs in 3 places. 
+   1) BUSY_REBALANCE_TICK (200ms). idle flag is 0 
+   2) IDLE_REBALANCE_TICK (1ms). idle flag is 1  
+   3) Processor about to become idle. idle flag is 1. If load balancing still results in empty queue, then cpu becomes idle
+ - Only migrate 1 task if we are idle: See sched.c:1368
+
+Would a tickless kernel in PintOS makes sense? Make testing more accurate?
+Ask Dr. Back about possible independent study for next semester
+
+Week 9/26
+Meeting:
+1) For load balancing, we want to do it in all 3 places
+2) Finish porting CFS to PintOS
+
+Notes on CFS:
+ - At some point, CFS changed from using wait_runtime math to vruntime, which _might_ simplify things. In any case I'd like PintOS students 
+   to use vruntime as well, rather than wait_runtime. wait_runtime is the amount of runtime that a task would need to become fair again, 
+   whereas vruntime is the amount of time given to a task. The task with gravest need of CPU is the task with highest wait_runtime, with vruntime metrics
+   the opposite is true: the task with gravest need is the one with lowest vruntime. Comparing struct sched_entity from 2.6.23 vs later versions we can
+   see that many fields have been removed 
+   https://www.mail-archive.com/git-commits-head@vger.kernel.org/msg25304.html
+ - Old schedulers had "aggressive yielding" where a yielding thread is guaranteed to be put in rightmost of rbtree. Don't want this
+ - Timekeeping is based on sched_clock() which returns the current time in ns (calculated by jiffies)
+ - NICE value comes into play during update_curr() which is called in various places. First, delta_exec is to see how long you've been running on the system. Then, delta_exec_weighted is calculated based on delta_exec and the NICE value. Delta_exec_weighted is what is actually added to vruntime
+ - Look at place_entity(), called in 2 places: 1) Scheduling a thread for the first time, 2) Waking up a sleeper thread
+ - How to handle sleepers? When a sleeper is awoken its vruntime either stays the same or it increases (to stop sleepers from monopolizing the CPU once it awakens). If sleeper only slept for a short amount of time(<sysctl_sched_latency) then its vruntime stays the same. Otherwise its vruntime is set to min_vruntime (leftmost vruntime in tree)
+ - TREE_AVG and APPROX_AVG were scheduling features that were removed in later versions of CFS. Don't think we want this either
+Ask Dr. Back about advisors
+Answer the questions for Dr. Kafura 
+
+Look at HPET and RDTSC - two different ways to get wall clock time. Look at invariant TSC
+
+Week 10/10
+Meeting: Nothing much, just discussed the scheduler hooks
+
+Status reports:
+
+ - Ported CFS to PintOS
+ - Have scheduling classes that can switch between round robin and CFS scheduler
+ - thread.c now makes callbacks into the scheduler function
+
+Week 10/17
+Meeting:
+ - Look at high precision timers
+ - Tickless kernel possible?
+ - Start thinking about testing - look at MLFQS tests
+   1) Use sampling (as current tests do)
+   2) Have scheduler output information about threads
+   3) Have tests do some useful work and see how fast they finish
+
+Characteristics of CFS not present in round robin:
+ - Awarding IO tasks over batch processes
+ - At the same time, do not overcompensate sleepers
+ - Takes advantage of tickless kernels since the next timer interrupt is known
+ - Single time slice for all processes in rq, cfs decides how to split that timeslice among processes
+
+HPET:
+ - Requires ACPI
+ - Not supported by Bochs
+ - Someone on the internet said Qemu's emulation was not very good (Max 100Hz)?
+
+Tickless kernel: I think we can totally do this! It will make testing much simpler
+ - APIC offers aperiodic interrupts which Linux uses to implement tickless kernels
+ - Need to be able to tell APIC when the next interrupt should come
+ - APIC counts down on bus frequency.
+ - On real OS, at least one core must have tickless kernel turned off, to keep track of time. PintOS does not care what the real time is. Instead, we can keep track of "time" based on the bus frequency. We update a clock whenever a timer interrupt comes based on the interval between the two most recent interrupts. When the scheduler reads the time, it will read the time during the entry of the timer interrupt. Therefore time is "frozen" while spent in the timer interrupt. Profit! This can handle the problem of students spending too much time in the kernel and failing because of it. Note however that the clock might need to be updated during an internal interrupt and therefore we need to avoid race between external and internal interrupt. There can be a race on the clock value. Also, wiki says that there are race conditions when setting a new count before old expires
+ - Look at APIC's TSC mode 
+
+List of available timing devices
+ - PIT
+ - CMOS RTC
+ - APIC - Cannot exactly determine Hz
+ - ACPI timer - 1-2 us to read
+ - TSC - cannot generate interrupts, but by far the finest grained, widest, and most convenient timer device to access. Cannot determine Hz. On shared-bus SMP systems, TSC are synchronized and can be treated as a single system-wide clock. However, the same cannot be said about NUMA nodes
+ - HPET - Designed to replace PIT and CMOS
+Source: https://www.vmware.com/pdf/vmware_timekeeping.pdf
+
+Get rid of legacy code for PIC/PIT?
+I believe that the rq clock was defensive programming against the timer going backwards which CFS cannot deal with. For PintOS we do not need to worry about that
+I continue to believe that tickless kernels is the best way to go. Then we can write tests that can more accurately measure the correctness of student implementations since the results should be reproducible each time
+Question: What will happen in the following scenario? Interrupts is disabled. The lapic timer counts down to 0 and issues an interrupt, which is not delivered since interrupts are off. Scheduler sets the lapic timer and turns interrupts back on. Is the interrupt going to be delivered now or is it dropped? 
+
+Week 11/7
+ - I will start looking at writing unit tests for CFS. It is a lot more straightforward than kernel tests and a good fall-back if we cannot figure out good ways to write kernel tests later. Ideally we can write tests such that students can hack inside the kernel and copy/paste their code into test with little to no modification
+ - We still need a good way to implement real-time sleep. Maybe calibrate the timer interrupts using PIT.
+ - Should newly awoken threads/new threads preempty current threads?
+ - What to do for resched_task. In Linux, CPU's send IPIs to tell them to reschedule(). But in PintOS since we are most often changing local rqs and not other rq's (with the notable exception of load balancing) this should probably just call thread_yield
+ - How to get predictable scheduler behavior? Need to have predictable AND accurate interrupt times. 
+ 
+ - Should their CFS be eventually ported onto PintOS as part of the project or can they be done as soon as they are done with the specs?
+ - What if we use a "testing mode" when turned on, instead of actually doing scheduling based on student's scheduler implementation, it turns off scheduling and performs unit tests? Actually it does not need to turn off scheduling since the unit tests would create runqueues that are separate from cpu's runqueues. We can, but do not need to, turn off interrupts
+ - Might have to change thread_current(), since calling it from fair.c can confuse the tests
+
+TODO: Make sure that threads are being awoken to the right rq. But should we do this for students or let them do it?
+      Update: Taking out check_preempt_curr. Awoken threads do not preempt current. 
+      Probably want better abstraction for initializing initial thread. Basically we want the vcpus to be as real as possible
+      Actually we might not need fake CPU's at all, as long as we can lie about the current time 
+      Going to have to abstract thread.c a little better - particularly the tests need rq fields to be correct in case fair.c needs it
+
+We predefine a few general scheduling variables that we update for them (everything in struct rq). They can read them to help make scheduling decisions, but should not modify
+We need some sort of "scheduler driver" that simulates the scheduler as closely as possible but doesn't do any real scheduling (no context switching occurs). Can this be abstracted?
+We also need to simulate timer interrupts. 
+Can we get rid of "fake CPUs" somehow? In other words, let students use per-cpu variables or thread_current() without confusing the tests?
+How intrusive can the tests be? For example, can we require a thread_get_runtime() function? Can we fake a scheduling state by creating threads with
+set vruntimes? (We can't set vruntimes per say, but we can define threads to have executed for x seconds e.g. delta_exec_sum and delta_exec)
+
+Week 11/14
+Meeting:
+ - What is the best way to describe vruntime? We might want to describe it in terms of weighted fair queueing.
+ - Scheduling period - should we worry about it? (adds complexity). An easier alternative is to check vruntime in check_preempt_tick and see if you are no longer the task with smallest vruntime. We might even leave this as an open ended implementation and write tests for both
+ - For example, if we have three tasks, with weight 1, 2, and 3, and the scheduling period is 6. Should we run it as ABCCBC or ABBCCC? (scheduling period would dictate the latter, whereas pure vruntime would indicate the former) 
+ - How do you simulate the scheduler in a way that it is "stateless?" Need to have thread current and cpu "passed in"
+ - Want to explain the rationale behind scheduling decisions as best as possible. For example, rationale behind wakeup_set_vruntime would be that we don't want sleepers to monopolize the CPU once they've awoken up, therefore we set their vruntime to min_vruntime. There can be many threads with min_vruntime and therefore we award sleepers a small boost. However we still don't want short sleepers to benefit too much from the boost so we set it to max(prev_runtime, new_vruntime)
+  
+Scheduling period, as we discussed towards the end, is to prevent overscheduling. (ABBCCC  ABCCBC). In fact, Linux defines the period as granularity * nr_running, where granularity is 4ms by default. So we choose granularity to balance the conflicting goals of high interactivity and low overhead. Under ideal conditions, the scheduler would schedule each thread only once per period. The scheduler preempts a thread after it has run for granularity time, regardless of its vruntime compared to other threads. 
+
+Of course, it is impossible to preempt a thread at exactly the right time, without tickless kernels. So vruntime can also keep track of "overservicing" by making sure you get serviced at a later time the next time
+
+Created a scheduling driver that imitates the scheduler as closely as possible without actually context switching. To get current thread, use cpu->curr. To get cpu, reload gdt and gs. To set time, make time a global variable that is unaffected by timer interrupts, and set it manually in testing
+Apart from these "unit tests" what else can we have? We can schedule-test load balancing and maybe have sanity checks to make sure their scheduler works outside of unit testing 
+How to test keyboard and other device drivers for race conditions?
+
+Week 11/21
+Meeting: 
+ - Relook at the design - know who owns what. Thread.c should not manipulate struct rq for example. Should fair.c call intr_yield_on_return? or return a boolean
+ - Look at simplifying thread_unblock and task_new. Task_new can probably be taken out
+
+Bugs in debug backtrace code. Often results in kernel panics being hard to decipher and very annoying. This happens as a result of race conditions on static variables, such as  level, explained (maybe?)
+Took out task_new_fair, weights are not saved anymore. Instead they are calculated based on priority on the fly
+Took out priority, added nice
+Fixed device driver code, separated spinlocks for output (vga/serial txq) and input(kdb/serial buffer)
+Finished CFS tests
+
+Week 11/27
+Meeting:
+ - How to test load balance?
+ - Should we provide a simple load balancing scheme as a default?
+ - Make the tests more robust. It's okay to leak calculation. See if you can organize them into a loop
+ - Make some tests larger
+ - Although scheduling driver is a lot of code reuse, it does not really make sense for it to be a preprocessor macro. Makes it too unreadable
+ - Probably needs to replace startedothers with an atomic variable
+
+We do not test load balancing with CFS. Would that make a good case for the need of polymorphic scheduling classes?
+We should make the scheduler make predictable decisions at each step, and test student's implementations against a "reference implementation". The reference implementation can tell the driver which thread should be running right now, what the vruntime of each thread are, etc. HOWEVER to do that, we must define a way to choose among two threads with same vruntime. In real CFS either one could be chosen, which makes checking for current thread difficult. So we can specify that we break ties by TID.
+Looked at building pintos.html. Gets error at "Setting Up ssh" See cs3204/spring2009" for an example build that succeeded. What happened to that node?
+
+Week 12/22
+
+Finished python test generator
+CFS documentation
+Finished documentation on various new modules
+CFS tests ready
+Fixed alarm tests to check idle tick
+Simple load balance test finished
+Fixed load balance to adapt to CFS
+
+Do we want advanced load balance test that carefully checks decisions made?
+Can we abstract the CFS driver?
+Atomic library?
+
+Week 12/29
+
+Various bug fixes
+Documentation and code is ready for 1st release
+Design doc and grade files updated
+Atomic operations fixed and docs updated
+
+Week 1/8
+Fixed bug in load balancing, created load balancing tests for
+synchronization
+Added more docs
+Fixed up all_list and palloc lock
+Currently estimating the "bus frequency" to be about 1Ghz. Calibrating count
+using the PIT might be too much work. 
+Added savecallerinfo () to debug module, which helped me find bugs in load
+balancing. 
+Added misc tests
+Made printf non-blocking, so that it can be used in the scheduler
+
+Increasing the timer frequency helps to get more accurate statistics. Will
+raise to 1000Hz
+
+Based on Eric's implementation, CFS tests were very solid but the load balancing
+tests doesn't catch races very well. 

@@ -26,7 +26,17 @@ sub check_alarm {
     }
     fail scalar (@products) . " fewer wakeups than expected.\n"
       if @products != 0;
-    pass;
+}
+
+# Alarm tests that do not busy wait causes the system to go idle
+sub check_system_idle {
+	my (@output) = read_text_file("$test.output");
+	foreach (@output) {
+		my ($a, $b, $c, $d) = /CPU(\d+): (\d+) idle ticks(.*)/ or next;
+		if ($b == 0) {
+			fail "Busy sleep detected\n";
+		}
+	}
 }
 
 1;

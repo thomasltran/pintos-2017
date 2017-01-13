@@ -102,22 +102,6 @@ exceptions.  Currently all exceptions simply print a message and
 terminate the process.  Some, but not all, solutions to project 2
 require modifying @func{page_fault} in this file.
 
-@item gdt.c
-@itemx gdt.h
-The 80@var{x}86 is a segmented architecture.  The Global Descriptor
-Table (GDT) is a table that describes the segments in use.  These
-files set up the GDT.  You should not need to modify these
-files for any of the projects.  You can read the code if
-you're interested in how the GDT works.
-
-@item tss.c
-@itemx tss.h
-The Task-State Segment (TSS) is used for 80@var{x}86 architectural
-task switching.  Pintos uses the TSS only for switching stacks when a
-user process enters an interrupt handler, as does Linux.  You
-should not need to modify these files for any of the projects.
-You can read the code if you're interested in how the TSS
-works.
 @end table
 
 @node Using the File System

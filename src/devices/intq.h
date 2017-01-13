@@ -25,6 +25,7 @@ struct intq
   {
     /* Waiting threads. */
     struct lock lock;           /* Only one thread may wait at once. */
+    struct spinlock spinlock;   /* Protect threads from interrupt handlers */
     struct thread *not_full;    /* Thread waiting for not-full condition. */
     struct thread *not_empty;   /* Thread waiting for not-empty condition. */
 
@@ -35,8 +36,10 @@ struct intq
   };
 
 void intq_init (struct intq *);
-bool intq_empty (const struct intq *);
-bool intq_full (const struct intq *);
+void intq_acquire (struct intq *);
+void intq_release (struct intq *);
+bool intq_empty (struct intq *);
+bool intq_full (struct intq *);
 uint8_t intq_getc (struct intq *);
 void intq_putc (struct intq *, uint8_t);
 

@@ -14,11 +14,12 @@ the following sections: @ref{Introduction}, @ref{Coding Standards},
 @ref{Debugging Tools}, and @ref{Development Tools}.  You should at least
 skim the material from @ref{Pintos Loading} through @ref{Memory
 Allocation}, especially @ref{Synchronization}.  To complete this project
-you will also need to read @ref{4.4BSD Scheduler}.
+you will also need to read @ref{Completely Fair Scheduler}.
 
 @menu
 * Project 1 Background::        
 * Project 1 Requirements::      
+* Project 1 Tests::
 * Project 1 FAQ::               
 @end menu
 
@@ -28,6 +29,7 @@ you will also need to read @ref{4.4BSD Scheduler}.
 
 @menu
 * Understanding Threads::       
+* Struct CPU::
 * Project 1 Source Files::      
 * Project 1 Synchronization::   
 * Development Suggestions::     
@@ -101,6 +103,104 @@ declare large data structures as non-static local variables,
 e.g. @samp{int buf[1000];}.  Alternatives to stack allocation include
 the page allocator and the block allocator (@pxref{Memory Allocation}).
 
+@node Struct CPU
+@subsection Struct CPU
+
+A CPU is similar to a worker in a threadpool. Each CPU has a list of 
+ threads that it needs to run, as well as 
+ other information about the state of that CPU. Each CPU also 
+ needs to be able to identify itself. 
+
+@file{threads/cpu.h} declares two variables. @var{cpus} is an array of
+@code{struct cpu}. Each entry in the array holds information about a particular
+CPU. @var{ncpu} is set in @code{threads/mp.h} to the number of CPUs found 
+on the processor.
+@code{struct cpu} defines a structure that represents a CPU in the system.
+@deftypecv {Member} {@struct{cpu}} {uint8_t} id
+A unique ID number assigned to each CPU by the lapic, used as an index in the 
+@var{cpus} array. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct tss} ts
+The CPU's task state segment, which is used to identify a kernel stack
+used by the kernel when switching from user space to kernel space.
+See (@file{threads/tss.c})
+@end deftypecv
+  
+@deftypecv {Member} {@struct{cpu}} {struct gdt} gdt
+The CPU's global descriptor table, which is used to identify the memory segments.
+The segment registers point to their respective memory segments. Importantly,
+each CPU sets up a different segment for the %gs register, used to implement
+CPU local variables
+See (@file{threads/gdt.c})
+@end deftypecv
+  
+@deftypecv {Member} {@struct{cpu}} {int} started
+Indicates whether an application processor has been awoken. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {int} ncli
+Counter used by @code{pushcli ()} and @code{popcli ()} to 
+determine whether or not popcli () should re-enable 
+interrupts. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {int} intena
+Flag to indicate whether or not interrupts were disabled
+before @code{pushcli ()} was called. If so, then @code{popcli ()}
+won't enable interrupts even if @var{ncli} becomes 0.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {bool} in_external_intr
+Flag indicating whether or not the CPU is processing an external
+interrupt. (@xref{External Interrupt Handling}.)
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {bool} yield_on_return
+Flag used by the scheduler to enforce preemption upon return from
+a timer interrupt.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} idle_ticks
+Number of ticks that this CPU has spent running the idle thread.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} user_ticks
+Number of ticks that this CPU has spent running the user threads.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} kernel_ticks
+Number of ticks that this CPU has spent running the kernel threads.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} cs
+Number of context switches this CPU has made.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct rq} rq
+A structure defined by the scheduler that contains, among other things,
+a list of threads on the CPU's runqueue.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct cpu *} cpu
+A pointer to this struct cpu.
+@end deftypecv
+
+Each CPU needs a reference to its @code{struct cpu}. This is done 
+by taking advantage of memory segmentation, and the fact that each
+CPU has registers pointing to different segments of memory. 
+
+@deftypefun {struct cpu *} get_cpu (void)
+Returns a pointer to the caller's @code{struct cpu}. This is done
+by referencing memory stored in the %gs register
+@end deftypefun
+
+@deftypefun void set_cpu (struct cpu *cpu)
+Called by the GDT module to load the %gs register with &cpus[id].
+The id of the current CPU can be obtained from the lapic 
+(see @file{devices/lapic.c})
+@end deftypefun
+
 @node Project 1 Source Files
 @subsection Source Files
 
@@ -122,7 +222,12 @@ this code or modify it.
 Does basic setup needed for memory protection and 32-bit
 operation on 80@var{x}86 CPUs.  Unlike the loader, this code is
 actually part of the kernel.  @xref{Low-Level Kernel Initialization},
-for details.
+for details. Jumps to @func{main}
+
+@item startother.S
+Similar to start.S, but whereas start.S is executed by the Bootstrap
+processor (@acronym{BSP}), startother.S is executed by application 
+processors (@acronym{AP}). Jumps to @func{mpenter}
 
 @item kernel.lds.S
 The linker script used to link the kernel.  Sets the load address of
@@ -160,6 +265,10 @@ pages.  @xref{Page Allocator}, for more information.
 A simple implementation of @func{malloc} and @func{free} for
 the kernel.  @xref{Block Allocator}, for more information.
 
+@item mp.c
+@item mp.h
+Parses the MP Configuration Table left by the BIOS. Used to discover how many cores are present on the processor.
+
 @item interrupt.c
 @itemx interrupt.h
 Basic interrupt handling and functions for turning interrupts on and
@@ -172,10 +281,27 @@ Infrastructure}, for more information.
 
 @item synch.c
 @itemx synch.h
-Basic synchronization primitives: semaphores, locks, condition
+Basic synchronization primitives: spinlocks, semaphores, locks, condition
 variables, and optimization barriers.  You will need to use these for
 synchronization in all
 four projects.  @xref{Synchronization}, for more information.
+
+@item gdt.c
+@itemx gdt.h
+The 80@var{x}86 is a segmented architecture.  The Global Descriptor
+Table (GDT) is a table that describes the segments in use.  These
+files set up the GDT.  You should not need to modify these
+files for any of the projects.  You can read the code if
+you're interested in how the GDT works.
+
+@item tss.c
+@itemx tss.h
+The Task-State Segment (TSS) is used for 80@var{x}86 architectural
+task switching.  Pintos uses the TSS only for switching stacks when a
+user process enters an interrupt handler, as does Linux.  You
+should not need to modify these files for any of the projects.
+You can read the code if you're interested in how the TSS
+works.
 
 @item io.h
 Functions for I/O port access.  This is mostly used by source code in
@@ -272,6 +398,15 @@ Driver that can produce tones on the PC speaker.
 Code to configure the 8254 Programmable Interrupt Timer.  This code is
 used by both @file{devices/timer.c} and @file{devices/speaker.c}
 because each device uses one of the PIT's output channel.
+
+@item ioapic.c
+@itemx ioapic.h
+Configures the I/O Advanced Programmable Interrupt Controller. The function @func{ioapicenable} is called by several device drivers during initialization. All I/O drivers in PintOS routes I/O interrupts to CPU0. 
+
+@item lapic.c
+@itemx lapic.h
+Configures the Local Advanced Programmable Interrupt Controller, which is built into every CPU. It provides timer interrupts for each CPU and generates inter-processor interrupts (@acronym{IPI}) to other CPUs.  
+
 @end table
 
 @node lib files
@@ -315,6 +450,10 @@ three things: specify a new random seed value on the @option{-rs}
 kernel command-line option on each run, or use a simulator other than
 Bochs, or specify the @option{-r} option to @command{pintos}.
 
+@item atomic-ops.c
+@itemx atomic-ops.h
+Atomic instructions
+
 @item round.h
 Macros for rounding.
 
@@ -345,40 +484,22 @@ Implements @func{printf} and a few other functions.
 @subsection Synchronization
 
 Proper synchronization is an important part of the solutions to these
-problems.  Any synchronization problem can be easily solved by turning
-interrupts off: while interrupts are off, there is no concurrency, so
-there's no possibility for race conditions.  Therefore, it's tempting to
-solve all synchronization problems this way, but @strong{don't}.
-Instead, use semaphores, locks, and condition variables to solve the
-bulk of your synchronization problems.  Read the tour section on
+problems.  
+Read the tour section on
 synchronization (@pxref{Synchronization}) or the comments in
 @file{threads/synch.c} if you're unsure what synchronization primitives
-may be used in what situations.
+may be used in what situations. In particular, it is important to know 
+when a spinlock should be acquired as opposed to a lock (and vice versa)
 
-In the Pintos projects, the only class of problem best solved by
-disabling interrupts is coordinating data shared between a kernel thread
-and an interrupt handler.  Because interrupt handlers can't sleep, they
-can't acquire locks.  This means that data shared between kernel threads
-and an interrupt handler must be protected within a kernel thread by
-turning off interrupts.
-
-This project only requires accessing a little bit of thread state from
-interrupt handlers.  For the alarm clock, the timer interrupt needs to
-wake up sleeping threads.  In the advanced scheduler, the timer
-interrupt needs to access a few global and per-thread variables.  When
-you access these variables from kernel threads, you will need to disable
-interrupts to prevent the timer interrupt from interfering.
-
-When you do turn off interrupts, take care to do so for the least amount
+When interrupts are off, take care to do so for the least amount
 of code possible, or you can end up losing important things such as
 timer ticks or input events.  Turning off interrupts also increases the
 interrupt handling latency, which can make a machine feel sluggish if
-taken too far.
+taken too far. Remember that interrupts are off for the entirety of
+the time that a spinlock is held.
 
 The synchronization primitives themselves in @file{synch.c} are
-implemented by disabling interrupts.  You may need to increase the
-amount of code that runs with interrupts disabled here, but you should
-still try to keep it to a minimum.
+implemented by disabling interrupts.
 
 Disabling interrupts can be useful for debugging, if you want to make
 sure that a section of code is not interrupted.  You should remove
@@ -416,8 +537,8 @@ kernel panic or assertion failure.
 @menu
 * Project 1 Design Document::   
 * Alarm Clock::                 
-* Priority Scheduling::         
 * Advanced Scheduler::          
+* Load Balancer::
 @end menu
 
 @node Project 1 Design Document
@@ -451,9 +572,7 @@ e.g.@: for blinking the cursor once per second.
 The argument to @func{timer_sleep} is expressed in timer ticks, not in
 milliseconds or any another unit.  There are @code{TIMER_FREQ} timer
 ticks per second, where @code{TIMER_FREQ} is a macro defined in
-@code{devices/timer.h}.  The default value is 100.  We don't recommend
-changing this value, because any change is likely to cause many of
-the tests to fail.
+@code{devices/timer.h}.  
 @end deftypefun
 
 Separate functions @func{timer_msleep}, @func{timer_usleep}, and
@@ -469,100 +588,145 @@ Testing}).
 The alarm clock implementation is not needed for later projects,
 although it could be useful for project 4.
 
-@node Priority Scheduling
-@subsection Priority Scheduling
-
-Implement priority scheduling in Pintos.
-When a thread is added to the ready list that has a higher priority
-than the currently running thread, the current thread should
-immediately yield the processor to the new thread.  Similarly, when
-threads are waiting for a lock, semaphore, or condition variable, the
-highest priority waiting thread should be awakened first.  A thread
-may raise or lower its own priority at any time, but lowering its
-priority such that it no longer has the highest priority must cause it
-to immediately yield the CPU.
-
-Thread priorities range from @code{PRI_MIN} (0) to @code{PRI_MAX} (63).
-Lower numbers correspond to lower priorities, so that priority 0
-is the lowest priority and priority 63 is the highest.
-The initial thread priority is passed as an argument to
-@func{thread_create}.  If there's no reason to choose another
-priority, use @code{PRI_DEFAULT} (31).  The @code{PRI_} macros are
-defined in @file{threads/thread.h}, and you should not change their
-values.
-
-One issue with priority scheduling is ``priority inversion''.  Consider
-high, medium, and low priority threads @var{H}, @var{M}, and @var{L},
-respectively.  If @var{H} needs to wait for @var{L} (for instance, for a
-lock held by @var{L}), and @var{M} is on the ready list, then @var{H}
-will never get the CPU because the low priority thread will not get any
-CPU time.  A partial fix for this problem is for @var{H} to ``donate''
-its priority to @var{L} while @var{L} is holding the lock, then recall
-the donation once @var{L} releases (and thus @var{H} acquires) the lock.
-
-Implement priority donation.  You will need to account for all different
-situations in which priority donation is required.  Be sure to handle
-multiple donations, in which multiple priorities are donated to a single
-thread.  You must also handle nested donation: if @var{H} is waiting on
-a lock that @var{M} holds and @var{M} is waiting on a lock that @var{L}
-holds, then both @var{M} and @var{L} should be boosted to @var{H}'s
-priority.  If necessary, you may impose a reasonable limit on depth of
-nested priority donation, such as 8 levels.
-
-You must implement priority donation for locks.  You need not
-implement priority donation for the other Pintos synchronization
-constructs.  You do need to implement priority scheduling in all
-cases.
-
-Finally, implement the following functions that allow a thread to
-examine and modify its own priority.  Skeletons for these functions are
-provided in @file{threads/thread.c}.
-
-@deftypefun void thread_set_priority (int @var{new_priority})
-Sets the current thread's priority to @var{new_priority}.  If the
-current thread no longer has the highest priority, yields.
-@end deftypefun
-
-@deftypefun int thread_get_priority (void)
-Returns the current thread's priority.  In the presence of priority
-donation, returns the higher (donated) priority.
-@end deftypefun
-
-You need not provide any interface to allow a thread to directly modify
-other threads' priorities.
-
-The priority scheduler is not used in any later project.
-
 @node Advanced Scheduler
 @subsection Advanced Scheduler
 
-Implement a multilevel feedback queue scheduler similar to the
-4.4@acronym{BSD} scheduler to
-reduce the average response time for running jobs on your system.
-@xref{4.4BSD Scheduler}, for detailed requirements.
+For this part of the project, you will be working primarily in @file{threads/scheduler.c}.
 
-Like the priority scheduler, the advanced scheduler chooses the thread
-to run based on priorities.  However, the advanced scheduler does not do
-priority donation.  Thus, we recommend that you have the priority
-scheduler working, except possibly for priority donation, before you
-start work on the advanced scheduler.
+The goal of a general-purpose scheduler is to balance threads' different scheduling needs. Threads that perform a lot of I/O require a fast response time to keep input and output devices busy, but need little CPU time. On the other hand, compute-bound threads need to receive a lot of CPU time to finish their work, but have no requirement for fast response time. Other threads lie somewhere in between, with periods of I/O punctuated by periods of computation, and thus have requirements that vary over time. A well-designed scheduler can often accommodate threads with all these requirements simultaneously. 
 
-You must write your code to allow us to choose a scheduling algorithm
-policy at Pintos startup time.  By default, the priority scheduler
-must be active, but we must be able to choose the 4.4@acronym{BSD}
-scheduler
-with the @option{-mlfqs} kernel option.  Passing this
-option sets @code{thread_mlfqs}, declared in @file{threads/thread.h}, to
-true when the options are parsed by @func{parse_options}, which happens
-early in @func{main}.
+In addition, schedulers also have the following general goals:@*
+@enumerate
+@item
+Being "fair" to each thread. That is, giving each thread an equal amount of CPU time.
 
-When the 4.4@acronym{BSD} scheduler is enabled, threads no longer
-directly control their own priorities.  The @var{priority} argument to
-@func{thread_create} should be ignored, as well as any calls to
-@func{thread_set_priority}, and @func{thread_get_priority} should return
-the thread's current priority as set by the scheduler.
+@item
+Minimizing the service error, defined as the difference between the amount of CPU time a thread should have received versus the amount of CPU time a thread actually did receive.
+
+@item
+Minimizing scheduling overhead.
+
+@end enumerate
+
+Often, the latter two goals conflict with each other. 
+
+Implement an advanced scheduler similar to the
+@acronym{CFS} scheduler used by Linux.
+@xref{Completely Fair Scheduler}, for detailed requirements.
+
+Many scheduling decisions in @acronym{CFS} depends on how long a thread has run
+in realtime. To calculate this, you should use @code{timer_gettime ()}.
+
+@deftypefun uint64_t timer_gettime (void)
+Returns the amount of nanoseconds that has passed since the OS booted.
+@end deftypefun
 
 The advanced scheduler is not used in any later project.
+
+@node Load Balancer
+@subsection Load Balancer
+
+Multiprocessor scheduling is one of many difficulties that arose with the 
+arrival of multicore technology. How can an operating system keep all cores
+busy?
+
+One of the simplist ways to do this is to keep the threads in a global queue
+that is shared by all CPUs. An advantage to this approach is that it ensures
+that no CPU is idle while threads are ready to run (but are not currently
+running). However, global queue has two main weaknesses. 
+
+The first weakness is lack of
+scability. The global queue must be locked while choosing the next job to run.
+Locking greatly reduces performance as the number of CPUs grow. Each CPU will
+spend more and more time contenting for the global queue lock and less time
+actually running threads.
+
+The second weakness is cache affinity. A thread builds up a fair amount of 
+state in the cache and TLB associated with its running CPU. It is advantageous
+to run it on the same CPU each time, as it will run faster than if it ran on 
+a different CPU where its memory is far less likely to be stored in the CPU cache.
+A global queue makes preserving cache affinity far less likely, since threads are
+equally likely to be chosen by any CPU.
+
+Because of the weaknesses described above, many operating systems, including Pintos,
+uses per-CPU queues. Each CPU cycles through the threads on their own queue, 
+independent of other CPUs, thereby avoiding the scability and cache affinity problems
+found in the global queue approach. 
+
+However, the multiqueue approach has a problem not seen in the single queue approach:
+load imbalance. If CPU0 has one threads A, and CPU1 has two threads B and C, then A has
+exclusive access to CPU0, while B and C take turns being scheduled on CPU1. A then
+is given twice as much runtime as B and C. Even worse, imagine if thread A finishes. 
+Then CPU0 is idle, while CPU1 is cycling through B and C! Wouldn't it be great if 
+at this point C can be moved to CPU0, so both threads get exclusive access to the CPU? 
+
+@b{Implement load balancing in Pintos.} 
+
+In Pintos, when a thread is created, it is assigned a CPU in a round-robin fashion and
+added to its local queue.
+Please @b{DO NOT} change this, as it is an assumption made by the load balance test. 
+This policy, although simple, does not guarantee that CPUs will be balanced. Although
+CPUs are assigned equal number of threads, the threads on one CPU may finish faster
+than the other, causing the former to become idle.
+
+A good load balancing strategy achieves the following:
+@enumerate
+@item
+No CPU is idle while another CPU has threads waiting in the ready queue. This 
+is the primary goal
+
+@item
+Each CPU should be equally loaded.
+
+@item
+Wherever possible, minimize the migration of threads, since migrating a thread
+to a different CPU means it will run with a cold cache the next time it is 
+scheduled.
+@end enumerate
+
+Any CPU assignment policy, no matter how sophisticated, is not by itself enough
+to ensure that the first goal is met. Therefore, any acceptable load balancing 
+mechanism needs to move threads around. From now on, the migration of threads
+will be referred to as load balancing. 
+
+Create a function called @code{load_balance_fair}.
+
+@deftypefun void load_balance_fair (void)
+Pull threads from another CPU's local queue and add
+it to the current CPU's local queue.
+@xref{Load Balancing}, to see the detailed requirements.
+@end deftypefun
+
+It is up to you how often to load balance, but at the very least, load balancing 
+must be performed inside the idle loop.
+
+@node Project 1 Tests
+@section Test Overview
+
+The CFS tests do not actually create or schedule any real threads.
+Instead, it runs a scheduler simulator that simulates scheduling threads
+under your scheduler. The simulator does everything a real scheduler does,
+with one
+crucial difference: it does not actually context switch threads! All it
+cares is that the correct thread is selected to run at the correct time,
+it doesn't bother actually running the threads. The goal
+is to be able to create a wide variety of scheduling scenarios and see 
+if your scheduler makes the correct decisions. 
+
+To do this, the simulator sets up a "fake CPU" that doesn't represent any
+CPU on the hardware, but rather a virtual environment where the simulator 
+can create threads, execute timer interrupts, etc, without affecting the 
+system. During setup, @code{change_cpu ()} is called so that the CPU local
+variable @code{cpu} points to the fake CPU. After that, all OS events are applied
+to the fake CPU. The real CPU is restored at the end of the test. 
+
+The simulator is abstracted in a way
+that you should not have to worry about it during development, but
+it may confuse you when trying to understand how the tests work.
+
+The alarm, child-fib, and load balance tests do not run the
+simulator, but rather schedule real threads doing real work under your 
+scheduler. As a consequence, those tests take significantly longer.
 
 @node Project 1 FAQ
 @section FAQ
@@ -581,15 +745,8 @@ files modified by the reference solution, and some may modify files not
 modified by the reference solution.
 
 @verbatim
- devices/timer.c       |   42 +++++-
- threads/fixed-point.h |  120 ++++++++++++++++++
- threads/synch.c       |   88 ++++++++++++-
- threads/thread.c      |  196 ++++++++++++++++++++++++++----
- threads/thread.h      |   23 +++
- 5 files changed, 440 insertions(+), 29 deletions(-)
+ TODO
 @end verbatim
-
-@file{fixed-point.h} is a new file added by the reference solution.
 
 @item How do I update the @file{Makefile}s when I add a new source file?
 
@@ -624,20 +781,18 @@ the function isn't actually used by other @file{.c} files, make it
 
 @item What is the interval between timer interrupts?
 
-Timer interrupts occur @code{TIMER_FREQ} times per second.  You can
-adjust this value by editing @file{devices/timer.h}.  The default is
-100 Hz.
-
-We don't recommend changing this value, because any changes are likely
-to cause many of the tests to fail.
+Timer interrupts occur @code{TIMER_FREQ} times per second. 
+The default is 1000Hz. It is set in @file{devices/timer.h}.
+We do not recommend changing it, since it may cause some of the
+tests to fail.
 
 @item How long is a time slice?
 
 There are @code{TIME_SLICE} ticks per time slice.  This macro is
 declared in @file{threads/thread.c}.  The default is 4 ticks.
-
-We don't recommend changing this value, because any changes are likely
-to cause many of the tests to fail.
+However, in Project 1 you will change the scheduler to dynamically
+calculate an ideal timeslice, under the unit of nanoseconds rather than
+ticks.
 
 @item How do I run the tests?
 
@@ -713,8 +868,8 @@ kernel thread but the first.
 
 @menu
 * Alarm Clock FAQ::             
-* Priority Scheduling FAQ::     
 * Advanced Scheduler FAQ::      
+* Load Balancer FAQ::
 @end menu
 
 @node Alarm Clock FAQ
@@ -729,119 +884,10 @@ second should be good for almost 2,924,712,087 years.  By then, we
 expect Pintos to have been phased out of the @value{coursenumber} curriculum.
 @end table
 
-@node Priority Scheduling FAQ
-@subsection Priority Scheduling FAQ
-
-@table @b
-@item Doesn't priority scheduling lead to starvation?
-
-Yes, strict priority scheduling can lead to starvation
-because a thread will not run if any higher-priority thread is runnable.
-The advanced scheduler introduces a mechanism for dynamically
-changing thread priorities.
-
-Strict priority scheduling is valuable in real-time systems because it
-offers the programmer more control over which jobs get processing
-time.  High priorities are generally reserved for time-critical
-tasks. It's not ``fair,'' but it addresses other concerns not
-applicable to a general-purpose operating system.
-
-@item What thread should run after a lock has been released?
-
-When a lock is released, the highest priority thread waiting for that
-lock should be unblocked and put on the list of ready threads.  The
-scheduler should then run the highest priority thread on the ready
-list.
-
-@item If the highest-priority thread yields, does it continue running?
-
-Yes.  If there is a single highest-priority thread, it continues
-running until it blocks or finishes, even if it calls
-@func{thread_yield}.
-If multiple threads have the same highest priority,
-@func{thread_yield} should switch among them in ``round robin'' order.
-
-@item What happens to the priority of a donating thread?
-
-Priority donation only changes the priority of the donee
-thread.  The donor thread's priority is unchanged.  
-Priority donation is not additive: if thread @var{A} (with priority 5) donates
-to thread @var{B} (with priority 3), then @var{B}'s new priority is 5, not 8.
-
-@item Can a thread's priority change while it is on the ready queue?
-
-Yes.  Consider a ready, low-priority thread @var{L} that holds a lock.
-High-priority thread @var{H} attempts to acquire the lock and blocks,
-thereby donating its priority to ready thread @var{L}.
-
-@item Can a thread's priority change while it is blocked?
-
-Yes.  While a thread that has acquired lock @var{L} is blocked for any
-reason, its priority can increase by priority donation if a
-higher-priority thread attempts to acquire @var{L}.  This case is
-checked by the @code{priority-donate-sema} test.
-
-@item Can a thread added to the ready list preempt the processor?
-
-Yes.  If a thread added to the ready list has higher priority than the
-running thread, the correct behavior is to immediately yield the
-processor.  It is not acceptable to wait for the next timer interrupt.
-The highest priority thread should run as soon as it is runnable,
-preempting whatever thread is currently running.
-
-@item How does @func{thread_set_priority} affect a thread receiving donations?
-
-It sets the thread's base priority.  The thread's effective priority
-becomes the higher of the newly set priority or the highest donated
-priority.  When the donations are released, the thread's priority
-becomes the one set through the function call.  This behavior is checked
-by the @code{priority-donate-lower} test.
-
-@item Doubled test names in output make them fail.
-
-Suppose you are seeing output in which some test names are doubled,
-like this:
-
-@example
-(alarm-priority) begin
-(alarm-priority) (alarm-priority) Thread priority 30 woke up.
-Thread priority 29 woke up.
-(alarm-priority) Thread priority 28 woke up.
-@end example
-
-What is happening is that output from two threads is being
-interleaved.  That is, one thread is printing @code{"(alarm-priority)
-Thread priority 29 woke up.\n"} and another thread is printing
-@code{"(alarm-priority) Thread priority 30 woke up.\n"}, but the first
-thread is being preempted by the second in the middle of its output.
-
-This problem indicates a bug in your priority scheduler.  After all, a
-thread with priority 29 should not be able to run while a thread with
-priority 30 has work to do.
-
-Normally, the implementation of the @code{printf()} function in the
-Pintos kernel attempts to prevent such interleaved output by acquiring
-a console lock during the duration of the @code{printf} call and
-releasing it afterwards.  However, the output of the test name,
-e.g., @code{(alarm-priority)}, and the message following it is output
-using two calls to @code{printf}, resulting in the console lock being
-acquired and released twice.
-@end table
-
 @node Advanced Scheduler FAQ
 @subsection Advanced Scheduler FAQ
 
 @table @b
-@item How does priority donation interact with the advanced scheduler?
-
-It doesn't have to.  We won't test priority donation and the advanced
-scheduler at the same time.
-
-@item Can I use one queue instead of 64 queues?
-
-Yes.  In general, your implementation may differ from the description,
-as long as its behavior is the same.
-
 @item Some scheduler tests fail and I don't understand why.  Help!
 
 If your implementation mysteriously fails some of the advanced
@@ -853,20 +899,23 @@ Read the source files for the tests that you're failing, to make sure
 that you understand what's going on.  Each one has a comment at the
 top that explains its purpose and expected results.
 
-@item
-Double-check your fixed-point arithmetic routines and your use of them
-in the scheduler routines.
-
-@item
-Consider how much work your implementation does in the timer
-interrupt.  If the timer interrupt handler takes too long, then it
-will take away most of a timer tick from the thread that the timer
-interrupt preempted.  When it returns control to that thread, it
-therefore won't get to do much work before the next timer interrupt
-arrives.  That thread will therefore get blamed for a lot more CPU
-time than it actually got a chance to use.  This raises the
-interrupted thread's recent CPU count, thereby lowering its priority.
-It can cause scheduling decisions to change.  It also raises the load
-average.
 @end itemize
+
+@item I don't understand how the scheduling driver works/how tests are run
+
+First, if you haven't yet already, please @pxref{Project 1 Tests}.
+
+
 @end table
+
+@node Load Balancer FAQ
+@subsection Load Balancer FAQ
+
+@table @b
+@item TODO
+
+TODO
+
+@end table
+
+

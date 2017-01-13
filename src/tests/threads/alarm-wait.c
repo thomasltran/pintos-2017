@@ -57,7 +57,6 @@ test_sleep (int thread_cnt, int iterations)
   int i;
 
   /* This test does not work with the MLFQS. */
-  ASSERT (!thread_mlfqs);
 
   msg ("Creating %d threads to sleep %d times each.", thread_cnt, iterations);
   msg ("Thread 0 sleeps 10 ticks each time,");
@@ -90,7 +89,7 @@ test_sleep (int thread_cnt, int iterations)
       t->iterations = 0;
 
       snprintf (name, sizeof name, "thread %d", i);
-      thread_create (name, PRI_DEFAULT, sleeper, t);
+      thread_create (name, NICE_DEFAULT, sleeper, t);
     }
   
   /* Wait long enough for all the threads to finish. */

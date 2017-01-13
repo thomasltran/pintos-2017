@@ -1,6 +1,7 @@
 #include "devices/intq.h"
 #include <debug.h>
 #include "threads/thread.h"
+#include "threads/synch.h"
 
 static int next (int pos);
 static void wait (struct intq *q, struct thread **waiter);
@@ -11,13 +12,26 @@ void
 intq_init (struct intq *q) 
 {
   lock_init (&q->lock);
+  spinlock_init (&q->spinlock);
   q->not_full = q->not_empty = NULL;
   q->head = q->tail = 0;
 }
 
+void
+intq_acquire (struct intq *q) 
+{
+  spinlock_acquire(&q->spinlock);
+}
+
+void
+intq_release (struct intq *q) 
+{
+  spinlock_release(&q->spinlock);
+}
+
 /* Returns true if Q is empty, false otherwise. */
 bool
-intq_empty (const struct intq *q) 
+intq_empty (struct intq *q) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
   return q->head == q->tail;
@@ -25,7 +39,7 @@ intq_empty (const struct intq *q)
 
 /* Returns true if Q is full, false otherwise. */
 bool
-intq_full (const struct intq *q) 
+intq_full (struct intq *q) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
   return next (q->head) == q->tail;
@@ -38,7 +52,7 @@ uint8_t
 intq_getc (struct intq *q) 
 {
   uint8_t byte;
-  
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   ASSERT (intr_get_level () == INTR_OFF);
   while (intq_empty (q)) 
     {
@@ -47,7 +61,7 @@ intq_getc (struct intq *q)
       wait (q, &q->not_empty);
       lock_release (&q->lock);
     }
-  
+
   byte = q->buf[q->tail];
   q->tail = next (q->tail);
   signal (q, &q->not_full);
@@ -60,6 +74,7 @@ intq_getc (struct intq *q)
 void
 intq_putc (struct intq *q, uint8_t byte) 
 {
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   ASSERT (intr_get_level () == INTR_OFF);
   while (intq_full (q))
     {
@@ -73,7 +88,7 @@ intq_putc (struct intq *q, uint8_t byte)
   q->head = next (q->head);
   signal (q, &q->not_empty);
 }
-
+
 /* Returns the position after POS within an intq. */
 static int
 next (int pos) 
@@ -82,17 +97,17 @@ next (int pos)
 }
 
 /* WAITER must be the address of Q's not_empty or not_full
-   member.  Waits until the given condition is true. */
+ member.  Waits until the given condition is true. */
 static void
-wait (struct intq *q UNUSED, struct thread **waiter) 
+wait (struct intq *q, struct thread **waiter)
 {
-  ASSERT (!intr_context ());
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT ((waiter == &q->not_empty && intq_empty (q))
           || (waiter == &q->not_full && intq_full (q)));
 
   *waiter = thread_current ();
-  thread_block ();
+  thread_block (&q->spinlock);
 }
 
 /* WAITER must be the address of Q's not_empty or not_full
@@ -100,8 +115,9 @@ wait (struct intq *q UNUSED, struct thread **waiter)
    thread is waiting for the condition, wakes it up and resets
    the waiting thread. */
 static void
-signal (struct intq *q UNUSED, struct thread **waiter) 
+signal (struct intq *q, struct thread **waiter)
 {
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT ((waiter == &q->not_empty && !intq_empty (q))
           || (waiter == &q->not_full && !intq_full (q)));

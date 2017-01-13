@@ -5,6 +5,7 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "lib/kernel/x86.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -227,7 +228,7 @@ pagedir_activate (uint32_t *pd)
      new page tables immediately.  See [IA32-v2a] "MOV--Move
      to/from Control Registers" and [IA32-v3a] 3.7.5 "Base
      Address of the Page Directory". */
-  asm volatile ("movl %0, %%cr3" : : "r" (vtop (pd)) : "memory");
+  lcr3 (vtop (pd));
 }
 
 /* Returns the currently active page directory. */

@@ -637,7 +637,6 @@ static int
 uhci_tx_pkt_wait (struct uhci_eop_info *ue, int token, void *pkt,
 		  int max_sz, int *in_sz)
 {
-  enum intr_level old_lvl;
   struct tx_descriptor *td;
   struct usb_wait w;
   int err;
@@ -667,11 +666,13 @@ uhci_tx_pkt_wait (struct uhci_eop_info *ue, int token, void *pkt,
   list_push_back (&ud->ui->waiting, &w.peers);
 
   /* reactivate controller and wait */
-  old_lvl = intr_disable ();
+  //XXX: Revisit this. Needs to hold a spinlock but can you release before sema_down? Or do you need to pass this to thread_block
+  //to make sure that the spinlock is released after the queue lock has been acquired.
+  intr_disable_push();
   uhci_run (ud->ui);
   uhci_unlock (ud->ui);
   sema_down (&w.sem);
-  intr_set_level (old_lvl);
+  intr_disable_pop();
 
   if (in_sz != NULL)
     {

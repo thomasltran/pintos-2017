@@ -7,6 +7,7 @@
 #include "threads/io.h"
 #include "threads/interrupt.h"
 #include "threads/vaddr.h"
+#include "devices/serial.h"
 
 /* VGA text screen support.  See [FREEVGA] for more information. */
 
@@ -51,10 +52,9 @@ init (void)
 void
 vga_putc (int c)
 {
-  /* Disable interrupts to lock out interrupt handlers
-     that might write to the console. */
-  enum intr_level old_level = intr_disable ();
-
+  /* Acquire the serial spinlock to lock out the serial interrupt,
+   which may write to the console.  */
+  serial_txq_acquire();
   init ();
   
   switch (c) 
@@ -83,9 +83,6 @@ vga_putc (int c)
       break;
 
     case '\a':
-      intr_set_level (old_level);
-      speaker_beep ();
-      intr_disable ();
       break;
       
     default:
@@ -99,7 +96,7 @@ vga_putc (int c)
   /* Update cursor position. */
   move_cursor ();
 
-  intr_set_level (old_level);
+  serial_txq_release();
 }
 
 /* Clears the screen and moves the cursor to the upper left. */

@@ -21,7 +21,11 @@ threads_SRC += threads/intr-stubs.S	# Interrupt stubs.
 threads_SRC += threads/synch.c		# Synchronization.
 threads_SRC += threads/palloc.c		# Page allocator.
 threads_SRC += threads/malloc.c		# Subpage allocator.
-
+threads_SRC += threads/mp.c			# Multi-processor.
+threads_SRC += threads/ipi.c		# Inter-processor interrupts.
+threads_SRC += threads/scheduler.c      # Scheduler class
+threads_SRC += threads/gdt.c		# GDT initialization.
+threads_SRC += threads/tss.c		# TSS management.
 # Device driver code.
 devices_SRC  = devices/pit.c		# Programmable interrupt timer chip.
 devices_SRC += devices/timer.c		# Periodic timer device.
@@ -42,6 +46,8 @@ devices_SRC += devices/usb_uhci.c	# UHCI device.
 devices_SRC += devices/usb_ehci.c	# EHCI device.
 devices_SRC += devices/usb_storage.c	# USB mass storage class driver.
 devices_SRC += devices/usb_hub.c	# USB hub class driver.
+devices_SRC += devices/lapic.c		# Local Advanced Programmable Interrupt Controller.
+devices_SRC += devices/ioapic.c		# I/O Advanced Programmable Interrupt Controller.
 
 # Library code shared between kernel and user programs.
 lib_SRC  = lib/debug.c			# Debug helpers.
@@ -51,6 +57,7 @@ lib_SRC += lib/stdlib.c			# Utility functions.
 lib_SRC += lib/string.c			# String functions.
 lib_SRC += lib/arithmetic.c		# 64-bit arithmetic for GCC.
 lib_SRC += lib/ustar.c			# Unix standard tar format utilities.
+lib_SRC += lib/atomic-ops.c		# Atomic instructions
 
 # Kernel-specific library code.
 lib/kernel_SRC  = lib/kernel/debug.c	# Debug helpers.
@@ -64,8 +71,6 @@ userprog_SRC  = userprog/process.c	# Process loading.
 userprog_SRC += userprog/pagedir.c	# Page directories.
 userprog_SRC += userprog/exception.c	# User exception handler.
 userprog_SRC += userprog/syscall.c	# System call handler.
-userprog_SRC += userprog/gdt.c		# GDT initialization.
-userprog_SRC += userprog/tss.c		# TSS management.
 
 # No virtual memory code yet.
 #vm_SRC = vm/file.c			# Some file.
@@ -85,8 +90,13 @@ DEPENDS = $(patsubst %.o,%.d,$(OBJECTS))
 threads/kernel.lds.s: CPPFLAGS += -P
 threads/kernel.lds.s: threads/kernel.lds.S threads/loader.h
 
-kernel.o: threads/kernel.lds.s $(OBJECTS) 
-	$(LD) -T $< -o $@ $(OBJECTS)
+threads/startother: threads/startother.S
+	$(CC) -c $< -o $@.o $(ASFLAGS) $(CPPFLAGS) $(DEFINES) $(DEPS)
+	$(LD) -N -e startother -Ttext 0x7000 -o ./threads/bootblockother.o $@.o
+	$(OBJCOPY) -S -O binary -j .text ./threads/bootblockother.o $@
+	
+kernel.o: threads/kernel.lds.s $(OBJECTS) threads/startother 
+	$(LD) -T $< -o $@ $(OBJECTS) -b binary ./$(word $(words $^),$^)
 
 kernel.bin: kernel.o
 	$(OBJCOPY) -R .note -R .comment -S $< $@
@@ -103,6 +113,7 @@ os.dsk: kernel.bin
 clean::
 	rm -f $(OBJECTS) $(DEPENDS) 
 	rm -f threads/loader.o threads/kernel.lds.s threads/loader.d
+	rm -f threads/bootblockother.o threads/startother*
 	rm -f kernel.bin.tmp
 	rm -f kernel.o kernel.lds.s
 	rm -f kernel.bin loader.bin

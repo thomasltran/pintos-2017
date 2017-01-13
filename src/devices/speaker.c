@@ -3,12 +3,21 @@
 #include "threads/io.h"
 #include "threads/interrupt.h"
 #include "devices/timer.h"
+#include "threads/synch.h"
 
 /* Speaker port enable I/O register. */
 #define SPEAKER_PORT_GATE	0x61
 
 /* Speaker port enable bits. */
 #define SPEAKER_GATE_ENABLE	0x03
+
+static struct spinlock speaker_spinlock;
+
+void
+speaker_init (void)
+{
+  spinlock_init (&speaker_spinlock);
+}
 
 /* Sets the PC speaker to emit a tone at the given FREQUENCY, in
    Hz. */
@@ -20,10 +29,10 @@ speaker_on (int frequency)
       /* Set the timer channel that's connected to the speaker to
          output a square wave at the given FREQUENCY, then
          connect the timer channel output to the speaker. */
-      enum intr_level old_level = intr_disable ();
+      spinlock_acquire (&speaker_spinlock);
       pit_configure_channel (2, 3, frequency);
       outb (SPEAKER_PORT_GATE, inb (SPEAKER_PORT_GATE) | SPEAKER_GATE_ENABLE);
-      intr_set_level (old_level);
+      spinlock_release (&speaker_spinlock);
     }
   else
     {
@@ -38,9 +47,9 @@ speaker_on (int frequency)
 void
 speaker_off (void)
 {
-  enum intr_level old_level = intr_disable ();
+  spinlock_acquire(&speaker_spinlock);
   outb (SPEAKER_PORT_GATE, inb (SPEAKER_PORT_GATE) & ~SPEAKER_GATE_ENABLE);
-  intr_set_level (old_level);
+  spinlock_release (&speaker_spinlock);
 }
 
 /* Briefly beep the PC speaker. */

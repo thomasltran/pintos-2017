@@ -7,7 +7,15 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-
+#include "devices/ioapic.h"
+#include "threads/synch.h"
+#include "threads/cpu.h"
+#include "devices/trap.h"
+#include <stdbool.h>
+
+/* Recommend false */
+bool serial_putc_sleep = false;
+
 /* Register definitions for the 16550A UART used in PCs.
    The 16550A has a lot more going on than shown here, but this
    is all we need.
@@ -47,7 +55,7 @@
 /* Line Status Register. */
 #define LSR_DR 0x01             /* Data Ready: received data byte is in RBR. */
 #define LSR_THRE 0x20           /* THR Empty. */
-
+
 /* Transmission mode. */
 static enum { UNINIT, POLL, QUEUE } mode;
 
@@ -81,26 +89,35 @@ init_poll (void)
 void
 serial_init_queue (void) 
 {
-  enum intr_level old_level;
-
   if (mode == UNINIT)
     init_poll ();
   ASSERT (mode == POLL);
-
-  intr_register_ext (0x20 + 4, serial_interrupt, "serial");
   mode = QUEUE;
-  old_level = intr_disable ();
+  serial_txq_acquire ();
   write_ier ();
-  intr_set_level (old_level);
+  serial_txq_release ();
+  ioapicenable (IRQ_SERIAL, IRQ_CPU);
+  intr_register_ext (0x20 + IRQ_SERIAL, serial_interrupt, "serial");
+}
+
+void
+serial_txq_acquire (void) 
+{
+  intq_acquire (&txq);
+}
+
+void
+serial_txq_release (void) 
+{
+  intq_release (&txq);
 }
 
 /* Sends BYTE to the serial port. */
 void
 serial_putc (uint8_t byte) 
 {
-  enum intr_level old_level = intr_disable ();
 
-  if (mode != QUEUE)
+  if (mode != QUEUE || !serial_putc_sleep)
     {
       /* If we're not set up for interrupt-driven I/O yet,
          use dumb polling to transmit a byte. */
@@ -112,21 +129,23 @@ serial_putc (uint8_t byte)
     {
       /* Otherwise, queue a byte and update the interrupt enable
          register. */
+      enum intr_level old_level = intr_get_level ();
+      serial_txq_acquire ();
       if (old_level == INTR_OFF && intq_full (&txq)) 
-        {
-          /* Interrupts are off and the transmit queue is full.
-             If we wanted to wait for the queue to empty,
-             we'd have to reenable interrupts.
-             That's impolite, so we'll send a character via
-             polling instead. */
-          putc_poll (intq_getc (&txq)); 
-        }
+	{
+          /* Interrupts are off; therefore we are likely
+             in an interrupt handler, or else we are holding
+             a spinlock. Transmit queue is
+             full, so the next intq_putc would probably
+             cause us to sleep. We can't sleep,
+             so we'll send a character via polling instead. */
+	  putc_poll (intq_getc (&txq));
+	}
 
-      intq_putc (&txq, byte); 
+      intq_putc (&txq, byte);
       write_ier ();
+      serial_txq_release ();
     }
-  
-  intr_set_level (old_level);
 }
 
 /* Flushes anything in the serial buffer out the port in polling
@@ -134,10 +153,10 @@ serial_putc (uint8_t byte)
 void
 serial_flush (void) 
 {
-  enum intr_level old_level = intr_disable ();
+  serial_txq_acquire ();
   while (!intq_empty (&txq))
     putc_poll (intq_getc (&txq));
-  intr_set_level (old_level);
+  serial_txq_release ();
 }
 
 /* The fullness of the input buffer may have changed.  Reassess
@@ -151,7 +170,7 @@ serial_notify (void)
   if (mode == QUEUE)
     write_ier ();
 }
-
+
 /* Configures the serial port for BPS bits per second. */
 static void
 set_serial (int bps)
@@ -167,7 +186,7 @@ set_serial (int bps)
   /* Set data rate. */
   outb (LS_REG, divisor & 0xff);
   outb (MS_REG, divisor >> 8);
-  
+
   /* Reset DLAB. */
   outb (LCR_REG, LCR_N81);
 }
@@ -179,7 +198,6 @@ write_ier (void)
   uint8_t ier = 0;
 
   ASSERT (intr_get_level () == INTR_OFF);
-
   /* Enable transmit interrupt if we have any characters to
      transmit. */
   if (!intq_empty (&txq))
@@ -215,14 +233,19 @@ serial_interrupt (struct intr_frame *f UNUSED)
 
   /* As long as we have room to receive a byte, and the hardware
      has a byte for us, receive a byte.  */
+  input_acquire ();
   while (!input_full () && (inb (LSR_REG) & LSR_DR) != 0)
     input_putc (inb (RBR_REG));
+  input_release ();
 
+  serial_txq_acquire ();
   /* As long as we have a byte to transmit, and the hardware is
      ready to accept a byte for transmission, transmit a byte. */
   while (!intq_empty (&txq) && (inb (LSR_REG) & LSR_THRE) != 0) 
     outb (THR_REG, intq_getc (&txq));
+  serial_txq_release ();
 
   /* Update interrupt enable register based on queue status. */
   write_ier ();
+
 }

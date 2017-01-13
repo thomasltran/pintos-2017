@@ -17,6 +17,7 @@
 #include "devices/usb.h"
 #include "devices/block.h"
 #include "devices/partition.h"
+#include "lib/atomic-ops.h"
 
 //http://www.usb.org/developers/defined_class
 #define USB_CLASS_MASS_STORAGE	0x08
@@ -240,7 +241,7 @@ msc_attached (struct usb_iface *ui)
 							  PGSIZE));
   mbi = malloc (sizeof (struct msc_blk_info));
   mbi->mci = mci;
-  snprintf (name, sizeof name, "ud%c", 'a' + dev_no++);
+  snprintf (name, sizeof name, "ud%c", 'a' + atomic_inci(&dev_no));
   block = block_register (name, BLOCK_RAW, "USB", mci->blk_count,
                           &msc_operations, mbi);
   partition_scan (block);

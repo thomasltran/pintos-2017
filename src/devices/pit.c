@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/io.h"
+#include "threads/synch.h"
 
 /* Interface to 8254 Programmable Interrupt Timer (PIT).
    Refer to [8254] for details. */
@@ -13,6 +14,13 @@
 
 /* PIT cycles per second. */
 #define PIT_HZ 1193180
+
+static struct spinlock pit_spinlock;
+void
+pit_init (void)
+{
+  spinlock_init (&pit_spinlock);
+}
 
 /* Configure the given CHANNEL in the PIT.  In a PC, the PIT's
    three output channels are hooked up like this:
@@ -46,7 +54,6 @@ void
 pit_configure_channel (int channel, int mode, int frequency)
 {
   uint16_t count;
-  enum intr_level old_level;
 
   ASSERT (channel == 0 || channel == 2);
   ASSERT (mode == 2 || mode == 3);
@@ -75,9 +82,9 @@ pit_configure_channel (int channel, int mode, int frequency)
     count = (PIT_HZ + frequency / 2) / frequency;
 
   /* Configure the PIT mode and load its counters. */
-  old_level = intr_disable ();
+  spinlock_acquire (&pit_spinlock);
   outb (PIT_PORT_CONTROL, (channel << 6) | 0x30 | (mode << 1));
   outb (PIT_PORT_COUNTER (channel), count);
   outb (PIT_PORT_COUNTER (channel), count >> 8);
-  intr_set_level (old_level);
+  spinlock_release (&pit_spinlock);
 }

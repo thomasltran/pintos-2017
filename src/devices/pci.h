@@ -106,7 +106,5 @@ uint8_t pci_reg_read8 (struct pci_io *, int reg);
 void pci_read_in (struct pci_io *, int off, size_t sz, void *buf);
 void pci_write_out (struct pci_io *, int off, size_t sz, const void *buf);
 void pci_print_stats (void);
-void pci_mask_irq (struct pci_dev *);
-void pci_unmask_irq (struct pci_dev *);
 
 #endif

@@ -1,8 +1,9 @@
-/* This file is derived from source code for the Nachos
-   instructional operating system.  The Nachos copyright notice
-   is reproduced in full below. */
+/* This file is derived from source code for the Nachos and xv6
+   instructional operating systems. Copyright notices are printed
+   below . */
 
-/* Copyright (c) 1992-1996 The Regents of the University of California.
+/* NACHOS
+   Copyright (c) 1992-1996 The Regents of the University of California.
    All rights reserved.
 
    Permission to use, copy, modify, and distribute this software
@@ -26,11 +27,127 @@
    MODIFICATIONS.
 */
 
+/* The xv6 software is:
+
+   Copyright (c) 2006-2009 Frans Kaashoek, Robert Morris, Russ Cox,
+                        Massachusetts Institute of Technology
+
+   Permission is hereby granted, free of charge, to any person obtaining
+   a copy of this software and associated documentation files (the
+   "Software"), to deal in the Software without restriction, including
+   without limitation the rights to use, copy, modify, merge, publish,
+   distribute, sublicense, and/or sell copies of the Software, and to
+   permit persons to whom the Software is furnished to do so, subject to
+   the following conditions:
+
+   The above copyright notice and this permission notice shall be
+   included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+   OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
+
 #include "threads/synch.h"
 #include <stdio.h>
 #include <string.h>
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/loader.h"
+#include "threads/flags.h"
+#include "threads/cpu.h"
+#include "lib/atomic-ops.h"
+#include "lib/kernel/console.h"
+
+static void lock_print_error_msg (struct callerinfo *, int, int);
+void
+spinlock_init (struct spinlock *spinlock)
+{
+  spinlock->locked = 0;
+  spinlock->cpu = NULL;
+  callerinfo_init (&spinlock->debuginfo);
+}
+
+/* Acquire the spinlock.
+   Loops (spins) until the spinlock is acquired.
+   Holding a spinlock for a long time may cause
+   other CPUs to waste time spinning to acquire it. */
+void
+spinlock_acquire (struct spinlock *spinlock)
+{
+  intr_disable_push ();     /* disable interrupts to avoid race conditions from interrupts */
+  if (spinlock_held_by_current_cpu (spinlock)) {
+      lock_print_error_msg (&spinlock->debuginfo, 0, 0);
+      PANIC("acquire");  
+  }
+    
+  /* The xchg is atomic.
+     It also serializes, so that reads after acquire are not
+     reordered before it. */
+  while (atomic_xchg (&spinlock->locked, 1) != 0)
+    ;
+
+  /* Record info about lock acquisition for debugging. */
+  spinlock->cpu = get_cpu ();
+  savecallerinfo (&spinlock->debuginfo);
+}
+
+/* Release the lock. */
+void
+spinlock_release (struct spinlock *spinlock)
+{
+  if (!spinlock_held_by_current_cpu (spinlock)) {
+      lock_print_error_msg (&spinlock->debuginfo, 0, 1);
+      PANIC("release");
+  }
+    
+  spinlock->cpu = NULL;
+  savecallerinfo (&spinlock->debuginfo);
+
+  /* The xchg serializes, so that reads before release are
+     not reordered after it.  The 1996 PentiumPro manual (Volume 3,
+     7.2) says reads can be carried out speculatively and in
+     any order, which implies we need to serialize here.
+     But the 2007 Intel 64 Architecture Memory Ordering White
+     Paper says that Intel 64 and IA-32 will not move a load
+     after a store. So lock->locked = 0 would work here.
+     The xchg being asm volatile ensures gcc emits it after
+     the above assignments (and after the critical section). */
+  atomic_xchg (&spinlock->locked, 0);
+
+  intr_disable_pop ();
+}
+
+bool
+spinlock_try_acquire (struct spinlock *spinlock)
+{
+  intr_disable_push ();     /* disable interrupts to avoid race conditions from interrupts */
+  if (spinlock_held_by_current_cpu (spinlock)) {
+      lock_print_error_msg (&spinlock->debuginfo, 0, 0);
+      PANIC("acquire");
+  }
+  if (atomic_xchg (&spinlock->locked, 1) != 0)
+    {
+      intr_disable_pop ();
+      return false;
+    }
+  else
+    {
+      spinlock->cpu = get_cpu ();
+      savecallerinfo (&spinlock->debuginfo);
+      return true;
+    }
+}
+
+/* Check whether this cpu is holding the lock. */
+bool
+spinlock_held_by_current_cpu (const struct spinlock *lock)
+{
+  return lock->locked && lock->cpu == get_cpu ();
+}
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -48,6 +165,7 @@ sema_init (struct semaphore *sema, unsigned value)
 
   sema->value = value;
   list_init (&sema->waiters);
+  spinlock_init (&sema->lock);
 }
 
 /* Down or "P" operation on a semaphore.  Waits for SEMA's value
@@ -60,19 +178,17 @@ sema_init (struct semaphore *sema, unsigned value)
 void
 sema_down (struct semaphore *sema) 
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
   ASSERT (!intr_context ());
 
-  old_level = intr_disable ();
+  spinlock_acquire (&sema->lock);
   while (sema->value == 0) 
     {
       list_push_back (&sema->waiters, &thread_current ()->elem);
-      thread_block ();
+      thread_block (&sema->lock);
     }
   sema->value--;
-  intr_set_level (old_level);
+  spinlock_release (&sema->lock);
 }
 
 /* Down or "P" operation on a semaphore, but only if the
@@ -83,12 +199,11 @@ sema_down (struct semaphore *sema)
 bool
 sema_try_down (struct semaphore *sema) 
 {
-  enum intr_level old_level;
   bool success;
 
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
+  spinlock_acquire (&sema->lock);
   if (sema->value > 0) 
     {
       sema->value--;
@@ -96,7 +211,7 @@ sema_try_down (struct semaphore *sema)
     }
   else
     success = false;
-  intr_set_level (old_level);
+  spinlock_release (&sema->lock);
 
   return success;
 }
@@ -108,16 +223,14 @@ sema_try_down (struct semaphore *sema)
 void
 sema_up (struct semaphore *sema) 
 {
-  enum intr_level old_level;
-
   ASSERT (sema != NULL);
 
-  old_level = intr_disable ();
+  spinlock_acquire (&sema->lock);
   if (!list_empty (&sema->waiters)) 
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
-  intr_set_level (old_level);
+  spinlock_release (&sema->lock);
 }
 
 static void sema_test_helper (void *sema_);
@@ -134,7 +247,7 @@ sema_self_test (void)
   printf ("Testing semaphores...");
   sema_init (&sema[0], 0);
   sema_init (&sema[1], 0);
-  thread_create ("sema-test", PRI_DEFAULT, sema_test_helper, &sema);
+  thread_create ("sema-test", NICE_DEFAULT, sema_test_helper, &sema);
   for (i = 0; i < 10; i++) 
     {
       sema_up (&sema[0]);
@@ -179,6 +292,7 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
+  callerinfo_init (&lock->debuginfo);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -194,10 +308,15 @@ lock_acquire (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
-  ASSERT (!lock_held_by_current_thread (lock));
-
+  if (lock_held_by_current_thread (lock))
+    {
+      lock_print_error_msg (&lock->debuginfo, 1, 0);
+      PANIC("acquire");      
+    }
+  
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
+  savecallerinfo (&lock->debuginfo);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -212,11 +331,18 @@ lock_try_acquire (struct lock *lock)
   bool success;
 
   ASSERT (lock != NULL);
-  ASSERT (!lock_held_by_current_thread (lock));
+  if (lock_held_by_current_thread (lock))
+    {
+      lock_print_error_msg (&lock->debuginfo, 1, 0);
+      PANIC("acquire");      
+    }
 
   success = sema_try_down (&lock->semaphore);
-  if (success)
-    lock->holder = thread_current ();
+  if (success) 
+    {    
+      lock->holder = thread_current ();
+      savecallerinfo (&lock->debuginfo);
+    }
   return success;
 }
 
@@ -229,9 +355,14 @@ void
 lock_release (struct lock *lock) 
 {
   ASSERT (lock != NULL);
-  ASSERT (lock_held_by_current_thread (lock));
+  if (!lock_held_by_current_thread (lock))
+    {
+      lock_print_error_msg (&lock->debuginfo, 1, 1);
+      PANIC("release");
+    }
 
   lock->holder = NULL;
+  savecallerinfo (&lock->debuginfo);
   sema_up (&lock->semaphore);
 }
 
@@ -335,4 +466,23 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
+}
+
+/* Print an error message indicating that a locking-related error
+   occured. 
+   lock_type indicates the type of lock. 0 for spinlock, 1 for lock.
+   action indicates the action causing the error. 0 for acquire, 1 for 
+   release. */
+static void
+lock_print_error_msg (struct callerinfo *info, int lock_type, int action)
+{
+  char *error_name = action == 0 ? "Tried to acquire an already held " : 
+                                   "Tried to release an unacquired ";
+  char *lock_name = lock_type == 0 ? "spinlock" : "lock";
+  printf ("ERROR: %s%s!\n", error_name, lock_name);
+  printf ("Printing a backtrace of last %s.\n", action == 0 ? "acquisition" 
+          : "release");
+  printf ("Lock %s by: ", action == 0 ? "acquired" : "released");
+  printcallerinfo (info);
+  printf ("\n");  
 }

@@ -1,0 +1,4 @@
+1) For threads project, running under KVM is not recommended since it may cause 
+some of the tests to fail
+
+2) 

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+void pit_init (void);
 void pit_configure_channel (int channel, int mode, int frequency);
 
 #endif /* devices/pit.h */

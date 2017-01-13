@@ -1,7 +1,9 @@
 #include "tests/threads/tests.h"
+#include "schedtest.h"
 #include <debug.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 struct test 
   {
@@ -10,34 +12,31 @@ struct test
   };
 
 static const struct test tests[] = 
-  {
-    {"alarm-single", test_alarm_single},
-    {"alarm-multiple", test_alarm_multiple},
-    {"alarm-simultaneous", test_alarm_simultaneous},
-    {"alarm-priority", test_alarm_priority},
-    {"alarm-zero", test_alarm_zero},
-    {"alarm-negative", test_alarm_negative},
-    {"priority-change", test_priority_change},
-    {"priority-donate-one", test_priority_donate_one},
-    {"priority-donate-multiple", test_priority_donate_multiple},
-    {"priority-donate-multiple2", test_priority_donate_multiple2},
-    {"priority-donate-nest", test_priority_donate_nest},
-    {"priority-donate-sema", test_priority_donate_sema},
-    {"priority-donate-lower", test_priority_donate_lower},
-    {"priority-donate-chain", test_priority_donate_chain},
-    {"priority-fifo", test_priority_fifo},
-    {"priority-preempt", test_priority_preempt},
-    {"priority-sema", test_priority_sema},
-    {"priority-condvar", test_priority_condvar},
-    {"mlfqs-load-1", test_mlfqs_load_1},
-    {"mlfqs-load-60", test_mlfqs_load_60},
-    {"mlfqs-load-avg", test_mlfqs_load_avg},
-    {"mlfqs-recent-1", test_mlfqs_recent_1},
-    {"mlfqs-fair-2", test_mlfqs_fair_2},
-    {"mlfqs-fair-20", test_mlfqs_fair_20},
-    {"mlfqs-nice-2", test_mlfqs_nice_2},
-    {"mlfqs-nice-10", test_mlfqs_nice_10},
-    {"mlfqs-block", test_mlfqs_block},
+{
+  { "alarm-single", test_alarm_single },
+  { "alarm-multiple", test_alarm_multiple },
+  { "alarm-synch", test_alarm_synch },
+  { "alarm-zero", test_alarm_zero },
+  { "alarm-negative", test_alarm_negative },
+  { "cfs-create-new", test_create_new },
+  { "cfs-idle", test_idle },
+  { "cfs-yield", test_yield },
+  { "cfs-tick", test_tick },
+  { "cfs-tick2", test_tick2 },
+  { "cfs-delayed-tick", test_delayed_tick },
+  { "cfs-sleeper", test_sleeper },
+  { "cfs-short-sleeper", test_short_sleeper },
+  { "cfs-sleeper-minvruntime", test_sleeper_minvruntime },
+  { "cfs-new-minvruntime", test_new_minvruntime },
+  { "cfs-nice", test_nice },
+  { "cfs-renice", test_renice },
+  { "cfs-idle-unblock", test_idle_unblock },
+  { "cfs-vruntime", test_vruntime }, 
+  { "cfs-run-batch", test_cfs_fib },
+  { "cfs-run-iobound", test_cfs_sleepers },
+  { "balance", balance },
+  { "balance-synch1", test_balance_synch1 },
+  { "balance-synch2", test_balance_sleepers },
   };
 
 static const char *test_name;
@@ -62,17 +61,44 @@ run_test (const char *name)
 
 /* Prints FORMAT as if with printf(),
    prefixing the output by the name of the test
-   and following it with a new-line character. */
+   and following it with a new-line character.
+   Copies the entire message into one buffer 
+   to prevent message interleaving. */
 void
 msg (const char *format, ...) 
 {
   va_list args;
   
-  printf ("(%s) ", test_name);
+  static char buf[1024];
+  memset (buf, 0, sizeof buf);
+  
+  snprintf (buf, sizeof buf, "(%s) ", test_name);
   va_start (args, format);
-  vprintf (format, args);
+  vsnprintf (buf + strlen (buf), sizeof buf - strlen (buf), format, args);
   va_end (args);
-  putchar ('\n');
+  printf ("%s\n", buf);
+}
+
+/*
+ * Basically an assertion with msg
+ * if (!truth)
+ * 	fail (msg)
+ */
+void
+failIfFalse (bool truth, const char *format, ...)
+{
+  if (!truth)
+    {
+      va_list args;
+
+      printf ("(%s) FAIL: ", test_name);
+      va_start (args, format);
+      vprintf (format, args);
+      va_end (args);
+      putchar ('\n');
+
+      PANIC("test failed");
+    }
 }
 
 /* Prints failure message FORMAT as if with printf(),
@@ -99,4 +125,3 @@ pass (void)
 {
   printf ("(%s) PASS\n", test_name);
 }
-

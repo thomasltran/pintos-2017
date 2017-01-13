@@ -7,6 +7,8 @@
 #include "devices/shutdown.h"
 #include "threads/interrupt.h"
 #include "threads/io.h"
+#include "devices/ioapic.h"
+#include "devices/trap.h"
 
 /* Keyboard data register port. */
 #define DATA_REG 0x60
@@ -30,6 +32,7 @@ static intr_handler_func keyboard_interrupt;
 void
 kbd_init (void) 
 {
+  ioapicenable (IRQ_KBD, IRQ_CPU);
   intr_register_ext (0x21, keyboard_interrupt, "8042 Keyboard");
 }
 
@@ -158,11 +161,13 @@ keyboard_interrupt (struct intr_frame *args UNUSED)
             c += 0x80;
 
           /* Append to keyboard buffer. */
+          input_acquire();
           if (!input_full ())
             {
               key_cnt++;
               input_putc (c);
             }
+          input_release();
         }
     }
   else

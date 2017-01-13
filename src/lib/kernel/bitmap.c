@@ -159,10 +159,7 @@ bitmap_mark (struct bitmap *b, size_t bit_idx)
   size_t idx = elem_idx (bit_idx);
   elem_type mask = bit_mask (bit_idx);
 
-  /* This is equivalent to `b->bits[idx] |= mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the OR instruction in [IA32-v2b]. */
-  asm ("orl %1, %0" : "=m" (b->bits[idx]) : "r" (mask) : "cc");
+  __atomic_or_fetch (&b->bits[idx], mask, __ATOMIC_SEQ_CST);
 }
 
 /* Atomically sets the bit numbered BIT_IDX in B to false. */
@@ -172,10 +169,7 @@ bitmap_reset (struct bitmap *b, size_t bit_idx)
   size_t idx = elem_idx (bit_idx);
   elem_type mask = bit_mask (bit_idx);
 
-  /* This is equivalent to `b->bits[idx] &= ~mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the AND instruction in [IA32-v2a]. */
-  asm ("andl %1, %0" : "=m" (b->bits[idx]) : "r" (~mask) : "cc");
+  __atomic_and_fetch (&b->bits[idx], ~mask, __ATOMIC_SEQ_CST);
 }
 
 /* Atomically toggles the bit numbered IDX in B;
@@ -187,10 +181,7 @@ bitmap_flip (struct bitmap *b, size_t bit_idx)
   size_t idx = elem_idx (bit_idx);
   elem_type mask = bit_mask (bit_idx);
 
-  /* This is equivalent to `b->bits[idx] ^= mask' except that it
-     is guaranteed to be atomic on a uniprocessor machine.  See
-     the description of the XOR instruction in [IA32-v2b]. */
-  asm ("xorl %1, %0" : "=m" (b->bits[idx]) : "r" (mask) : "cc");
+  __atomic_xor_fetch (&b->bits[idx], mask, __ATOMIC_SEQ_CST);
 }
 
 /* Returns the value of the bit numbered IDX in B. */

@@ -2,6 +2,7 @@
 #include <console.h>
 #include <debug.h>
 #include <inttypes.h>
+#include <stdbool.h>
 #include <limits.h>
 #include <random.h>
 #include <stddef.h>
@@ -17,6 +18,9 @@
 #include "devices/timer.h"
 #include "devices/vga.h"
 #include "devices/rtc.h"
+#include "devices/lapic.h"
+#include "devices/ioapic.h"
+#include "devices/pit.h"
 #include "threads/interrupt.h"
 #include "threads/io.h"
 #include "threads/loader.h"
@@ -24,14 +28,20 @@
 #include "threads/palloc.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "threads/gdt.h"
+#include "threads/tss.h"
+#include "threads/mp.h"
+#include "threads/ipi.h"
+#include "threads/cpu.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/exception.h"
-#include "userprog/gdt.h"
 #include "userprog/syscall.h"
-#include "userprog/tss.h"
+#include "userprog/pagedir.h"
 #else
 #include "tests/threads/tests.h"
+#include "tests/threads/schedtest.h"
+#include "tests/misc/misc_tests.h"
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -39,16 +49,17 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#include "lib/kernel/x86.h"
+#include "lib/atomic-ops.h"
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
-
 #ifdef FILESYS
 /* -f: Format the file system? */
 static bool format_filesys;
 
 /* -filesys, -scratch, -swap: Names of block devices to use,
-   overriding the defaults. */
+ overriding the defaults. */
 static const char *filesys_bdev_name;
 static const char *scratch_bdev_name;
 #ifdef VM
@@ -62,11 +73,13 @@ static size_t user_page_limit = SIZE_MAX;
 static void bss_init (void);
 static void paging_init (void);
 static void pci_zone_init (void);
-
-static char **read_command_line (void);
-static char **parse_options (char **argv);
+static void lapic_zone_init (void);
+static char ** read_command_line (void);
+static char ** parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
+static void startothers (void);
+static void mpenter (void);
 
 #ifdef FILESYS
 static void locate_block_devices (void);
@@ -81,32 +94,36 @@ main (void)
 {
   char **argv;
 
-  /* Clear BSS. */  
+  /* Clear BSS. */
   bss_init ();
-
-  /* Break command line into arguments and parse options. */
-  argv = read_command_line ();
-  argv = parse_options (argv);
-
-  /* Initialize ourselves as a thread so we can use locks,
-     then enable console locking. */
-  thread_init ();
-  console_init ();  
-
-  /* Greet user. */
-  printf ("Pintos booting with %'"PRIu32" kB RAM...\n",
-          init_ram_pages * PGSIZE / 1024);
+  cpu_startedothers = 0;
+  cpu_can_acquire_spinlock = 0;
 
   /* Initialize memory system. */
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
+  mp_init ();        /* collect info about this machine */
+  lapic_init ();
+  /* Initialize ourselves as a thread so we can use locks */
+  thread_init ();
 
   /* Segmentation. */
-#ifdef USERPROG
-  tss_init ();
   gdt_init ();
-#endif
+  tss_init ();
+  
+  /* Per-CPU variables are set up, so it's safe to acquire a lock */
+  cpu_can_acquire_spinlock = 1;
+  
+  console_init ();
+  /* Break command line into arguments and parse options. */
+  argv = read_command_line ();
+  argv = parse_options (argv);
+
+  /* Greet user. */
+  printf ("CPU %d is up\n", get_cpu ()->id);
+  printf ("Pintos booting with %'"PRIu32" kB RAM...\n",
+	  init_ram_pages * PGSIZE / 1024);
 
   /* Initialize interrupt handlers. */
   intr_init ();
@@ -114,17 +131,21 @@ main (void)
   kbd_init ();
   pci_init ();
   input_init ();
+  ipi_init ();
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
 #endif
 
+  serial_init_queue ();
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
-  serial_init_queue ();
+  
+  /* Scheduler and interrupt handlers are set up, so 
+     interrupts can be enabled now. */
+  intr_enable ();
   timer_calibrate ();
-  usb_init ();
-
+/*  usb_init (); */
 #ifdef FILESYS
   /* Initialize file system. */
   usb_storage_init ();
@@ -132,17 +153,18 @@ main (void)
   locate_block_devices ();
   filesys_init (format_filesys);
 #endif
-
+  
+  /* start other processors */
+  startothers ();     
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
   run_actions (argv);
-
   /* Finish up. */
   shutdown ();
   thread_exit ();
 }
-
+
 /* Clear the "BSS", a segment that should be initialized to
    zeros.  It isn't actually stored on disk or zeroed by the
    kernel loader, so we have to zero it ourselves.
@@ -187,13 +209,8 @@ paging_init (void)
     }
 
   pci_zone_init ();
-
-  /* Store the physical address of the page directory into CR3
-     aka PDBR (page directory base register).  This activates our
-     new page tables immediately.  See [IA32-v2a] "MOV--Move
-     to/from Control Registers" and [IA32-v3a] 3.7.5 "Base Address
-     of the Page Directory". */
-  asm volatile ("movl %0, %%cr3" : : "r" (vtop (init_page_dir)));
+  lapic_zone_init ();
+  lcr3 (vtop (init_page_dir));
 }
 
 /* initialize PCI zone at PCI_ADDR_ZONE_BEGIN - PCI_ADDR_ZONE_END*/
@@ -211,6 +228,101 @@ pci_zone_init (void)
       pde = pde_create_kernel (pt);
       init_page_dir[pde_idx] = pde;
     }
+}
+
+/* Create a 1:1 mapping starting at APIC_ZONE_BEGIN so that we may
+   access the memory-mapped lapic */
+static void
+lapic_zone_init (void)
+{
+  uint32_t *pd, *pt;
+  size_t page;
+  pd = init_page_dir;
+  pt = NULL;
+  for (page = 0; page < APIC_ZONE_PDES; page++)
+    {
+      uintptr_t paddr = APIC_ZONE_BEGIN + page * PGSIZE;
+      char *vaddr = (void *) paddr;
+      size_t pde_idx = pd_no (vaddr);
+      size_t pte_idx = pt_no (vaddr);
+      if (pd[pde_idx] == 0)
+	{
+	  pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
+	  pd[pde_idx] = pde_create_kernel (pt);
+	}
+      uint32_t mapping = pte_create_kernel_identity (vaddr, true);
+      pt[pte_idx] = mapping;
+    }
+}
+
+/* Other CPUs jump here from startother.S. */
+static void
+mpenter (void)
+{
+  lcr3 (vtop (init_page_dir));
+  lapic_init ();
+  thread_AP_init ();
+  gdt_init ();
+  tss_init ();
+  intr_load_idt ();
+  printf ("CPU %d is up\n", get_cpu ()->id);
+  thread_start ();
+  atomic_xchg (&get_cpu ()->started, 1);     /* tell startothers() we're up */
+  /* Wait for other CPUs to start up */
+  while (!atomic_load (&cpu_startedothers))
+    ;
+  /* Schedule threads*/
+  thread_AP_yield ();
+  PANIC("Should not come back here!");
+}
+
+/* Start the non-boot (AP) processors. */
+static void
+startothers (void)
+{
+  printf("Using per-cpu local queues\n");
+  intr_disable_push ();
+  cpu_can_acquire_spinlock = 0;
+  extern uint8_t _binary___threads_startother_start[],
+      _binary___threads_startother_size[];
+  uint8_t *code;
+  struct cpu *c;
+  char *stack;
+
+  /* Write entry code to unused memory at 0x7000. */
+  /* The linker has placed the image of entryother.S in */
+  /* _binary_entryother_start. */
+  code = ptov (0x7000);
+  memmove (code, _binary___threads_startother_start,
+	   (uint32_t) _binary___threads_startother_size);
+
+  for (c = cpus; c < cpus + ncpu; c++)
+    {
+      if (c == cpus + lapic_get_cpuid ())     /* We've started already. */
+	continue;
+
+      /* Tell entryother.S what stack to use and where to enter */
+      stack = palloc_get_page (PAL_ASSERT | PAL_ZERO);
+      *(void**) (code - 4) = stack + PGSIZE;
+      *(void**) (code - 8) = mpenter;
+
+      lapicstartap (c->id, vtop (code));
+
+      /* wait for cpu to finish mpmain() */
+      while (!atomic_load (&c->started))
+	;
+    }
+  /* Each AP is woken up sequentially and blocks until startedothers
+   * is true. Interrupts are disabled here, therefore AP's do not 
+   * need to hold spinlocks. Attempting to do so will cause a triple
+   * fault because spinlocks at the minimum requires the lapic
+   * to be initialized and usually also requires the GDT to be set up
+   * with Per-CPU variables, although the latter can be circumvented by 
+   * polling the lapic instead for the cpu ID.
+   */
+  atomic_store (&cpu_can_acquire_spinlock, 1);
+  atomic_store (&cpu_startedothers, 1);
+  intr_disable_pop ();
 }
 
 /* Breaks the kernel command line into words and returns them as
@@ -279,8 +391,6 @@ parse_options (char **argv)
 #endif
       else if (!strcmp (name, "-rs"))
         random_init (atoi (value));
-      else if (!strcmp (name, "-mlfqs"))
-        thread_mlfqs = true;
 #ifdef USERPROG
       else if (!strcmp (name, "-ul"))
         user_page_limit = atoi (value);
@@ -311,6 +421,8 @@ run_task (char **argv)
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
   process_wait (process_execute (task));
+#elif MISC
+  run_misc_test (task);
 #else
   run_test (task);
 #endif
@@ -403,7 +515,6 @@ usage (void)
 #endif
 #endif
           "  -rs=SEED           Set random number seed to SEED.\n"
-          "  -mlfqs             Use multi-level feedback queue scheduler.\n"
 #ifdef USERPROG
           "  -ul=COUNT          Limit user memory to COUNT pages.\n"
 #endif

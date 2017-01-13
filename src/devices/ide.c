@@ -9,6 +9,8 @@
 #include "threads/io.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
+#include "devices/ioapic.h"
+#include "devices/trap.h"
 
 /* The code in this file is an interface to an ATA (IDE)
    controller.  It attempts to comply to [ATA-3]. */
@@ -138,6 +140,9 @@ ide_init (void)
           d->is_ata = false;
         }
 
+      /* Route ide interrupts to cpu 0*/
+         ioapicenable (IRQ_IDE, IRQ_CPU);
+         
       /* Register interrupt handler. */
       intr_register_ext (c->irq, interrupt_handler, c->name);
 

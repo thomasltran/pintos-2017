@@ -2,10 +2,13 @@
 #include <console.h>
 #include <stdio.h>
 #include "devices/kbd.h"
+#include <stdbool.h>
 #include "devices/serial.h"
+#include "devices/lapic.h"
 #include "devices/timer.h"
 #include "threads/io.h"
 #include "threads/thread.h"
+#include "threads/cpu.h"
 #ifdef USERPROG
 #include "userprog/exception.h"
 #endif
@@ -16,18 +19,17 @@
 
 /* Keyboard control register port. */
 #define CONTROL_REG 0x64
-
 /* How to shut down when shutdown() is called. */
 static enum shutdown_type how = SHUTDOWN_NONE;
-
 static void print_stats (void);
 
 /* Shuts down the machine in the way configured by
-   shutdown_configure().  If the shutdown type is SHUTDOWN_NONE
-   (which is the default), returns without doing anything. */
+ shutdown_configure().  If the shutdown type is SHUTDOWN_NONE
+ (which is the default), returns without doing anything. */
 void
 shutdown (void)
 {
+
   switch (how)
     {
     case SHUTDOWN_POWER_OFF:
@@ -93,14 +95,24 @@ shutdown_power_off (void)
 #ifdef FILESYS
   filesys_done ();
 #endif
-
+  
+  if (cpu_startedothers)
+    {
+      lapicsendallbutself (IPI_SHUTDOWN);
+    }
   print_stats ();
 
   printf ("Powering off...\n");
   serial_flush ();
 
+  /* Shutdown sequence for QEMU 2.x */
+  outw (0x604, 0x2000);
+
+  /* Shutdown sequence for QEMU 1.6-1.7 */
+  outw (0xB004, 0x2000);
+
   /* This is a special power-off sequence supported by Bochs and
-     QEMU, but not by physical hardware. */
+     QEMU 1.0, but not by physical hardware. */
   for (p = s; *p != '\0'; p++)
     outb (0x8900, *p);
 

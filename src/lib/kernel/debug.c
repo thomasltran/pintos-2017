@@ -1,3 +1,30 @@
+/* This file is derived from source code for the xv6 instruction 
+   operating system. The xv6 copyright notice is printed below.
+
+   The xv6 software is:
+
+   Copyright (c) 2006-2009 Frans Kaashoek, Robert Morris, Russ Cox,
+                        Massachusetts Institute of Technology
+
+   Permission is hereby granted, free of charge, to any person obtaining
+   a copy of this software and associated documentation files (the
+   "Software"), to deal in the Software without restriction, including
+   without limitation the rights to use, copy, modify, merge, publish,
+   distribute, sublicense, and/or sell copies of the Software, and to
+   permit persons to whom the Software is furnished to do so, subject to
+   the following conditions:
+
+   The above copyright notice and this permission notice shall be
+   included in all copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+   NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+   OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. */
+
 #include <debug.h>
 #include <console.h>
 #include <stdarg.h>
@@ -12,6 +39,12 @@
 #include "threads/vaddr.h"
 #include "devices/serial.h"
 #include "devices/shutdown.h"
+#include "threads/cpu.h"
+#include "devices/lapic.h"
+#include "lib/kernel/x86.h"
+#include <stdint.h>
+#include "threads/mp.h"
+#include "lib/atomic-ops.h"
 
 /* Halts the OS, printing the source file name, line number, and
    function name, plus a user-specific message. */
@@ -23,12 +56,19 @@ debug_panic (const char *file, int line, const char *function,
   va_list args;
 
   intr_disable ();
-  console_panic ();
-
-  level++;
+  atomic_inci (&level);
   if (level == 1) 
     {
-      printf ("Kernel PANIC at %s:%d in %s(): ", file, line, function);
+      /* After printing backtrace, send a message to all other CPUs
+       * to print their backtraces as well. Acquires a console spinlock
+       * so that per-CPU backtraces won't get mixed up. This is the only
+       * place where a console spinlock is used, since spinlocks cannot 
+       * protect the console against threads that print using the lock. 
+       * Finally, it print a backtrace of all the threads.
+       */
+      console_use_spinlock ();
+
+      printf ("Kernel PANIC from CPU %d at %s:%d in %s(): ", (cpu_startedothers) ? get_cpu ()->id : 0, file, line, function);
 
       va_start (args, message);
       vprintf (message, args);
@@ -36,10 +76,22 @@ debug_panic (const char *file, int line, const char *function,
       va_end (args);
 
       debug_backtrace ();
+      
+      if (cpu_startedothers) {
+	printf ("Printing a backtrace of all CPUs\n");
+	lapicsendallbutself(IPI_DEBUG);  
+      }
+      
+      printf ("Printing a backtrace of all threads\n");
+      debug_backtrace_all ();
+      printf ("\n");
     }
-  else if (level == 2)
-    printf ("Kernel PANIC recursion at %s:%d in %s().\n",
-            file, line, function);
+  else if (level == 2) 
+    {
+      printf ("Kernel PANIC recursion at %s:%d in %s().\n",
+  	    file, line, function);      
+    }
+
   else 
     {
       /* Don't print anything: that's probably why we recursed. */
@@ -75,7 +127,7 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
       break;
   }
 
-  printf ("Call stack of thread `%s' (status %s):", t->name, status);
+  printf ("Call stack of thread `%s' (status %s, CPU%d):", t->name, status, t->cpu->id);
 
   if (t == thread_current()) 
     {
@@ -116,8 +168,68 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
 void
 debug_backtrace_all (void)
 {
-  enum intr_level oldlevel = intr_disable ();
-
+  intr_disable_push();
   thread_foreach (print_stacktrace, 0);
-  intr_set_level (oldlevel);
+  intr_disable_pop();
+}
+
+void
+callerinfo_init (struct callerinfo *info)
+{
+  memset (info, 0, sizeof (*info));
+}
+/*
+ * Records the stack trace and information of the caller of 
+ * this function into info. Useful for storing acquire/release
+ * info for debugging locks/spinlocks
+ */
+void
+savecallerinfo (struct callerinfo *info)
+{
+  intr_disable_push ();
+  info->cpu = get_cpu ();
+  intr_disable_pop ();
+  info->t = running_thread ();
+  
+  uint32_t *ebp;
+  uint32_t *pcs = info->pcs;
+  int i;
+
+  ebp =  __builtin_frame_address (0);
+  for (i = 0; i < PCS_MAX; i++)
+    {
+      if (ebp == NULL || ebp < (uint32_t *)0x1000)
+	break;
+      pcs[i] = ebp[1];     /* saved %eip */
+      ebp = (uint32_t*) ebp[0];     /* saved %ebp */
+    }
+  for (; i < PCS_MAX; i++)
+    pcs[i] = 0;
+}
+
+/*
+ * Print caller information. If interrupts are disabled, it is 
+ * up to caller to panic the console before calling this function.
+ */
+void
+printcallerinfo (struct callerinfo *info) 
+{
+  if (!info->t || !info->cpu) 
+    {
+      printf ("No call stack saved.");
+    }
+  else 
+    {
+      printf ("Thread '%s' from CPU%d\n", info->t->name, info->cpu->id);
+      printf ("Call stack:");
+      int i;
+      uint32_t *pcs = info->pcs;
+      for (i = 0; i < PCS_MAX; i++)
+        {
+          if (pcs[i] == 0)
+            break;
+          printf (" %p", (void *)pcs[i]);
+        }
+      printf (".\n");
+    }
 }

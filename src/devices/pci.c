@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include "threads/synch.h"
 
 extern uint32_t *init_page_dir;
 
@@ -158,7 +159,7 @@ static void *pci_alloc_mem (void *phys_ptr, int pages);
 
 static struct list devices;
 static struct list int_devices;
-
+static struct spinlock pci_spinlock;
 /* number of pages that have been allocated to pci devices in the pci zone */
 static int num_pci_pages;
 
@@ -167,7 +168,7 @@ pci_init (void)
 {
   list_init (&devices);
   list_init (&int_devices);
-
+  spinlock_init (&pci_spinlock);
   num_pci_pages = 0;
 
   pci_scan_bus (0);
@@ -268,9 +269,9 @@ pci_unregister_irq (struct pci_dev *pd)
 {
   ASSERT (pd != NULL);
 
-  intr_disable ();
+  spinlock_acquire (&pci_spinlock);
   list_remove (&pd->int_peer);
-  intr_enable ();
+  spinlock_release (&pci_spinlock);
 
   pd->irq_handler = NULL;
   pd->irq_handler_aux = NULL;
@@ -682,6 +683,7 @@ pci_interrupt (struct intr_frame *frame)
   struct list_elem *e;
   int int_line;
 
+  spinlock_acquire (&pci_spinlock);
   int_line = frame->vec_no - 0x20;
   e = list_begin (&int_devices);
   while (e != list_end (&int_devices))
@@ -693,6 +695,7 @@ pci_interrupt (struct intr_frame *frame)
 	pd->irq_handler (pd->irq_handler_aux);
       e = list_next (e);
     }
+  spinlock_release (&pci_spinlock);
 }
 
 /* display information on all USB devices */
@@ -700,7 +703,7 @@ void
 pci_print_stats (void)
 {
   struct list_elem *e;
-
+  spinlock_acquire (&pci_spinlock);
   e = list_begin (&devices);
   while (e != list_end (&devices))
     {
@@ -711,6 +714,7 @@ pci_print_stats (void)
 
       e = list_next (e);
     }
+  spinlock_release (&pci_spinlock);
 }
 
 static void
@@ -724,18 +728,6 @@ pci_print_dev_info (struct pci_dev *pd)
 	  pci_lookup_device (pd->pch.pci_vendor_id, pd->pch.pci_device_id),
 	  pci_lookup_class (pd->pch.pci_major, pd->pch.pci_minor,
 			    pd->pch.pci_interface), pd->pch.pci_int_line);
-}
-
-void
-pci_mask_irq (struct pci_dev *pd)
-{
-  intr_irq_mask (pd->pch.pci_int_line);
-}
-
-void
-pci_unmask_irq (struct pci_dev *pd)
-{
-  intr_irq_unmask (pd->pch.pci_int_line);
 }
 
 void

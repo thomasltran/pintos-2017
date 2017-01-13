@@ -2,5 +2,5 @@
 # tests.
 
 20.0%	tests/threads/Rubric.alarm
-40.0%	tests/threads/Rubric.priority
-40.0%	tests/threads/Rubric.mlfqs
+60.0%	tests/threads/Rubric.fair
+20.0%	tests/threads/Rubric.balance

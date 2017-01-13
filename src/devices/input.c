@@ -2,8 +2,15 @@
 #include <debug.h>
 #include "devices/intq.h"
 #include "devices/serial.h"
+#include "threads/synch.h"
 
-/* Stores keys from the keyboard and serial port. */
+/* Stores keys from the keyboard and serial port.
+ * buffer has a spinlock to protect buffer
+ * Writers: Callers to input_putc(), such as keyboard interrupt handler
+ * and serial interrupt handler
+ * Readers: Callers to input_getc(), who must call input_lock() prior to
+ * any input_getc()
+ */
 static struct intq buffer;
 
 /* Initializes the input buffer. */
@@ -20,7 +27,6 @@ input_putc (uint8_t key)
 {
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (!intq_full (&buffer));
-
   intq_putc (&buffer, key);
   serial_notify ();
 }
@@ -30,14 +36,9 @@ input_putc (uint8_t key)
 uint8_t
 input_getc (void) 
 {
-  enum intr_level old_level;
   uint8_t key;
-
-  old_level = intr_disable ();
   key = intq_getc (&buffer);
   serial_notify ();
-  intr_set_level (old_level);
-  
   return key;
 }
 
@@ -49,4 +50,16 @@ input_full (void)
 {
   ASSERT (intr_get_level () == INTR_OFF);
   return intq_full (&buffer);
+}
+
+void
+input_acquire (void)
+{
+  intq_acquire(&buffer);
+}
+
+void
+input_release (void)
+{
+  intq_release(&buffer);
 }

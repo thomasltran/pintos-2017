@@ -29,6 +29,10 @@ intr_entry:
 	mov $SEL_KDSEG, %eax	/* Initialize segment registers. */
 	mov %eax, %ds
 	mov %eax, %es
+	/* Set up per-cpu segments */
+	mov $SEL_KCPU, %eax
+	mov %eax, %fs
+	mov %eax, %gs
 	leal 56(%esp), %ebp	/* Set up frame pointer. */
 
 	/* Call interrupt handler. */

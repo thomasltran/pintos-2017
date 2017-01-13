@@ -1,4 +1,4 @@
-	#include "threads/loader.h"
+#include "threads/loader.h"
 
 #### Kernel startup code.
 
@@ -190,7 +190,7 @@ start:
 gdt:
 	.quad 0x0000000000000000	# Null segment.  Not used by CPU.
 	.quad 0x00cf9a000000ffff	# System code, base 0, limit 4 GB.
-	.quad 0x00cf92000000ffff        # System data, base 0, limit 4 GB.
+	.quad 0x00cf92000000ffff	# System data, base 0, limit 4 GB.
 
 gdtdesc:
 	.word	gdtdesc - gdt - 1	# Size of the GDT, minus 1 byte.

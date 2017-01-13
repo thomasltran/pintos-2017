@@ -18,5 +18,6 @@ void *binary_search (const void *key, const void *array, size_t cnt,
                      size_t size,
                      int (*compare) (const void *, const void *, void *aux),
                      void *aux);
+extern long long llabs (long long);
 
 #endif /* lib/stdlib.h */

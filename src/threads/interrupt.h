@@ -12,9 +12,10 @@ enum intr_level
   };
 
 enum intr_level intr_get_level (void);
-enum intr_level intr_set_level (enum intr_level);
-enum intr_level intr_enable (void);
-enum intr_level intr_disable (void);
+void intr_enable (void);
+void intr_disable (void);
+void intr_disable_push (void);
+void intr_disable_pop (void);
 
 /* Interrupt stack frame. */
 struct intr_frame
@@ -61,6 +62,7 @@ void intr_init (void);
 void intr_register_ext (uint8_t vec, intr_handler_func *, const char *name);
 void intr_register_int (uint8_t vec, int dpl, enum intr_level,
                         intr_handler_func *, const char *name);
+void intr_register_ipi (uint8_t vec, intr_handler_func *handler, const char *name);
 bool intr_context (void);
 void intr_yield_on_return (void);
 
@@ -71,5 +73,5 @@ void intr_irq_mask(int irq);
 void intr_irq_unmask(int irq);
 
 bool intr_is_registered ( uint8_t vec );
-
+void intr_load_idt (void);
 #endif /* threads/interrupt.h */

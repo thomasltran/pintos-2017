@@ -359,12 +359,11 @@ in a user program, the @struct{intr_frame} is always at the very top of
 the page.  @xref{Interrupt Handling}, for more information.
 @end deftypecv
 
-@deftypecv {Member} {@struct{thread}} {int} priority
-A thread priority, ranging from @code{PRI_MIN} (0) to @code{PRI_MAX}
-(63).  Lower numbers correspond to lower priorities, so that
-priority 0 is the lowest priority and priority 63 is the highest.
-Pintos as provided ignores thread priorities, but you will implement
-priority scheduling in project 1 (@pxref{Priority Scheduling}).
+@deftypecv {Member} {@struct{thread}} {int} nice
+A thread nice, ranging from @code{NICE_MIN} (-20) to @code{NICE_MAX}
+(19).  
+Pintos as provided ignores thread nice, but you will implement
+advanced scheduling in project 1 (@pxref{Completely Fair Scheduler}).
 @end deftypecv
 
 @deftypecv {Member} {@struct{thread}} {@struct{list_elem}} allelem
@@ -434,9 +433,9 @@ thread statistics and triggers the scheduler when a time slice expires.
 Called during Pintos shutdown to print thread statistics.
 @end deftypefun
 
-@deftypefun tid_t thread_create (const char *@var{name}, int @var{priority}, thread_func *@var{func}, void *@var{aux})
+@deftypefun tid_t thread_create (const char *@var{name}, int @var{nice}, thread_func *@var{func}, void *@var{aux})
 Creates and starts a new thread named @var{name} with the given
-@var{priority}, returning the new thread's tid.  The thread executes
+@var{nice}, returning the new thread's tid.  The thread executes
 @var{func}, passing @var{aux} as the function's single argument.
 
 @func{thread_create} allocates a page for the thread's
@@ -505,16 +504,9 @@ Performs some action on a thread, given @var{aux}.
 @end deftp
 @end deftypefun
 
-@deftypefun int thread_get_priority (void)
-@deftypefunx void thread_set_priority (int @var{new_priority})
-Stub to set and get thread priority.  @xref{Priority Scheduling}.
-@end deftypefun
-
 @deftypefun int thread_get_nice (void)
 @deftypefunx void thread_set_nice (int @var{new_nice})
-@deftypefunx int thread_get_recent_cpu (void)
-@deftypefunx int thread_get_load_avg (void)
-Stubs for the advanced scheduler.  @xref{4.4BSD Scheduler}.
+Stubs for the advanced scheduler.  @xref{Completely Fair Scheduler}.
 @end deftypefun
 
 @node Thread Switching
@@ -594,23 +586,81 @@ faulty sharing can crash the entire machine.  Pintos provides several
 synchronization primitives to help out.
 
 @menu
+* Atomic Operations::
 * Disabling Interrupts::        
+* Spinlocks::
 * Semaphores::                  
 * Locks::                       
 * Monitors::                    
 * Optimization Barriers::
 @end menu
 
+@node Atomic Operations
+@subsection Atomic Operations
+
+An atomic operation is an operation that appears to the rest of the system
+to occur instantaneously. The operation cannot be seen in a half-finished
+state: it either succeeds, in which case it fully changed the desired state
+of the system, or failed with no apparent effect. Atomic operations are
+supported by the hardware. 
+
+Atomic operations are declared in @file{lib/atomic-ops.c}
+
+@deftypefun {uint32_t} atomic_xchg (int *@var{addr}, int @var{newval})
+Exchanges the value stored at @var{addr} with @var{newval} and return the old value
+@end deftypefun
+
+@deftypefun {int} atomic_inci (int *num)
+Atomically increment *num by one. Returns the new value.
+@end deftypefun
+
+@deftypefun {int} atomic_deci (int *num)
+Atomically decrement *num by one. Returns the new value.
+@end deftypefun
+
+@deftypefun {int} atomic_addi (int *num, int atm)
+Atomically add AMT to num. Returns the new value.
+@end deftypefun
+
+@deftypefun {int} atomic_cmpxchg (int *num, int *old, int *new)
+Compare-And-Swap. If *num == *old, set it to *new and return true.
+Else return false
+@end deftypefun
+
+@deftypefun {int} atomic_load (int *num)
+Atomically read *num.
+@end deftypefun
+
+@deftypefun {void} atomic_store (int *num, int val)
+Atomically set *num to val. 
+@end deftypefun
+
+These atomic operations run with sequentially consistent ordering. 
+To improve performance, many compilers, and even sometimes the 
+hardware, reorder instructions, which
+may cause unexpected behavior in multithreaded environments. 
+In addition, modern processors have a habit of storing recent writes
+in caches rather than main memory, which means that any changes 
+cannot be seen immediately by other CPUs.  
+With sequentially consistent ordering, the compilers can prevent
+incorrect reordering as well as emit memory barriers to ensure that
+reads and writes are consistent on the hardware level. 
+
+Details of memory ordering is beyond the scope of this document.
+To be safe, always use atomic operations on shared variables, even
+for reading a shared variable or writing to one. 
+
 @node Disabling Interrupts
 @subsection Disabling Interrupts
 
-The crudest way to do synchronization is to disable interrupts, that
-is, to temporarily prevent the CPU from responding to interrupts.  If
-interrupts are off, no other thread will preempt the running thread,
-because thread preemption is driven by the timer interrupt.  If
-interrupts are on, as they normally are, then the running thread may
-be preempted by another at any time, whether between two C statements
-or even within the execution of one.
+On uniprocessor systems, such as Pintos before the Spring 2017 upgrade,
+the crudest way to do synchronization is to 
+disable interrupts, that is, to temporarily prevent the CPU from 
+responding to interrupts.  If interrupts are off, no other thread will 
+preempt the running thread, because thread preemption is driven by the 
+timer interrupt.  If interrupts are on, as they normally are, then the 
+running thread may be preempted by another at any time, whether between 
+two C statements or even within the execution of one.
 
 Incidentally, this means that Pintos is a ``preemptible kernel,'' that
 is, kernel threads can be preempted at any time.  Traditional Unix
@@ -620,12 +670,12 @@ preempted at points where they explicitly call into the scheduler.
 might imagine, preemptible kernels require more explicit
 synchronization.
 
+With SMP-capable Pintos, disabling interrupts will be necessary but
+generally not fully sufficient in preventing race conditions 
+(@pxref{Spinlocks}).
 You should have little need to set the interrupt state directly.  Most
 of the time you should use the other synchronization primitives
-described in the following sections.  The main reason to disable
-interrupts is to synchronize kernel threads with external interrupt
-handlers, which cannot sleep and thus cannot use most other forms of
-synchronization (@pxref{External Interrupt Handling}).
+described in the following sections.  
 
 Some external interrupts cannot be postponed, even by disabling
 interrupts.  These interrupts, called @dfn{non-maskable interrupts}
@@ -655,6 +705,60 @@ Turns interrupts on.  Returns the previous interrupt state.
 
 @deftypefun {enum intr_level} intr_disable (void)
 Turns interrupts off.  Returns the previous interrupt state.
+@end deftypefun
+
+@node Spinlocks
+@subsection Spinlocks
+
+On an SMP-capable Operating System like PintOS, it is generally not
+safe to make any uniprocessor assumptions.
+On multiprocessor
+systems, disabling interrupts is not sufficient in preventing race
+conditions, since it does not prevent a thread running on another CPU
+from accessing shared data.
+
+A @dfn{spinlock} is a mutual exclusion lock that spins until the lock is 
+acquired. It also disables interrupts to avoid race conditions caused by
+external interrupts. Holding a spinlock for a long time may cause other CPUs to
+waste time spinning to acquire it.
+
+In general, @ref{Locks} are preferred over spinlocks, since spinlocks can
+potentially cause a CPU to burn many cycles doing no work, while 
+locks can preempt the current thread. 
+Spinlocks are generally used when the current thread cannot be put to sleep, 
+such as when its servicing an external interrupt 
+(@pxref{External Interrupt Handling}), or inside the scheduler
+
+Pintos' spinlock type and operatings are declared in
+@file{threads/synch.h}.
+
+@deftp {Type} {struct spinlock}
+Represents a spinlock.
+@end deftp
+
+@deftypefun void spinlock_init (struct spinlock *@var{spinlock})
+Initializes @var{spinlock} as a new spinlock.
+The spinlock is not initially owned by any cpu.
+@end deftypefun
+
+@deftypefun void spinlock_acquire (struct spinlock *@var{spinlock})
+Acquires @var{spinlock} for the current thread, first waiting for
+any current owner to release it if necessary.
+@end deftypefun
+
+@deftypefun bool spinlock_try_acquire (struct spinlock *@var{spinlock})
+Tries to acquire @var{spinlock} for use by the current thread, without
+waiting.  Returns true if successful, false if the spinlock is already
+owned.  
+@end deftypefun
+
+@deftypefun void spinlock_release (struct spinlock *@var{spinlock})
+Releases @var{spinlock}, which the current thread must own.
+@end deftypefun
+
+@deftypefun bool spinlock_held_by_current_cpu (const struct spinlock *@var{spinlock})
+Returns true if this cpu owns @var{spinlock},
+false otherwise.
 @end deftypefun
 
 @node Semaphores
@@ -980,13 +1084,6 @@ timer_do_put = true;
 intr_set_level (old_level);
 @end example
 
-A second solution is to mark the declarations of
-@code{timer_put_char} and @code{timer_do_put} as @samp{volatile}.  This
-keyword tells the compiler that the variables are externally observable
-and restricts its latitude for optimization.  However, the semantics of
-@samp{volatile} are not well-defined, so it is not a good general
-solution.  The base Pintos code does not use @samp{volatile} at all.
-
 The following is @emph{not} a solution, because locks neither prevent
 interrupts nor prevent the compiler from reordering the code within the
 region where the lock is held:
@@ -1036,6 +1133,19 @@ timer, keyboard, serial ports, and disks.  External interrupts are
 @dfn{asynchronous}, meaning that their delivery is not
 synchronized with instruction execution.  Handling of external interrupts
 can be postponed with @func{intr_disable} and related functions
+
+A third class of interrupts that is related to external interrupts are
+@dfn{inter-processor interrupts} (@acronym{IPI}). These interrupts
+are sent from one CPU to another via the lapic (see @file{devices/lapic.c}).
+to notify the other CPUs of an important operation. For example, one 
+CPU may have just changed a process' virtual memory mapping. 
+It is important for that processor to inform the other CPUs to flush
+their TLB's, since some entries can become invalid.
+
+Like external interrupts, inter-processor interrupts are asynchronous
+with respect to the processor receiving the interrupt, and it can
+be postponed with @func{intr_disable}.
+
 (@pxref{Disabling Interrupts}).
 @end itemize
 

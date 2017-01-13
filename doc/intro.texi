@@ -34,6 +34,7 @@ projects.
 @menu
 * Getting Started::             
 * Grading::                     
+* Changes::
 * Legal and Ethical Issues::    
 * Acknowledgements::            
 * Trivia::                      
@@ -477,6 +478,56 @@ will be penalized.
 In the end, remember your audience.  Code is written primarily to be
 read by humans.  It has to be acceptable to the compiler too, but the
 compiler doesn't care about how it looks or how well it is written.
+
+@node Changes
+@section Changes
+
+In Spring 2017, Pintos was upgraded to a Symmetric MultiProcessing (@acronym{SMP})
+kernel. The reference manual has been updated to reflect those changes. The
+first project (@pxref{Threads}) has been changed to reflect recent
+developments in Operating Systems. None of the other projects were affected. 
+
+Change details:
+
+@itemize @bullet
+
+@item
+Added support to parse MP Configuration Table. (See @file{threads/mp.c}).
+
+@item 
+Priority Scheduler assignment has been removed, replaced by a load balancing assignment.
+
+@item
+4.4@acronym{BSD} scheduler has been replaced by Linux's @acronym{CFS}. 
+(@xref{Completely Fair Scheduler}.)
+
+@item
+Atomic operations added to Synchronization. (@xref{Atomic Operations}.)
+
+@item
+Spinlocks added to Synchronization. (@xref{Spinlocks}.)
+
+@item
+Timer changed from 8254 timer to LAPIC timer. (See @file{devices/lapic.c}).
+
+@item
+Interrupt controller changed from PIC to APIC. (See @file{devices/lapic.c} and 
+@file{devices/ioapic.c}.)
+
+@item
+Interrupt save state changed from @code{enum_level} to @func{pushcli}/@func{popcli} mechanism.
+
+@item
+Many places where disabling interrupts were used to synchronize with interrupt
+handlers, a spinlock is held instead. 
+
+@item
+Bitmap updated to use atomic library, which doesn't make uniprocessor assumptions
+
+@item
+Base code scheduler extended to per-CPU runqueues.
+
+@end itemize
 
 @node Legal and Ethical Issues
 @section Legal and Ethical Issues

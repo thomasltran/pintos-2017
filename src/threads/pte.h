@@ -33,6 +33,8 @@
 #define PCI_ADDR_ZONE_END	0xe0800000
 #define PCI_ADDR_ZONE_PDES	2
 #define PCI_ADDR_ZONE_PAGES	(PCI_ADDR_ZONE_END-PCI_ADDR_ZONE_BEGIN)/PGSIZE
+#define APIC_ZONE_PDES 		8192
+#define APIC_ZONE_BEGIN		0xfe000000
 
 
 
@@ -104,6 +106,14 @@ static inline uint32_t *pde_get_pt (uint32_t pde) {
 static inline uint32_t pte_create_kernel (void *page, bool writable) {
   ASSERT (pg_ofs (page) == 0);
   return vtop (page) | PTE_P | (writable ? PTE_W : 0) | PTE_G;
+}
+
+/* Returns an identity mapping */
+static inline uint32_t
+pte_create_kernel_identity (void *page, bool writable)
+{
+  ASSERT(pg_ofs (page) == 0);
+  return (uint32_t) page | PTE_P | (writable ? PTE_W : 0) | PTE_G;
 }
 
 /* Returns a PTE that points to PAGE.

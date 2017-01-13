@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include "lib/atomic-ops.h"
 
 /* Prints the call stack, that is, a list of addresses, one in
    each of the functions we are nested within.  gdb or addr2line
@@ -12,7 +13,7 @@
 void
 debug_backtrace (void) 
 {
-  static bool explained;
+  static int explained;
   void **frame;
   
   printf ("Call stack: %p", __builtin_return_address (0));
@@ -22,11 +23,10 @@ debug_backtrace (void)
     printf (" %p", frame[1]);
   printf (".\n");
 
-  if (!explained) 
+  if (atomic_xchg (&explained, 1) == 0)
     {
-      explained = true;
       printf ("The `backtrace' program can make call stacks useful.\n"
               "Read \"Backtraces\" in the \"Debugging Tools\" chapter\n"
-              "of the Pintos documentation for more information.\n");
+              "of the Pintos documentation for more information.\n\n");
     }
 }

@@ -51,8 +51,11 @@ FirstName LastName <email@domain.example>
 >> A6: Why did you choose this design?  In what ways is it superior to
 >> another design you considered?
 
-			 PRIORITY SCHEDULING
-			 ===================
+>> A7: Every CPU has its own timer, and therefore executes the 
+>> interrupt handler independently. How has this affected your design?
+
+			  ADVANCED SCHEDULER
+			  ==================
 
 ---- DATA STRUCTURES ----
 
@@ -60,34 +63,27 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
->> B2: Explain the data structure used to track priority donation.
->> Use ASCII art to diagram a nested donation.  (Alternately, submit a
->> .png file.)
-
 ---- ALGORITHMS ----
 
->> B3: How do you ensure that the highest priority thread waiting for
->> a lock, semaphore, or condition variable wakes up first?
+>> B2: Explain briefly what your scheduler does when each of the following happens:
+>> Thread is created
+>> Current thread blocks
+>> Thread is unblocked
+>> Current thread yields
+>> Timer tick arrives
 
->> B4: Describe the sequence of events when a call to lock_acquire()
->> causes a priority donation.  How is nested donation handled?
-
->> B5: Describe the sequence of events when lock_release() is called
->> on a lock that a higher-priority thread is waiting for.
-
----- SYNCHRONIZATION ----
-
->> B6: Describe a potential race in thread_set_priority() and explain
->> how your implementation avoids it.  Can you use a lock to avoid
->> this race?
+>> B3: What steps did you take to make sure that the idle thread is not 
+>> taken into account in any scheduling decisions?
 
 ---- RATIONALE ----
 
->> B7: Why did you choose this design?  In what ways is it superior to
->> another design you considered?
+>> B4: Briefly critique your design, pointing out advantages and
+>> disadvantages in your design choices.  If you were to have extra
+>> time to work on this part of the project, how might you choose to
+>> refine or improve your design?
 
-			  ADVANCED SCHEDULER
-			  ==================
+			     LOAD BALANCER
+			     =============
 
 ---- DATA STRUCTURES ----
 
@@ -97,45 +93,45 @@ FirstName LastName <email@domain.example>
 
 ---- ALGORITHMS ----
 
->> C2: Suppose threads A, B, and C have nice values 0, 1, and 2.  Each
->> has a recent_cpu value of 0.  Fill in the table below showing the
->> scheduling decision and the priority and recent_cpu values for each
->> thread after each given number of timer ticks:
+>> C2: When is load balancing invoked? Is this enough to ensure
+>> that no CPUs are idle while there are threads in any ready queue?
 
-timer  recent_cpu    priority   thread
-ticks   A   B   C   A   B   C   to run
------  --  --  --  --  --  --   ------
- 0
- 4
- 8
-12
-16
-20
-24
-28
-32
-36
+>> C3: Briefly describe what happens in a call to load_balance()
 
->> C3: Did any ambiguities in the scheduler specification make values
->> in the table uncertain?  If so, what rule did you use to resolve
->> them?  Does this match the behavior of your scheduler?
+>> C4: What steps are taken to ensure migrated threads do not
+>> monopolize the CPU if they had significantly lower vruntimes
+>> than the other threads when they migrated?
 
->> C4: How is the way you divided the cost of scheduling between code
->> inside and outside interrupt context likely to affect performance?
+>> C5: Let's say hypothetically that CPU0 has 100 threads while 
+>> CPU1 has 102 threads, and each thread has the same nice value.
+>> CPU0 calls load_balance(). Do any tasks get migrated? If not,
+>> what are some possible advantages to refraining from migrating
+>> threads in that scenario?
+
+---- SYNCHRONIZATION ----
+
+>> C6: How are race conditions avoided when a CPU looks at another
+>> CPU's load, or pulling threads from another CPU?
+
+>> C7: It is possible, although unlikely, that two CPUs may try to load
+>> balance from each other at the same time. How do you avoid potential
+>> deadlock?
 
 ---- RATIONALE ----
 
->> C5: Briefly critique your design, pointing out advantages and
->> disadvantages in your design choices.  If you were to have extra
->> time to work on this part of the project, how might you choose to
->> refine or improve your design?
+>> C8: If you deviated from the specifications, explain why. In what ways was your
+>> implementation superior to the one specified?
 
->> C6: The assignment explains arithmetic for fixed-point math in
->> detail, but it leaves it open to you to implement it.  Why did you
->> decide to implement it the way you did?  If you created an
->> abstraction layer for fixed-point math, that is, an abstract data
->> type and/or a set of functions or macros to manipulate fixed-point
->> numbers, why did you do so?  If not, why not?
+               MISC
+               ====
+
+>> D1: In Pintos, timer interrupts are issued periodically at a 
+>> predetermined frequency. In contrast, advanced systems like Linux have
+>> adopted a tickless kernel approach, where the timer interrupt is not
+>> issued periodically but rather set to arrive on-demand. Looking back at 
+>> at some of the inefficiencies that may have crept into your alarm clock,
+>> scheduler, and load balancer, in what ways would on-demand interrupts have
+>> been beneficial? Please be specific.
 
 			   SURVEY QUESTIONS
 			   ================

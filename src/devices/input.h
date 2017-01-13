@@ -8,5 +8,7 @@ void input_init (void);
 void input_putc (uint8_t);
 uint8_t input_getc (void);
 bool input_full (void);
+void input_acquire(void);
+void input_release(void);
 
 #endif /* devices/input.h */
