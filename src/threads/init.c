@@ -128,7 +128,7 @@ main (void)
   argv = parse_options (argv);
 
   /* Greet user. */
-  printf ("CPU %'"PRIu32" is up\n", get_cpu ()->id);
+  printf ("CPU %"PRIu8" is up\n", get_cpu ()->id);
   printf ("Pintos booting with %'"PRIu32" kB RAM...\n",
           init_ram_pages * PGSIZE / 1024);
 
@@ -284,7 +284,7 @@ ap_main (void)
   /* Load IDT (shared among CPUs). */
   intr_load_idt ();
 
-  printf ("CPU %d is up\n", get_cpu ()->id);
+  printf ("CPU %"PRIu8" is up\n", get_cpu ()->id);
   thread_start_idle_thread ();
 
   /* Signal successful start to BSP. */

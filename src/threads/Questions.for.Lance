@@ -19,3 +19,21 @@
   they are kept in sync.  Why can't you atomically swap in the cpu into &cpu?
   Spinlocks are frequent - every byte matters in terms of size.
 
+- In thread.c, what's this TODO for?
+
+//  TODO: ASSERT (t->cpu == get_cpu ());
+
+- In thread.c - why this?
+
+    thread_yield:
+
+      intr_disable_push ();
+      spinlock_acquire (&get_cpu ()->rq.lock);
+      intr_disable_pop ();
+
+- In thread_set_nice, what protects 'nice' (or should the update be atomic?)
+
+- In schedule, can 'get_cpu()' change after calling switch_threads?  If so,
+  aren't you restoring a different CPU's intena if a thread is suspended on
+  CPU A but wakes up on CPU B?
+

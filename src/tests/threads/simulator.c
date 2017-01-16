@@ -83,9 +83,9 @@ driver_tick (void)
   else
     get_cpu ()->kernel_ticks++;
 
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   sched_tick (&get_cpu ()->rq, t);
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* This simulates thread_block, defined in thread.c
@@ -95,12 +95,12 @@ driver_block ()
 {
   ASSERT(!intr_context ());
   ASSERT(intr_get_level () == INTR_OFF);
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   struct thread *curr = driver_current ();
   curr->status = THREAD_BLOCKED;
   sched_block (&get_cpu ()->rq, curr);
   driver_schedule ();
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* This simulates thread_yield, defined in thread.c
@@ -110,14 +110,14 @@ driver_yield (void)
 {
   struct thread *cur = driver_current ();
   ASSERT(!intr_context ());
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   cur->status = THREAD_READY;
   if (cur != get_cpu ()->rq.idle_thread)
     {
       sched_yield (&get_cpu ()->rq, cur);
     }
   driver_schedule ();
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* Simulates wake_up_new_thread in thread.c
@@ -126,10 +126,10 @@ static void
 wake_up_new_thread (struct thread *t)
 {
   t->cpu = get_cpu ();
-  spinlock_acquire (&t->cpu->rq.ready_spinlock);
+  spinlock_acquire (&t->cpu->rq.lock);
   t->status = THREAD_READY;
   sched_unblock (&t->cpu->rq, t, 1);
-  spinlock_release (&t->cpu->rq.ready_spinlock);
+  spinlock_release (&t->cpu->rq.lock);
 
 }
 
@@ -172,10 +172,10 @@ driver_unblock (struct thread *t)
   ASSERT(is_thread (t));
   ASSERT(t->cpu != NULL);
   ASSERT(t->status == THREAD_BLOCKED);
-  spinlock_acquire (&t->cpu->rq.ready_spinlock);
+  spinlock_acquire (&t->cpu->rq.lock);
   t->status = THREAD_READY;
   sched_unblock (&t->cpu->rq, t, 0);
-  spinlock_release (&t->cpu->rq.ready_spinlock);
+  spinlock_release (&t->cpu->rq.lock);
 }
 
 /* This simulates thread_exit in thread.c. */
@@ -185,7 +185,7 @@ driver_exit (void)
   ASSERT(!intr_context ());
   struct thread * cur = driver_current ();
 
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   cur->status = THREAD_DYING;
   driver_schedule ();
   
@@ -193,7 +193,7 @@ driver_exit (void)
      However, in the simulator, driver_schedule () is just
      a normal function call, so we still release 
      the rq lock. */
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* Sets the current thread's nice value to NICE. */

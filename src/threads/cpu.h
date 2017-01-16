@@ -29,8 +29,8 @@ struct cpu
   uint64_t kernel_ticks;
   uint64_t cs;			/* Number of context switches */
   
-  /* Runqueue. Owned by scheduler.c */
-  struct rq rq;
+  /* Ready queue. Owned by scheduler.c */
+  struct ready_queue rq;
   
   /* Cpu-local storage variable; see below */
   struct cpu *cpu;

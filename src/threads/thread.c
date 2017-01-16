@@ -10,7 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "threads/switch.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 #include "threads/scheduler.h"
@@ -49,7 +49,7 @@ static void kernel_thread_entry (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *next_thread_to_run (void);
 static bool is_thread (struct thread *) UNUSED;
-static void kernel_thread_exit (void) NO_RETURN;
+static void do_thread_exit (void) NO_RETURN;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
@@ -76,12 +76,12 @@ thread_init (void)
 {
   list_init (&all_list);
   spinlock_init (&all_lock);
-  ASSERT(intr_get_level () == INTR_OFF);
+  ASSERT (intr_get_level () == INTR_OFF);
   sched_init (&bcpu->rq);
+  spinlock_init (&bcpu->rq.lock);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_boot_thread (initial_thread, bcpu);
-
 }
 
 /*
@@ -91,10 +91,11 @@ thread_init (void)
 void
 thread_init_on_ap (void)
 {
-  ASSERT(intr_get_level () == INTR_OFF);
+  ASSERT (intr_get_level () == INTR_OFF);
   struct cpu *cpu = &cpus[lapic_get_cpuid ()];
   ASSERT(cpu != NULL);
   sched_init (&cpu->rq);
+  spinlock_init (&cpu->rq.lock);
   struct thread *cur_thread = running_thread ();
   init_boot_thread (cur_thread, cpu);
 }
@@ -106,8 +107,8 @@ thread_start_idle_thread (void)
   ASSERT (intr_get_level () == INTR_OFF);
   /* Create name for idle thread that indicates which CPU it is on */
   char idle_name[THREAD_NAME_MAX];
-  snprintf (idle_name, THREAD_NAME_MAX, "idle_cpu%d", get_cpu ()->id);
-  
+  snprintf (idle_name, THREAD_NAME_MAX, "idle_cpu%"PRIu8, get_cpu ()->id);
+
   /* Create the idle thread. */
   struct thread *idle_thread = do_thread_create (idle_name, NICE_MAX, idle, NULL);
   ASSERT (idle_thread);
@@ -133,13 +134,9 @@ thread_tick (void)
   else
     get_cpu ()->kernel_ticks++;
 
-  /* Need spinlock to call update_curr
-   * Notice that other CPU's can call update_curr on your cpu, especially
-   * during thread_unblock
-   */
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   sched_tick (&get_cpu ()->rq, t);
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* Prints thread statistics. */
@@ -150,14 +147,16 @@ thread_print_stats (void)
   for (c = cpus; c < cpus + ncpu; c++)
     {
       printf (
-          "CPU%d: %llu idle ticks, %llu kernel ticks, %llu user ticks, %llu context switches, %d pulled\n",
-          c->id, c->idle_ticks, c->kernel_ticks, c->user_ticks, c->cs, c->rq.pulled);
+          "CPU%d: %llu idle ticks, %llu kernel ticks, %llu user ticks, %llu context switches\n",
+          c->id, c->idle_ticks, c->kernel_ticks, c->user_ticks, c->cs);
     }
-
 }
 
+/* The default policy for choosing to which CPU to assign a
+ * new thread is a round-robin policy.
+ */
 static struct cpu *
-wake_up_choose_cpu (struct thread *t)
+choose_cpu_for_new_thread (struct thread *t)
 {
   return &cpus[t->tid % ncpu];
 }
@@ -166,24 +165,24 @@ static void
 wake_up_new_thread (struct thread *t)
 {
   t->status = THREAD_READY;
-  t->cpu = wake_up_choose_cpu(t);
-  spinlock_acquire (&t->cpu->rq.ready_spinlock);
+  t->cpu = choose_cpu_for_new_thread (t);
+  spinlock_acquire (&t->cpu->rq.lock);
   sched_unblock (&t->cpu->rq, t, 1);
-  spinlock_release (&t->cpu->rq.ready_spinlock);
+  spinlock_release (&t->cpu->rq.lock);
 }
 
 /* Creates a new kernel thread named NAME with the given initial
    PRIORITY, which executes FUNCTION passing AUX as the argument,
-   Returns the thread identifier for the new thread, or TID_ERROR 
+   Returns the thread identifier for the new thread, or TID_ERROR
    if creation fails. */
 static struct thread *
-do_thread_create (const char *name, int nice, thread_func *function, void *aux) 
+do_thread_create (const char *name, int nice, thread_func *function, void *aux)
 {
     struct thread *t;
     struct kernel_thread_frame *kf;
     struct switch_entry_frame *ef;
     struct switch_threads_frame *sf;
-    ASSERT(function != NULL);
+    ASSERT (function != NULL);
 
     /* Allocate thread. */
     t = palloc_get_page (PAL_ZERO);
@@ -193,7 +192,7 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     /* Initialize thread. */
     init_thread (t, name, nice);
     t->tid = allocate_tid ();
-    
+
     /* Stack frame for kernel_thread(). */
     kf = alloc_frame (t, sizeof *kf);
     kf->eip = NULL;
@@ -202,26 +201,25 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
 
     /* Stack frame for switch_entry(). */
     ef = alloc_frame (t, sizeof *ef);
-    ef->eip = (void
-    (*) (void)) kernel_thread_entry;
+    ef->eip = (void (*) (void)) kernel_thread_entry;
 
     /* Stack frame for switch_threads(). */
     sf = alloc_frame (t, sizeof *sf);
     sf->eip = switch_entry;
     sf->ebp = 0;
-    
+
     return t;
 }
 
 /* Creates a new thread and adds it to the ready queue.
-   
+
    Except during system startup, the new thread may be
    scheduled before thread_create() returns.  It could even exit
    before thread_create() returns.  Contrariwise, the original
    thread may run for any amount of time before the new thread is
    scheduled.  Use a semaphore or some other form of
    synchronization if you need to ensure ordering.
-  
+
    The code provided sets the new thread's 'nice' member to
    nice, but it's not actually used. You will implement it as part of
    Project 1 */
@@ -229,44 +227,53 @@ tid_t
 thread_create (const char *name, int nice, thread_func *function, void *aux)
 {
   struct thread *t;
-  
+
   t = do_thread_create(name, nice, function, aux);
   if (!t)
     return 0;
-  /* Add to run queue. */
+
+  /* Add to ready queue. */
   wake_up_new_thread (t);
   return t->tid;
 }
 
-/* Puts the current thread to sleep.  It will not be scheduled
-   again until awoken by thread_unblock().
-  
-   This function must be called with interrupts turned off.  It
-   is usually a better idea to use one of the synchronization
-   primitives in synch.h. */
+/* Puts the current thread to sleep (i.e., in the BLOCKED state).
+   It will not be scheduled again until awoken by thread_unblock().
+
+   This function must be called with interrupts on the current
+   CPU turned off. It may not be called from an interrupt context.
+
+   This function is usually called with a held spinlock to avoid
+   lost wakeups.  If provided, this spinlock will be released
+   before the thread is switched out, and reacquired upon return.
+
+   This function is primarily used inside the threading system.
+   For most other tasks, it is usually a better idea to use one
+   of the synchronization primitives in synch.h. */
 void
 thread_block (struct spinlock *lk)
 {
-  ASSERT(!intr_context ());
-  ASSERT(intr_get_level () == INTR_OFF);
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (!intr_context ());
+
+  spinlock_acquire (&get_cpu ()->rq.lock);
   struct thread *curr = thread_current ();
   if (lk != NULL)
     spinlock_release (lk);
+
   curr->status = THREAD_BLOCKED;
   sched_block (&get_cpu ()->rq, curr);
   schedule ();
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
+
   if (lk != NULL)
     spinlock_acquire (lk);
-  
-  
 }
 
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
-  
+
    This function does not preempt the running thread.  This can
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
@@ -274,13 +281,14 @@ thread_block (struct spinlock *lk)
 void
 thread_unblock (struct thread *t)
 {
-  ASSERT(is_thread (t));
-  ASSERT(t->cpu != NULL);
-  spinlock_acquire (&t->cpu->rq.ready_spinlock);
-  ASSERT(t->status == THREAD_BLOCKED);
+  ASSERT (is_thread (t));
+  ASSERT (t->cpu != NULL);
+
+  spinlock_acquire (&t->cpu->rq.lock);
+  ASSERT (t->status == THREAD_BLOCKED);
   t->status = THREAD_READY;
   sched_unblock (&t->cpu->rq, t, 0);
-  spinlock_release (&t->cpu->rq.ready_spinlock);
+  spinlock_release (&t->cpu->rq.lock);
 }
 
 /* Returns the name of the running thread. */
@@ -303,8 +311,8 @@ thread_current (void)
      have overflowed its stack.  Each thread has less than 4 kB
      of stack, so a few big automatic arrays or moderate
      recursion can cause stack overflow. */
-  ASSERT(is_thread (t));
-  ASSERT(t->status == THREAD_RUNNING);
+  ASSERT (is_thread (t));
+  ASSERT (t->status == THREAD_RUNNING);
 //  TODO: ASSERT (t->cpu == get_cpu ());
 
   return t;
@@ -318,7 +326,7 @@ thread_tid (void)
 }
 
 static void
-kernel_thread_exit (void)
+do_thread_exit (void)
 {
   struct thread * cur = thread_current ();
 
@@ -330,12 +338,13 @@ kernel_thread_exit (void)
   list_remove (&cur->allelem);
   if (cpu_can_acquire_spinlock)
     spinlock_release (&all_lock);
+
   intr_disable_push ();
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   intr_disable_pop ();
   cur->status = THREAD_DYING;
   schedule ();
-  NOT_REACHED (); 
+  NOT_REACHED ();
 }
 
 /* Deschedules the current thread and destroys it.  Never
@@ -348,8 +357,8 @@ thread_exit (void)
 #ifdef USERPROG
   process_exit ();
 #endif
-  
-  kernel_thread_exit ();
+
+  do_thread_exit ();
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -358,25 +367,27 @@ void
 thread_yield (void)
 {
   struct thread *cur = thread_current ();
-  ASSERT(!intr_context ());
+  ASSERT (!intr_context ());
+
+  /* Lance, why this? */
   intr_disable_push ();
-  spinlock_acquire (&get_cpu ()->rq.ready_spinlock);
+  spinlock_acquire (&get_cpu ()->rq.lock);
   intr_disable_pop ();
+
   cur->status = THREAD_READY;
   if (cur != get_cpu ()->rq.idle_thread)
     {
       sched_yield (&get_cpu ()->rq, cur);
     }
   schedule ();
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
-  
+  spinlock_release (&get_cpu ()->rq.lock);
 }
 
 /* Called from ap_main to terminate an AP's main thread.  */
 void
 thread_exit_ap (void)
 {
-  kernel_thread_exit ();
+  do_thread_exit ();
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'. */
@@ -420,7 +431,13 @@ idle (void *idle_started_ UNUSED)
       /* Let someone else run. */
 
       intr_disable ();
-      /* Load balance here! */
+
+      /* Insert load balancing code here!
+       * An CPU should not go idle if there are ready threads
+       * in other CPU's ready queues that are not running.
+       *
+       * The baseline implementation does not ensure this.
+       */
       thread_block (NULL);
 
       /* Re-enable interrupts and wait for the next one.
@@ -439,21 +456,23 @@ idle (void *idle_started_ UNUSED)
     }
 }
 
-/* A new thread's very first scheduling by scheduler () returns here. */
+/* A new thread's very first scheduling by scheduler () returns here.
+ * Called with current CPU's ready queue lock held.
+ */
 static void
 kernel_thread_entry (thread_func *function, void *aux)
 {
-  ASSERT(function != NULL);
+  ASSERT (function != NULL);
   ASSERT (intr_get_level () == INTR_OFF);
-  
+
   /* Set intena to 1, so a call to popcli () will enable interrupts */
   get_cpu ()->intena = 1;
   /*
    * At this point, the only lock that should be held
-   * is the rq spinlock acquired by the previous thread. 
-   */ 
+   * is the rq spinlock acquired by the previous thread
+   */
   ASSERT (get_cpu ()->ncli == 1);
-  spinlock_release (&get_cpu ()->rq.ready_spinlock);
+  spinlock_release (&get_cpu ()->rq.lock);
   ASSERT (intr_get_level () == INTR_ON);
   function (aux); /* Execute the thread function. */
   thread_exit (); /* If function() returns, kill the thread. */
@@ -480,12 +499,12 @@ is_thread (struct thread *t)
   return t != NULL && t->magic == THREAD_MAGIC;
 }
 
-/* Initialize the boot_thread as a Pintos thread. Boot threads 
- * are special. They are not created with thread_create, but 
+/* Initialize the boot_thread as a Pintos thread. Boot threads
+ * are special. They are not created with thread_create, but
  * rather they are threads created during the boot process
- * so that it can initialize the CPU. The boot thread for the 
- * BSP is allocated by the boot loader, while the boot thread 
- * for the AP's are allocated in startothers (). 
+ * so that it can initialize the CPU. The boot thread for the
+ * BSP is allocated by the boot loader, while the boot thread
+ * for the AP's are allocated in start_other_cpus ().
  */
 static void
 init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
@@ -494,7 +513,7 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
   boot_thread->status = THREAD_RUNNING;
   boot_thread->tid = allocate_tid ();
   boot_thread->cpu = cpu;
-  cpu->rq.curr = boot_thread;  
+  cpu->rq.curr = boot_thread;
 }
 
 /* Does basic initialization of T as a blocked thread named
@@ -502,9 +521,9 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
 static void
 init_thread (struct thread *t, const char *name, int nice)
 {
-  ASSERT(t != NULL);
-  ASSERT(NICE_MIN <= nice && nice <= NICE_MAX);
-  ASSERT(name != NULL);
+  ASSERT (t != NULL);
+  ASSERT (NICE_MIN <= nice && nice <= NICE_MAX);
+  ASSERT (name != NULL);
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
@@ -525,8 +544,8 @@ static void *
 alloc_frame (struct thread *t, size_t size)
 {
   /* Stack data is always allocated in word-size units. */
-  ASSERT(is_thread (t));
-  ASSERT(size % sizeof(uint32_t) == 0);
+  ASSERT (is_thread (t));
+  ASSERT (size % sizeof(uint32_t) == 0);
 
   t->stack -= size;
   return t->stack;
@@ -536,11 +555,10 @@ alloc_frame (struct thread *t, size_t size)
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
    will be in the run queue.)  If the run queue is empty, return
-   idle_thread. */
+   this CPU's idle_thread. */
 static struct thread *
 next_thread_to_run (void)
 {
-
   struct thread *ret = NULL;
   ret = sched_pick_next (&get_cpu ()->rq);
   if (!ret)
@@ -551,18 +569,18 @@ next_thread_to_run (void)
 
 /* Completes a thread switch by activating the new thread's page
    tables, and, if the previous thread is dying, destroying it.
-  
+
    At this function's invocation, we just switched from thread
    PREV, the new thread is already running, and interrupts are
    still disabled.  This function is normally invoked by
    thread_schedule() as its final action before returning, but
    the first time a thread is scheduled it is called by
    switch_entry() (see switch.S).
-  
+
    It's not safe to call printf() until the thread switch is
    complete.  In practice that means that printf()s should be
    added at the end of the function.
-  
+
    After this function and its caller returns, the thread switch
    is complete. */
 void
@@ -592,25 +610,29 @@ thread_schedule_tail (struct thread *prev)
     }
 }
 
-/* Schedules a new process.  At entry, interrupts must be off and
-   the running process's state must have been changed from
-   running to some other state.  This function finds another
+/* Schedules a new process.  At entry, the current CPU's ready queue
+   must have been locked, and the running process's state must have been
+   changed from running to some other state.  This function finds another
    thread to run and switches to it. */
 static void
 schedule (void)
 {
-  /* Schedule must be called with local queue lock held */
-  ASSERT(spinlock_held_by_current_cpu (&get_cpu ()->rq.ready_spinlock));
-  /* Must not hold any other spinlocks, since interrupt handlers might 
-     attempt to acquire them */
-  ASSERT(get_cpu ()->ncli == 1);
+  /* Schedule must be called with current CPU's ready queue lock held */
+  ASSERT (spinlock_held_by_current_cpu (&get_cpu ()->rq.lock));
+
+  /* Must not hold any other spinlocks, since interrupt handlers might
+     attempt to acquire them, leading to deadlock since the outgoing
+     thread would not be able to release them.
+   */
+  ASSERT (get_cpu ()->ncli == 1);
+
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
-  ASSERT(intr_get_level () == INTR_OFF);
-  ASSERT(cur->status != THREAD_RUNNING);
-  ASSERT(is_thread (next));
-  int intena = get_cpu ()->intena;
+  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (cur->status != THREAD_RUNNING);
+  ASSERT (is_thread (next));
+  int intena = get_cpu ()->intena;      /* Save current value of intena. */
   if (cur != next)
     {
       get_cpu ()->cs++;
@@ -618,9 +640,9 @@ schedule (void)
       prev = switch_threads (cur, next);
     }
 
-  get_cpu ()->intena = intena;
+// XXX is this correct?  What if get_cpu() has changed b/c of load balancing?
+  get_cpu ()->intena = intena;          /* Restore value of intena. */
   thread_schedule_tail (prev);
-
 }
 
 /* Returns a tid to use for a new thread. */
