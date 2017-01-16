@@ -18,7 +18,7 @@
 */
 
 /* Page table index (bits 12:21). */
-#define	PTSHIFT PGBITS		           /* First page table bit. */
+#define PTSHIFT PGBITS                     /* First page table bit. */
 #define PTBITS  10                         /* Number of page table bits. */
 #define PTSPAN  (1 << PTBITS << PGBITS)    /* Bytes covered by a page table. */
 #define PTMASK  BITMASK(PTSHIFT, PTBITS)   /* Page table bits (12:21). */
@@ -29,12 +29,12 @@
 #define PDMASK  BITMASK(PDSHIFT, PDBITS)   /* Page directory bits (22:31). */
 
 /* memory dedicated to PCI - make sure this is 4MB aligned */
-#define PCI_ADDR_ZONE_BEGIN	0xe0000000
-#define PCI_ADDR_ZONE_END	0xe0800000
-#define PCI_ADDR_ZONE_PDES	2
-#define PCI_ADDR_ZONE_PAGES	(PCI_ADDR_ZONE_END-PCI_ADDR_ZONE_BEGIN)/PGSIZE
-#define APIC_ZONE_PDES 		8192
-#define APIC_ZONE_BEGIN		0xfe000000
+#define PCI_ADDR_ZONE_BEGIN     0xe0000000
+#define PCI_ADDR_ZONE_END       0xe0800000
+#define PCI_ADDR_ZONE_PDES      2
+#define PCI_ADDR_ZONE_PAGES     (PCI_ADDR_ZONE_END-PCI_ADDR_ZONE_BEGIN)/PGSIZE
+#define APIC_ZONE_PDES          8192
+#define APIC_ZONE_BEGIN         0xfe000000
 
 
 

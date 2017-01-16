@@ -4,26 +4,7 @@
 #include <list.h>
 #include <stdbool.h>
 #include <debug.h>
-
-/* Spinlock */
-struct spinlock
-{
-  int locked;	        /* Is the lock held? */
-  struct cpu *cpu;      /* CPU that acquired the lock, or NULL 
-		           spinlock is not held */
-  
-  /* For debugging. If the lock is held, then debuginfo
-     contains the call stack of the thread when the lock
-     was acquired. If lock is not held, contains the
-     call stack of the thread when it released the lock */
-  struct callerinfo debuginfo;
-};
-
-void spinlock_acquire (struct spinlock*);
-bool spinlock_try_acquire (struct spinlock *);
-bool spinlock_held_by_current_cpu (const struct spinlock*);
-void spinlock_init (struct spinlock*);
-void spinlock_release (struct spinlock*);
+#include "threads/spinlock.h"
 
 /* A counting semaphore. */
 struct semaphore 
@@ -44,7 +25,7 @@ struct lock
   {
     struct thread *holder;      /* Thread holding lock (for debugging). */
     struct semaphore semaphore; /* Binary semaphore controlling access. */
-    struct callerinfo debuginfo;/* Debugging info. See explanation above */
+    struct callerinfo debuginfo;/* Debugging info. */
   };
 
 void lock_init (struct lock *);

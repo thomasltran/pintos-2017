@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 void
-run_misc_test (const char *);
+run_self_test (const char *);
 
 typedef void
 test_func (void);

@@ -1,4 +1,4 @@
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 #include <debug.h>
 #include <string.h>
 #include <stdio.h>
@@ -27,18 +27,18 @@ static const char *test_name;
 
 /* Runs the test named NAME. */
 void
-run_misc_test (const char *name)
+run_self_test (const char *name)
 {
   const struct test *t;
 
   for (t = tests; t < tests + sizeof tests / sizeof *tests; t++)
     if (!strcmp (name, t->name))
       {
-	test_name = name;
-	msg ("begin");
-	t->function ();
-	msg ("end");
-	return;
+        test_name = name;
+        msg ("begin");
+        t->function ();
+        msg ("end");
+        return;
       }
   PANIC("no test named \"%s\"", name);
 }
@@ -91,7 +91,7 @@ pass (void)
 /*
  * Basically an assertion
  * if (!truth)
- * 	fail
+ *  fail
  */
 void
 failIfFalse (bool truth, const char *format, ...)

@@ -87,9 +87,8 @@ struct mpioapic
 #define MPIOINTR  0x03  // One per bus interrupt source
 #define MPLINTR   0x04  // One per system interrupt source
 
-int mpbcpu (void);
 void mp_init (void);
-void mpstartthem (void);
+int mp_bcpu (void);
 
 //PAGEBREAK!
 // Blank page.

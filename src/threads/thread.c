@@ -84,8 +84,12 @@ thread_init (void)
 
 }
 
+/*
+ * Create the initial thread on an application processor/CPU.
+ * Called once for each AP.  Initializes the run queue on that CPU.
+ */
 void
-thread_AP_init (void)
+thread_init_on_ap (void)
 {
   ASSERT(intr_get_level () == INTR_OFF);
   struct cpu *cpu = &cpus[lapic_get_cpuid ()];
@@ -95,9 +99,9 @@ thread_AP_init (void)
   init_boot_thread (cur_thread, cpu);
 }
 
-/* Creates the idle thread. */
+/* Creates the idle thread on this CPU. */
 void
-thread_start (void)
+thread_start_idle_thread (void)
 {
   ASSERT (intr_get_level () == INTR_OFF);
   /* Create name for idle thread that indicates which CPU it is on */
@@ -146,8 +150,8 @@ thread_print_stats (void)
   for (c = cpus; c < cpus + ncpu; c++)
     {
       printf (
-	  "CPU%d: %llu idle ticks, %llu kernel ticks, %llu user ticks, %llu context switches, %d pulled\n",
-	  c->id, c->idle_ticks, c->kernel_ticks, c->user_ticks, c->cs, c->rq.pulled);
+          "CPU%d: %llu idle ticks, %llu kernel ticks, %llu user ticks, %llu context switches, %d pulled\n",
+          c->id, c->idle_ticks, c->kernel_ticks, c->user_ticks, c->cs, c->rq.pulled);
     }
 
 }
@@ -211,7 +215,7 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
 
 /* Creates a new thread and adds it to the ready queue.
    
-   If thread_start() has been called, then the new thread may be
+   Except during system startup, the new thread may be
    scheduled before thread_create() returns.  It could even exit
    before thread_create() returns.  Contrariwise, the original
    thread may run for any amount of time before the new thread is
@@ -368,13 +372,9 @@ thread_yield (void)
   
 }
 
-/* Called from mpenter. This will yield the processor without
- * adding the current thread onto the ready queue. Once the AP's
- * has finished their initial configurations, their main thread
- * is not needed, so it does not need to be scheduled again.
- */
+/* Called from ap_main to terminate an AP's main thread.  */
 void
-thread_AP_yield (void)
+thread_exit_ap (void)
 {
   kernel_thread_exit ();
 }
@@ -425,16 +425,16 @@ idle (void *idle_started_ UNUSED)
 
       /* Re-enable interrupts and wait for the next one.
 
-	 The `sti' instruction disables interrupts until the
-	 completion of the next instruction, so these two
-	 instructions are executed atomically.  This atomicity is
-	 important; otherwise, an interrupt could be handled
-	 between re-enabling interrupts and waiting for the next
-	 one to occur, wasting as much as one clock tick worth of
-	 time.
+         The `sti' instruction disables interrupts until the
+         completion of the next instruction, so these two
+         instructions are executed atomically.  This atomicity is
+         important; otherwise, an interrupt could be handled
+         between re-enabling interrupts and waiting for the next
+         one to occur, wasting as much as one clock tick worth of
+         time.
 
-	 See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
-	 7.11.1 "HLT Instruction". */
+         See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
+         7.11.1 "HLT Instruction". */
       asm volatile ("sti; hlt" : : : "memory");
     }
 }

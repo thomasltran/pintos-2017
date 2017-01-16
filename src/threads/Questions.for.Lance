@@ -1,0 +1,21 @@
+
+- init.c - why is usb_init() commented out? (but usb_storage_init() not?)
+
+- comment in init.c:
+
+  /* Each AP is woken up sequentially and blocks until startedothers
+   * is true. Interrupts are disabled here, therefore AP's do not 
+   * need to hold spinlocks. Attempting to do so will cause a triple
+   * fault because spinlocks at the minimum requires the lapic
+   * to be initialized and usually also requires the GDT to be set up
+   * with Per-CPU variables, although the latter can be circumvented by 
+   * polling the lapic instead for the cpu ID.
+   */
+
+ Doesn't make sense to me.  If interrupts on the BSP are disabled, why does this
+ mean that "AP's do not need to hold spinlocks?"  Address/correct/remove.
+
+- Spinlock - why does it need both 'locked' and 'cpu'?  The comment says
+  they are kept in sync.  Why can't you atomically swap in the cpu into &cpu?
+  Spinlocks are frequent - every byte matters in terms of size.
+

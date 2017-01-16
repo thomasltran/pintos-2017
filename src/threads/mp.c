@@ -39,8 +39,9 @@
 #include "devices/lapic.h"
 #include "devices/ioapic.h"
 
+/* Return the number of the boot CPU. */
 int
-mpbcpu (void)
+mp_bcpu (void)
 {
   return bcpu - cpus;
 }

@@ -25,9 +25,6 @@ typedef int tid_t;
 #define NICE_MIN -20                    /* Highest priority. */
 #define NICE_DEFAULT 0                  /* Default priority. */
 #define NICE_MAX 19                     /* Lowest priority. */
-#ifdef USERPROG
-#define MAX_FDT_INDEX 128		/* Max number of file descriptors */
-#endif
 
 /* A kernel thread or user process.
 
@@ -95,10 +92,13 @@ struct thread
   uint8_t *stack; /* Saved stack pointer. */
   int nice; /* Nice value. */
   struct list_elem allelem; /* List element for all threads list. */
+
+  struct cpu *cpu; /* Points to the CPU state of the cpu on
+                      which this thread is running or last ran. */
+
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
 
-  struct cpu *cpu;
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
@@ -108,8 +108,8 @@ struct thread
 };
 
 void thread_init (void);
-void thread_AP_init (void);
-void thread_start (void);
+void thread_init_on_ap (void);
+void thread_start_idle_thread (void);
 void thread_tick (void);
 void thread_print_stats (void);
 
@@ -125,7 +125,7 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-void thread_AP_yield (void);
+void thread_exit_ap (void) NO_RETURN;
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);

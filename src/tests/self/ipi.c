@@ -5,7 +5,7 @@
 #include "lib/atomic-ops.h"
 #include <debug.h>
 #include "devices/lapic.h"
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 #include "threads/mp.h"
 #include "devices/timer.h"
 
@@ -30,7 +30,7 @@ test_ipi (void)
 {
   failIfFalse (ncpu > 1, "This test >1 cpu running");
   register_test_ipi ();
-  lapicsendallbutself (IPI_NUM);
+  lapic_send_ipi_to_all_but_self (IPI_NUM);
   timer_sleep (5);
   failIfFalse (flag == (int) (ncpu - 1), "Other CPUs did not respond to IPI");
   pass ();
@@ -66,7 +66,7 @@ test_ipi_blocked (void)
     }
   while (atomic_load (&numstarted) < (int) (ncpu - 1))
     ;
-  lapicsendallbutself (IPI_NUM);
+  lapic_send_ipi_to_all_but_self (IPI_NUM);
   timer_sleep (5);
   failIfFalse (flag == 0, "Other CPUs responded to IPI, despite interrupts "
 	       "being off");
@@ -78,7 +78,7 @@ test_ipi_all (void)
 {
   failIfFalse (ncpu > 1, "This test > 1 cpu running");
   register_test_ipi ();
-  lapicsendall (IPI_NUM);
+  lapic_send_ipi_to_all (IPI_NUM);
   timer_sleep (5);
   failIfFalse (flag == (int) ncpu, "One of the CPUs did not respond to IPI");
   pass ();

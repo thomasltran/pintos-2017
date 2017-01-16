@@ -16,12 +16,13 @@ void
 ipi_init ()
 {
   intr_register_ipi (T_IPI + IPI_SHUTDOWN, ipi_shutdown,
-		     "#IPI SHUTDOWN");
+                     "#IPI SHUTDOWN");
   intr_register_ipi (T_IPI + IPI_TLB, ipi_invalidate_tlb,
-		     "#IPI TLBINVALIDATE");
-  intr_register_ipi (T_IPI + IPI_DEBUG, ipi_debug, "#IPI DEBUG");
+                     "#IPI TLBINVALIDATE");
+  intr_register_ipi (T_IPI + IPI_DEBUG, ipi_debug,
+                     "#IPI DEBUG");
   intr_register_ipi (T_IPI + IPI_SCHEDULE, ipi_schedule,
-		     "#IPI SCHEDULE");
+                     "#IPI SCHEDULE");
 }
 
 /* Received a shutdown signal from another CPU
@@ -30,7 +31,7 @@ ipi_init ()
 void
 ipi_shutdown (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_startedothers);
+  ASSERT(cpu_started_others);
   /* CPU0 needs to stay on in order to handle interrupts. Otherwise
      if an AP calls shutdown, it may get stuck trying to print to console */
   if (get_cpu ()->id == 0)
@@ -44,14 +45,14 @@ ipi_shutdown (struct intr_frame *f UNUSED)
 void
 ipi_schedule (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_startedothers);
+  ASSERT(cpu_started_others);
   intr_yield_on_return ();
 }
 /* For debugging. Prints the backtrace of the thread running on the current CPU  */
 void
 ipi_debug (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_startedothers);
+  ASSERT(cpu_started_others);
   debug_backtrace ();
 }
 
@@ -59,7 +60,7 @@ ipi_debug (struct intr_frame *f UNUSED)
 void
 ipi_invalidate_tlb (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_startedothers);
+  ASSERT(cpu_started_others);
   intr_disable_push ();
   flushtlb ();
   intr_disable_pop ();

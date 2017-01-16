@@ -7,7 +7,7 @@
 #include <debug.h>
 #include <stdio.h>
 #include "threads/cpu.h"
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 #include "devices/timer.h"
 #include "lib/atomic-ops.h"
 

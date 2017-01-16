@@ -52,14 +52,14 @@
 #define COUNT BUS_FREQUENCY/TIMER_FREQ
 
 /* Local APIC registers, divided by 4 for use as uint32_t[] indices. */
-#define ID      (0x0020/4)   	/* ID */
-#define VER     (0x0030/4)   	/* Version */
-#define TPR     (0x0080/4)   	/* Task Priority */
-#define EOI     (0x00B0/4)   	/* EOI */
-#define SVR     (0x00F0/4)   	/* Spurious Interrupt Vector */
+#define ID      (0x0020/4)      /* ID */
+#define VER     (0x0030/4)      /* Version */
+#define TPR     (0x0080/4)      /* Task Priority */
+#define EOI     (0x00B0/4)      /* EOI */
+#define SVR     (0x00F0/4)      /* Spurious Interrupt Vector */
 #define ENABLE     0x00000100   /* Unit Enable */
-#define ESR     (0x0280/4)   	/* Error Status */
-#define ICRLO   (0x0300/4)   	/* Interrupt Command */
+#define ESR     (0x0280/4)      /* Error Status */
+#define ICRLO   (0x0300/4)      /* Interrupt Command */
 #define INIT       0x00000500   /* INIT/RESET */
 #define STARTUP    0x00000600   /* Startup IPI */
 #define DELIVS     0x00001000   /* Delivery status */
@@ -69,24 +69,24 @@
 #define BCAST      0x00080000   /* Send to all APICs, including self. */
 #define BUSY       0x00001000
 #define FIXED      0x00000000
-#define ICRHI   (0x0310/4)   	/* Interrupt Command [63:32] */
-#define TIMER   (0x0320/4)   	/* Local Vector Table 0 (TIMER) */
+#define ICRHI   (0x0310/4)      /* Interrupt Command [63:32] */
+#define TIMER   (0x0320/4)      /* Local Vector Table 0 (TIMER) */
 #define X1         0x0000000B   /* divide counts by 1 */
-#define ONESHOT  (0 << 17)   	/* One shot timer */
-#define PERIODIC   (1 << 17)   	/* Periodic */
+#define ONESHOT  (0 << 17)      /* One shot timer */
+#define PERIODIC   (1 << 17)    /* Periodic */
 #define TSCDEADLINE   (2 << 17) //TSC deadline mode
-#define PCINT   (0x0340/4)   	/* Performance Counter LVT */
-#define LINT0   (0x0350/4)   	/* Local Vector Table 1 (LINT0) */
-#define LINT1   (0x0360/4)   	/* Local Vector Table 2 (LINT1) */
-#define ERROR   (0x0370/4)   	/* Local Vector Table 3 (ERROR) */
+#define PCINT   (0x0340/4)      /* Performance Counter LVT */
+#define LINT0   (0x0350/4)      /* Local Vector Table 1 (LINT0) */
+#define LINT1   (0x0360/4)      /* Local Vector Table 2 (LINT1) */
+#define ERROR   (0x0370/4)      /* Local Vector Table 3 (ERROR) */
 #define MASKED     0x00010000   /* Interrupt masked */
-#define TICR    (0x0380/4)   	/* Timer Initial Count */
-#define TCCR    (0x0390/4)   	/* Timer Current Count */
-#define TDCR    (0x03E0/4)   	/* Timer Divide Configuration */
+#define TICR    (0x0380/4)      /* Timer Initial Count */
+#define TCCR    (0x0390/4)      /* Timer Current Count */
+#define TDCR    (0x03E0/4)      /* Timer Divide Configuration */
 
 static void microdelay (int);
 static void lapicw (int , int);
-static void lapicsendipi (uint8_t , int);
+static void sendipi (uint8_t , int);
 
 /* Initialize the local advanced interrupt controller. */
 void
@@ -135,6 +135,7 @@ lapic_init (void)
   lapicw (TPR, 0);
 }
 
+/* COMMENT missing.  Remove if unused. */
 void
 lapic_set_next_event (uint32_t delta)
 {
@@ -153,10 +154,10 @@ lapic_get_cpuid (void)
     {
       static int n;
       if (n++ == 0)
-	{
-	  PANIC("cpu called from %p with interrupts enabled\n",
-		__builtin_return_address (0));
-	}
+        {
+          PANIC("cpu called from %p with interrupts enabled\n",
+                __builtin_return_address (0));
+        }
     }
 
   if (lapic_base_addr)
@@ -178,7 +179,7 @@ lapic_ack (void)
 /* Start additional processor running entry code at addr.
    See Appendix B of MultiProcessor Specification. */
 void
-lapicstartap (uint8_t apicid, uint32_t addr)
+lapic_start_ap (uint8_t apicid, uint32_t addr)
 {
   int i;
   uint16_t *wrv;
@@ -213,60 +214,62 @@ lapicstartap (uint8_t apicid, uint32_t addr)
     }
 }
 
+/* Send an IPI to a CPU specific by its ID. */
 void
-lapicsendcpu(int irq, uint8_t cpu_id)
+lapic_send_ipi_to(int irq, uint8_t cpu_id)
 {
-  ASSERT(irq < NUM_IPI);
-  lapicsendipi (cpu_id, irq);
+  ASSERT (irq < NUM_IPI);
+  sendipi (cpu_id, irq);
 }
 
 /* Sends interrupt irq to all cpus except the sender. Does so by looping over
    cpu structs and sending a signal separately to each one. */
 void
-lapicsendallbutself (int irq)
+lapic_send_ipi_to_all_but_self (int irq)
 {
-  ASSERT(irq < NUM_IPI);
-  if (!cpu_startedothers)
+  ASSERT (irq < NUM_IPI);
+  if (!cpu_started_others)
     return;
   struct cpu *c;
   intr_disable_push ();
   for (c = cpus; c < cpus + ncpu; c++)
     {
       if (c != get_cpu ())
-	lapicsendipi (c->id, irq);
+        sendipi (c->id, irq);
     }
   intr_disable_pop ();
 }
 
 /* Sends interrupt irq to the cpus defined by mask */
-void
-lapicsendmask (int irq, struct bitmap *mask)
+static void
+sendipi_mask (int irq, struct bitmap *mask)
 {
   ASSERT(irq < NUM_IPI);
   ASSERT (bitmap_size (mask) <= ncpu);
-  if (!cpu_startedothers)
+  if (!cpu_started_others)
     return;
+
   size_t i;
   intr_disable_push ();
   for (i = 0; i < bitmap_size (mask); i++)
     {
       if (bitmap_test (mask, i))
-	lapicsendipi (i, irq);
+        sendipi (i, irq);
     }
   intr_disable_pop ();
 }
 
 /* Sends interrupt irq to all cpus */
 void
-lapicsendall (int irq) 
+lapic_send_ipi_to_all (int irq)
 {
   struct bitmap *mask = bitmap_create (ncpu);
   bitmap_set_all (mask, true);
-  lapicsendmask (irq, mask);
+  sendipi_mask (irq, mask);
   bitmap_destroy (mask);
 }
 
-/* Spin for a given number of microseconds.
+/* Wait for a given number of microseconds.
    On real hardware would want to tune this dynamically. */
 static void
 lapicw (int index, int value)
@@ -276,7 +279,7 @@ lapicw (int index, int value)
 }
 
 static void
-lapicsendipi (uint8_t apicid, int irq)
+sendipi (uint8_t apicid, int irq)
 {
   lapicw (ICRHI, apicid << 24);
   lapicw (ICRLO, T_IPI + irq);

@@ -6,7 +6,7 @@
 #include "threads/interrupt.h"
 #include <debug.h>
 #include <stdio.h>
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 #include "threads/synch.h"
 #include <debug.h>
 #include "lib/atomic-ops.h"

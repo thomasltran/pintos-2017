@@ -2,7 +2,7 @@
  * Tests spinlock_try_acquire, which wasn't implemented in xv6. 
  */
 #include "threads/synch.h"
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 #include "threads/cpu.h"
 #include "threads/interrupt.h"
 #include "lib/kernel/list.h"

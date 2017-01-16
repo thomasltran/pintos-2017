@@ -38,7 +38,7 @@
 # Startothers (in main.c) sends the STARTUPs one at a time.
 # It copies this code (start) at 0x7000.  It puts the address of
 # a newly allocated per-core stack in start-4,the address of the
-# place to jump to (mpenter) in start-8, and the physical address
+# place to jump to (ap_main) in start-8, and the physical address
 # of entrypgdir in start-12.
 #
 # This code is identical to bootasm.S except:
@@ -89,7 +89,7 @@ startother32:
 
   # Switch to the stack allocated by startothers()
   movl    (startother-4), %esp
-  # Call mpenter()
+  # Call ap_main()
   call	 *(startother-8)
 
   movw    $0x8a00, %ax

@@ -41,12 +41,12 @@ struct cpu
 /* Is it safe for the CPUs to acquire a spinlock? 0 during initial boot
    process, since each CPU needs the GDT set up to acquire a spinlock.
    Afterwards, it is set to 1 */
-int cpu_can_acquire_spinlock;      
-struct cpu *bcpu;               /* Pointer to the BSP */
-struct cpu cpus[NCPU_MAX];      /* Array holding per-CPU states */
-int cpu_ismp;              	/* Does the hardware support SMP? */
-unsigned int ncpu;              /* Number of cpus on this machine */
-int cpu_startedothers;          /* Has the Application Processors been awoken? */
+extern int cpu_can_acquire_spinlock;      
+extern struct cpu *bcpu;               /* Pointer to the BSP */
+extern struct cpu cpus[NCPU_MAX];      /* Array holding per-CPU states */
+extern int cpu_ismp;            /* 1 if hardware supports SMP. */
+extern unsigned int ncpu;       /* Number of cpus on this machine. */
+extern int cpu_started_others;  /* 1 if the application processors have been started. */
 
 /* Per-CPU variables, holding pointers to the
    current cpu.

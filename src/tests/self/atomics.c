@@ -2,7 +2,7 @@
  * Test atomic operations
  */
 #include "lib/atomic-ops.h"
-#include "tests/misc/misc_tests.h"
+#include "tests.h"
 
 static void
 check_value (int actual, int expected)

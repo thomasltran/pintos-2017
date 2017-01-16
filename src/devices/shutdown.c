@@ -96,9 +96,9 @@ shutdown_power_off (void)
   filesys_done ();
 #endif
   
-  if (cpu_startedothers)
+  if (cpu_started_others)
     {
-      lapicsendallbutself (IPI_SHUTDOWN);
+      lapic_send_ipi_to_all_but_self (IPI_SHUTDOWN);
     }
   print_stats ();
 

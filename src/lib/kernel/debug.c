@@ -68,7 +68,7 @@ debug_panic (const char *file, int line, const char *function,
        */
       console_use_spinlock ();
 
-      printf ("Kernel PANIC from CPU %d at %s:%d in %s(): ", (cpu_startedothers) ? get_cpu ()->id : 0, file, line, function);
+      printf ("Kernel PANIC from CPU %d at %s:%d in %s(): ", (cpu_started_others) ? get_cpu ()->id : 0, file, line, function);
 
       va_start (args, message);
       vprintf (message, args);
@@ -77,9 +77,9 @@ debug_panic (const char *file, int line, const char *function,
 
       debug_backtrace ();
       
-      if (cpu_startedothers) {
-	printf ("Printing a backtrace of all CPUs\n");
-	lapicsendallbutself(IPI_DEBUG);  
+      if (cpu_started_others) {
+        printf ("Printing a backtrace of all CPUs\n");
+        lapic_send_ipi_to_all_but_self(IPI_DEBUG);
       }
       
       printf ("Printing a backtrace of all threads\n");
@@ -89,7 +89,7 @@ debug_panic (const char *file, int line, const char *function,
   else if (level == 2) 
     {
       printf ("Kernel PANIC recursion at %s:%d in %s().\n",
-  	    file, line, function);      
+        file, line, function);
     }
 
   else 
@@ -199,7 +199,7 @@ savecallerinfo (struct callerinfo *info)
   for (i = 0; i < PCS_MAX; i++)
     {
       if (ebp == NULL || ebp < (uint32_t *)0x1000)
-	break;
+    break;
       pcs[i] = ebp[1];     /* saved %eip */
       ebp = (uint32_t*) ebp[0];     /* saved %ebp */
     }

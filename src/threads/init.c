@@ -41,7 +41,9 @@
 #else
 #include "tests/threads/tests.h"
 #include "tests/threads/schedtest.h"
-#include "tests/misc/misc_tests.h"
+#ifdef SELFTEST
+#include "tests/self/tests.h"
+#endif /* SELFTEST */
 #endif
 #ifdef FILESYS
 #include "devices/block.h"
@@ -78,8 +80,8 @@ static char ** read_command_line (void);
 static char ** parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
-static void startothers (void);
-static void mpenter (void);
+static unsigned start_other_cpus (void);
+static void ap_main (void);
 
 #ifdef FILESYS
 static void locate_block_devices (void);
@@ -88,7 +90,8 @@ static void locate_block_device (enum block_type, const char *name);
 
 int main (void) NO_RETURN;
 
-/* Pintos main program. */
+/* Pintos main program.
+ * Executes on BSP. */
 int
 main (void)
 {
@@ -96,19 +99,22 @@ main (void)
 
   /* Clear BSS. */
   bss_init ();
-  cpu_startedothers = 0;
-  cpu_can_acquire_spinlock = 0;
 
   /* Initialize memory system. */
   palloc_init (user_page_limit);
   malloc_init ();
   paging_init ();
-  mp_init ();        /* collect info about this machine */
+
+  /* Initialize multiprocessor-related information. */
+  mp_init ();
+
+  /* Initialize bootstrap CPU's LAPIC. */
   lapic_init ();
-  /* Initialize ourselves as a thread so we can use locks */
+
+  /* Initialize threading system so we can use locks. */
   thread_init ();
 
-  /* Segmentation. */
+  /* Initialize segmentation hardware. */
   gdt_init ();
   tss_init ();
   
@@ -116,14 +122,15 @@ main (void)
   cpu_can_acquire_spinlock = 1;
   
   console_init ();
+
   /* Break command line into arguments and parse options. */
   argv = read_command_line ();
   argv = parse_options (argv);
 
   /* Greet user. */
-  printf ("CPU %d is up\n", get_cpu ()->id);
+  printf ("CPU %'"PRIu32" is up\n", get_cpu ()->id);
   printf ("Pintos booting with %'"PRIu32" kB RAM...\n",
-	  init_ram_pages * PGSIZE / 1024);
+          init_ram_pages * PGSIZE / 1024);
 
   /* Initialize interrupt handlers. */
   intr_init ();
@@ -138,13 +145,15 @@ main (void)
 #endif
 
   serial_init_queue ();
-  /* Start thread scheduler and enable interrupts. */
-  thread_start ();
+
+  /* Start idle thread on main CPU. */
+  thread_start_idle_thread ();
   
   /* Scheduler and interrupt handlers are set up, so 
      interrupts can be enabled now. */
   intr_enable ();
   timer_calibrate ();
+
 /*  usb_init (); */
 #ifdef FILESYS
   /* Initialize file system. */
@@ -155,7 +164,8 @@ main (void)
 #endif
   
   /* start other processors */
-  startothers ();     
+  unsigned num_started = start_other_cpus ();
+  printf ("Started %'"PRIu32" additional CPUs.\n", num_started);
   printf ("Boot complete.\n");
   
   /* Run actions specified on kernel command line. */
@@ -246,72 +256,101 @@ lapic_zone_init (void)
       size_t pde_idx = pd_no (vaddr);
       size_t pte_idx = pt_no (vaddr);
       if (pd[pde_idx] == 0)
-	{
-	  pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
-	  pd[pde_idx] = pde_create_kernel (pt);
-	}
+    {
+      pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
+      pd[pde_idx] = pde_create_kernel (pt);
+    }
       uint32_t mapping = pte_create_kernel_identity (vaddr, true);
       pt[pte_idx] = mapping;
     }
 }
 
-/* Other CPUs jump here from startother.S. */
+/* Additional CPUs start here (via entryother.S). */
 static void
-mpenter (void)
+ap_main (void)
 {
+  /* Initialize kernel page directory (shared among CPUs). */
   lcr3 (vtop (init_page_dir));
+
+  /* Initialize this CPU's LAPIC. */
   lapic_init ();
-  thread_AP_init ();
+
+  thread_init_on_ap ();
+
+  /* Initialize segmentation hardware. */
   gdt_init ();
   tss_init ();
+
+  /* Load IDT (shared among CPUs). */
   intr_load_idt ();
+
   printf ("CPU %d is up\n", get_cpu ()->id);
-  thread_start ();
-  atomic_xchg (&get_cpu ()->started, 1);     /* tell startothers() we're up */
-  /* Wait for other CPUs to start up */
-  while (!atomic_load (&cpu_startedothers))
+  thread_start_idle_thread ();
+
+  /* Signal successful start to BSP. */
+  atomic_xchg (&get_cpu ()->started, 1);
+
+  /* Wait for remaining CPUs to start up */
+  while (!atomic_load (&cpu_started_others))
     ;
-  /* Schedule threads*/
-  thread_AP_yield ();
-  PANIC("Should not come back here!");
+
+  /*
+   * Once this AP has finished its initial configuration,
+   * its main thread is no longer needed.  Let it exit.
+   */
+  thread_exit_ap ();
+  PANIC("AP main thread should have exited!");
 }
 
-/* Start the non-boot (AP) processors. */
-static void
-startothers (void)
+/* Start the non-boot processors.
+ *
+ * Intel refers to them as "Application Processors" (APs) in contrast
+ * to the Bootstrap Processor (BSP).
+ *
+ * Return the total number of additional processors started.
+ */
+static unsigned
+start_other_cpus (void)
 {
-  printf("Using per-cpu local queues\n");
   intr_disable_push ();
+
+  /* Temporarily clear cpu_can_acquire_spinlock until AP has started. */
   cpu_can_acquire_spinlock = 0;
+
   extern uint8_t _binary___threads_startother_start[],
-      _binary___threads_startother_size[];
+                 _binary___threads_startother_size[];
   uint8_t *code;
   struct cpu *c;
   char *stack;
+  int num_started = 0;
 
   /* Write entry code to unused memory at 0x7000. */
-  /* The linker has placed the image of entryother.S in */
-  /* _binary_entryother_start. */
+  /* The objcopy command has marked the location of the image of
+   * entryother.S as _binary_entryother_start. */
   code = ptov (0x7000);
   memmove (code, _binary___threads_startother_start,
-	   (uint32_t) _binary___threads_startother_size);
+       (uint32_t) _binary___threads_startother_size);
 
   for (c = cpus; c < cpus + ncpu; c++)
     {
       if (c == cpus + lapic_get_cpuid ())     /* We've started already. */
-	continue;
+        continue;
 
-      /* Tell entryother.S what stack to use and where to enter */
+      /* Set up stack for AP cpu. */
       stack = palloc_get_page (PAL_ASSERT | PAL_ZERO);
       *(void**) (code - 4) = stack + PGSIZE;
-      *(void**) (code - 8) = mpenter;
+      *(void**) (code - 8) = ap_main;
 
-      lapicstartap (c->id, vtop (code));
+      lapic_start_ap (c->id, vtop (code));
 
-      /* wait for cpu to finish mpmain() */
+      /* wait for cpu to start up */
       while (!atomic_load (&c->started))
-	;
+        ;
+
+      num_started++;
     }
+
+  /* comment is incomprehensible. please fix XXX */
   /* Each AP is woken up sequentially and blocks until startedothers
    * is true. Interrupts are disabled here, therefore AP's do not 
    * need to hold spinlocks. Attempting to do so will cause a triple
@@ -321,8 +360,9 @@ startothers (void)
    * polling the lapic instead for the cpu ID.
    */
   atomic_store (&cpu_can_acquire_spinlock, 1);
-  atomic_store (&cpu_startedothers, 1);
+  atomic_store (&cpu_started_others, 1);
   intr_disable_pop ();
+  return num_started;
 }
 
 /* Breaks the kernel command line into words and returns them as
@@ -421,8 +461,8 @@ run_task (char **argv)
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
   process_wait (process_execute (task));
-#elif MISC
-  run_misc_test (task);
+#elif SELFTEST
+  run_self_test (task);
 #else
   run_test (task);
 #endif

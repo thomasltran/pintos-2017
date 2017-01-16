@@ -22,11 +22,10 @@ volatile uint32_t *lapic_base_addr;
 int lapic_get_cpuid (void);
 void lapic_ack (void);
 void lapic_init (void);
-void lapicstartap (uint8_t, uint32_t);
-void lapicsendcpu (int, uint8_t);
-void lapicsendallbutself (int);
-void lapicsendmask (int, struct bitmap *);
-void lapicsendall (int);
+void lapic_start_ap (uint8_t, uint32_t);
+void lapic_send_ipi_to (int, uint8_t);
+void lapic_send_ipi_to_all_but_self (int);
+void lapic_send_ipi_to_all (int);
 void lapic_set_next_event (uint32_t);
 
 #endif /* DEVICES_LAPIC_H_ */

@@ -18,12 +18,14 @@ threads_SRC += threads/thread.c		# Thread management core.
 threads_SRC += threads/switch.S		# Thread switch routine.
 threads_SRC += threads/interrupt.c	# Interrupt core.
 threads_SRC += threads/intr-stubs.S	# Interrupt stubs.
-threads_SRC += threads/synch.c		# Synchronization.
+threads_SRC += threads/spinlock.c	# Synchronization - spinlocks.
+threads_SRC += threads/synch.c		# Synchronization - higher-level constructs.
 threads_SRC += threads/palloc.c		# Page allocator.
 threads_SRC += threads/malloc.c		# Subpage allocator.
 threads_SRC += threads/mp.c			# Multi-processor.
 threads_SRC += threads/ipi.c		# Inter-processor interrupts.
-threads_SRC += threads/scheduler.c      # Scheduler class
+threads_SRC += threads/cpu.c		# Per-CPU data structure definitions.
+threads_SRC += threads/scheduler.c  # Scheduler class
 threads_SRC += threads/gdt.c		# GDT initialization.
 threads_SRC += threads/tss.c		# TSS management.
 # Device driver code.

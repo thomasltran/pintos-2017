@@ -3,7 +3,7 @@
  */
 #include "threads/gdt.h"
 #include "threads/interrupt.h"
-#include "misc_tests.h"
+#include "tests.h"
 #include "threads/cpu.h"
 #include <string.h>
 
