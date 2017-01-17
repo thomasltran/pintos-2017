@@ -69,10 +69,9 @@ environment.
 To obtain our local copy of Pintos, you need to use the @command{git}
 version control system.
 To start with, you should fork my copy available at
-@uref{https://git.cs.vt.edu/gback/pintos-2015}
-
-As we are using gitlab for the first time this semester, instructions
-will be posted separately.
+@uref{https://git.cs.vt.edu/gback/pintos-2017}
+The Pintos code is in the master branch.
+We will post necessary updates there.
 
 Let's take a look at what's inside.  Here's the directory structure
 that you should see in @file{pintos/src}:
@@ -128,6 +127,9 @@ the tests.
 @item examples/
 Example user programs for use starting with project 2.
 
+@item selftest/
+A number of self tests, particularly for the SMP-related code.
+
 @item misc/
 @itemx utils/
 These files may come in handy if you decide to try working with Pintos
@@ -142,7 +144,7 @@ the first project.  First, @command{cd} into the @file{threads}
 directory.  Then, issue the @samp{make} command.  This will create a
 @file{build} directory under @file{threads}, populate it with a
 @file{Makefile} and a few subdirectories, and then build the kernel
-inside.  The entire build should take less than 30 seconds.
+inside.  The entire build should complete in a few seconds.
 
 @localcrossbuild{}
 
@@ -236,57 +238,57 @@ The Pintos kernel has commands and options other than @command{run}.
 These are not very interesting for now, but you can see a list of them
 using @option{-h}, e.g.@: @code{pintos -h}.
 
-@node Debugging versus Testing
-@subsection Debugging versus Testing
+@c @node Debugging versus Testing
+@c @subsection Debugging versus Testing
 
-When you're debugging code, it's useful to be able to run a
-program twice and have it do exactly the same thing.  On second and
-later runs, you can make new observations without having to discard or
-verify your old observations.  This property is called
-``reproducibility.''  One of the simulators that Pintos supports, Bochs,
-can be set up for
-reproducibility, and that's the way that @command{pintos} invokes it
-by default.
+@c When you're debugging code, it's useful to be able to run a
+@c program twice and have it do exactly the same thing.  On second and
+@c later runs, you can make new observations without having to discard or
+@c verify your old observations.  This property is called
+@c ``reproducibility.''  One of the simulators that Pintos supports, Bochs,
+@c can be set up for
+@c reproducibility, and that's the way that @command{pintos} invokes it
+@c by default.
 
-Of course, a simulation can only be reproducible from one run to the
-next if its input is the same each time.  For simulating an entire
-computer, as we do, this means that every part of the computer must be
-the same.  For example, you must use the same command-line argument, the
-same disks, the same version
-of Bochs, and you must not hit any keys on the keyboard (because you
-could not be sure to hit them at exactly the same point each time)
-during the runs.
+@c Of course, a simulation can only be reproducible from one run to the
+@c next if its input is the same each time.  For simulating an entire
+@c computer, as we do, this means that every part of the computer must be
+@c the same.  For example, you must use the same command-line argument, the
+@c same disks, the same version
+@c of Bochs, and you must not hit any keys on the keyboard (because you
+@c could not be sure to hit them at exactly the same point each time)
+@c during the runs.
 
-While reproducibility is useful for debugging, it is a problem for
-testing thread synchronization, an important part of most of the projects.  In
-particular, when Bochs is set up for reproducibility, timer interrupts
-will come at perfectly reproducible points, and therefore so will
-thread switches.  That means that running the same test several times
-doesn't give you any greater confidence in your code's correctness
-than does running it only once.
+@c While reproducibility is useful for debugging, it is a problem for
+@c testing thread synchronization, an important part of most of the projects.  In
+@c particular, when Bochs is set up for reproducibility, timer interrupts
+@c will come at perfectly reproducible points, and therefore so will
+@c thread switches.  That means that running the same test several times
+@c doesn't give you any greater confidence in your code's correctness
+@c than does running it only once.
 
-So, to make your code easier to test, we've added a feature, called
-``jitter,'' to Bochs, that makes timer interrupts come at random
-intervals, but in a perfectly predictable way.  In particular, if you
-invoke @command{pintos} with the option @option{-j @var{seed}}, timer
-interrupts will come at irregularly spaced intervals.  Within a single
-@var{seed} value, execution will still be reproducible, but timer
-behavior will change as @var{seed} is varied.  Thus, for the highest
-degree of confidence you should test your code with many seed values.
+@c So, to make your code easier to test, we've added a feature, called
+@c ``jitter,'' to Bochs, that makes timer interrupts come at random
+@c intervals, but in a perfectly predictable way.  In particular, if you
+@c invoke @command{pintos} with the option @option{-j @var{seed}}, timer
+@c interrupts will come at irregularly spaced intervals.  Within a single
+@c @var{seed} value, execution will still be reproducible, but timer
+@c behavior will change as @var{seed} is varied.  Thus, for the highest
+d@c egree of confidence you should test your code with many seed values.
 
-On the other hand, when Bochs runs in reproducible mode, timings are not
-realistic, meaning that a ``one-second'' delay may be much shorter or
-even much longer than one second.  You can invoke @command{pintos} with
-a different option, @option{-r}, to set up Bochs for realistic
-timings, in which a one-second delay should take approximately one
-second of real time.  Simulation in real-time mode is not reproducible,
-and options @option{-j} and @option{-r} are mutually exclusive.
+@c On the other hand, when Bochs runs in reproducible mode, timings are not
+@c realistic, meaning that a ``one-second'' delay may be much shorter or
+@c even much longer than one second.  You can invoke @command{pintos} with
+@c a different option, @option{-r}, to set up Bochs for realistic
+@c timings, in which a one-second delay should take approximately one
+@c second of real time.  Simulation in real-time mode is not reproducible,
+@c and options @option{-j} and @option{-r} are mutually exclusive.
 
-The QEMU simulator is available as an
-alternative to Bochs (use @option{--qemu} when invoking
-@command{pintos}).  The QEMU simulator is much faster than Bochs, but it
-only supports real-time simulation and does not have a reproducible
-mode.
+@c The QEMU simulator is available as an
+@c alternative to Bochs (use @option{--qemu} when invoking
+@c @command{pintos}).  The QEMU simulator is much faster than Bochs, but it
+@c only supports real-time simulation and does not have a reproducible
+@c mode.
 
 @node Grading
 @section Grading
@@ -330,9 +332,9 @@ By default, each test provides feedback only at completion, not during
 its run.  If you prefer, you can observe the progress of each test by
 specifying @option{VERBOSE=1} on the @command{make} command line, as in
 @code{make check VERBOSE=1}.  You can also provide arbitrary options to the
-@command{pintos} run by the tests with @option{PINTOSOPTS='@dots{}'},
-e.g.@: @code{make check PINTOSOPTS='-j 1'} to select a jitter value of 1
-(@pxref{Debugging versus Testing}).
+@command{pintos} run by the tests with @option{PINTOSOPTS='@dots{}'}.
+@c e.g.@: @code{make check PINTOSOPTS='-j 1'} to select a jitter value of 1
+@c (@pxref{Debugging versus Testing}).
 
 All of the tests and related files are in @file{pintos/src/tests}.
 Before we test your submission, we will replace the contents of that
@@ -483,9 +485,9 @@ compiler doesn't care about how it looks or how well it is written.
 @section Changes
 
 In Spring 2017, Pintos was upgraded to a Symmetric MultiProcessing (@acronym{SMP})
-kernel. The reference manual has been updated to reflect those changes. The
-first project (@pxref{Threads}) has been changed to reflect recent
-developments in Operating Systems. None of the other projects were affected. 
+kernel. The reference manual has mostly been updated to reflect those changes. The
+first project (@pxref{Threads}) has been entirely revamped.
+None of the other projects were affected. 
 
 Change details:
 
@@ -549,6 +551,9 @@ Pfaff @email{blp@@cs.stanford.edu}.
 
 Support for PCI, USB, GRUB, partitions, UHCI, and other features
 were contributed by Anthony Romano @email{chz@@vt.edu}.
+
+Support for SMP was added by Lance Chao @email{kisseki@@vt.edu},
+based in part on code provided by MIT's xv6 operating system.
 
 The GDB macros supplied with Pintos were written by Godmar Back
 @email{gback@@cs.vt.edu}, and their documentation is adapted from his

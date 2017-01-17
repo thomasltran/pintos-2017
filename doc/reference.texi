@@ -235,6 +235,101 @@ kernel thread.
 @item @t{00100000}--@t{03ffffff} @tab Pintos @tab Dynamic memory allocation.
 @end multitable
 
+@node Struct CPU
+@subsection Struct CPU
+
+@file{threads/cpu.h} declares two variables. @var{cpus} is an array of
+@code{struct cpu}. Each entry in the array holds information about a particular
+CPU. @var{ncpu} is set in @code{threads/mp.h} to the number of CPUs found 
+on the processor.
+@code{struct cpu} defines a structure that represents a CPU in the system.
+@deftypecv {Member} {@struct{cpu}} {uint8_t} id
+A unique ID number assigned to each CPU by the lapic, used as an index in the 
+@var{cpus} array. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct tss} ts
+The CPU's task state segment, which is used to identify a kernel stack
+used by the kernel when switching from user space to kernel space.
+See (@file{threads/tss.c})
+@end deftypecv
+  
+@deftypecv {Member} {@struct{cpu}} {struct gdt} gdt
+The CPU's global descriptor table, which is used to identify the memory segments.
+The segment registers point to their respective memory segments. Importantly,
+each CPU sets up a different segment for the %gs register, used to implement
+CPU local variables
+See (@file{threads/gdt.c})
+@end deftypecv
+  
+@deftypecv {Member} {@struct{cpu}} {int} started
+Indicates whether an application processor has been awoken. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {int} ncli
+Nesting counter used by @code{intr_disable_push ()} and @code{intr_disable_pop ()} to 
+determine whether or not intr_disable_pop () should re-enable 
+interrupts. 
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {int} intena
+Flag to indicate whether or not interrupts were disabled
+when @code{intr_disable_push ()} was called at the outermost level (@code{ncli == 0}).
+If so, then @code{intr_disable_pop ()} won't reenable interrupts 
+even if @var{ncli} becomes 0.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {bool} in_external_intr
+Flag indicating whether or not the CPU is processing an external
+interrupt. (@xref{External Interrupt Handling}.)
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {bool} yield_on_return
+Flag used by the scheduler to enforce preemption upon return from
+a timer interrupt.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} idle_ticks
+Number of ticks that this CPU has spent running the idle thread.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} user_ticks
+Number of ticks that this CPU has spent running the user threads.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} kernel_ticks
+Number of ticks that this CPU has spent running the kernel threads.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {uint64_t} cs
+Number of context switches this CPU has made.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct ready_queue} rq
+A structure defined by the scheduler that contains, among other things,
+a list of threads on the CPU's runqueue.
+@end deftypecv
+
+@deftypecv {Member} {@struct{cpu}} {struct cpu *} cpu
+A pointer to this struct cpu.
+@end deftypecv
+
+A running thread may need to reference the @code{struct cpu} describing the
+CPU on which it is running.  This is a frequent operation, so this access
+is optimized by dedicating a particular segment to holding each CPU's
+@code{struct cpu}, then accessing it via the %gs segment register.
+
+@deftypefun {struct cpu *} get_cpu (void)
+Returns a pointer to the caller's @code{struct cpu}. This is an
+assembly routine that references an address using the %gs register
+@end deftypefun
+
+@deftypefun void set_cpu (struct cpu *cpu)
+Called by the GDT module to load the %gs register so that it
+points at the segment where this struct is allocated.
+The id of the current CPU can be obtained from the LAPIC 
+(see @file{devices/lapic.c})
+@end deftypefun
 @node Threads
 @section Threads
 
@@ -602,12 +697,12 @@ An atomic operation is an operation that appears to the rest of the system
 to occur instantaneously. The operation cannot be seen in a half-finished
 state: it either succeeds, in which case it fully changed the desired state
 of the system, or failed with no apparent effect. Atomic operations are
-supported by the hardware. 
+supported by the hardware.
 
 Atomic operations are declared in @file{lib/atomic-ops.c}
 
 @deftypefun {uint32_t} atomic_xchg (int *@var{addr}, int @var{newval})
-Exchanges the value stored at @var{addr} with @var{newval} and return the old value
+Exchanges the value stored at @var{addr} with @var{newval} and returns the old value.
 @end deftypefun
 
 @deftypefun {int} atomic_inci (int *num)
@@ -624,7 +719,7 @@ Atomically add AMT to num. Returns the new value.
 
 @deftypefun {int} atomic_cmpxchg (int *num, int *old, int *new)
 Compare-And-Swap. If *num == *old, set it to *new and return true.
-Else return false
+Else do not change *num and return false.
 @end deftypefun
 
 @deftypefun {int} atomic_load (int *num)
@@ -635,26 +730,49 @@ Atomically read *num.
 Atomically set *num to val. 
 @end deftypefun
 
-These atomic operations run with sequentially consistent ordering. 
-To improve performance, many compilers, and even sometimes the 
-hardware, reorder instructions, which
-may cause unexpected behavior in multithreaded environments. 
-In addition, modern processors have a habit of storing recent writes
-in caches rather than main memory, which means that any changes 
-cannot be seen immediately by other CPUs.  
-With sequentially consistent ordering, the compilers can prevent
-incorrect reordering as well as emit memory barriers to ensure that
-reads and writes are consistent on the hardware level. 
+Atomic operations have important uses and non-uses.
 
-Details of memory ordering is beyond the scope of this document.
-To be safe, always use atomic operations on shared variables, even
-for reading a shared variable or writing to one. 
+They can and should be used to update individual variables stored
+in memory that may be accessed simultaneously by multiple threads.
+Atomic operations also provide the building blocks for spinlocks.
+
+The use of these primitives has an important side benefit that ensures
+that the program is not affected by two sources of unexpected behavior.
+
+First, to improve performance, many compilers reorder instructions
+if they appear unrelated.  This may move loads or store that
+occur before or after an operation to be moved after or before it.
+By contrast, for an atomic operation, all loads and all store
+that appear in the source code before or after it will appear in the
+instruction stream before or after it, respectively.
+
+Second, on some architectures, the hardware may reorder the 
+execution of instructions regardless of their position in the
+instruction stream.  For atomic operations, the compiler will
+emit any additional instructions that may be necessary to prevent 
+the hardware from performing such reorderings.  
+
+Altogether, atomic operations create a sequentially consistent 
+ordering of memory accesses. 
+Details of memory models are beyond the scope of this document.
+
+Although some architectures (e.g., x86) may not require the use
+of atomic primitives for certain operations, to be safe, you
+should always use atomic operations on shared variables when
+sequential consistency is desired.
+
+Atomic operations generally cannot be used if the data whose mutation must
+be atomic does not fit into a single word, such as when multiple
+words in memory must be read and/or written atomically.
+In these cases, synchronization constructs that can bracket
+sequences of reads and writes to multiple memory locations so that
+they appear atomic to the threads using those constructs must be used.
 
 @node Disabling Interrupts
 @subsection Disabling Interrupts
 
-On uniprocessor systems, such as Pintos before the Spring 2017 upgrade,
-the crudest way to do synchronization is to 
+On uniprocessor systems, such as older versions of Pintos,
+the crudest way to achieve synchronization is to 
 disable interrupts, that is, to temporarily prevent the CPU from 
 responding to interrupts.  If interrupts are off, no other thread will 
 preempt the running thread, because thread preemption is driven by the 
@@ -663,16 +781,20 @@ running thread may be preempted by another at any time, whether between
 two C statements or even within the execution of one.
 
 Incidentally, this means that Pintos is a ``preemptible kernel,'' that
-is, kernel threads can be preempted at any time.  Traditional Unix
-systems are ``nonpreemptible,'' that is, kernel threads can only be
-preempted at points where they explicitly call into the scheduler.
+is, kernel threads can be preempted at any time.  By contrast, the original Unix
+system was ``nonpreemptible,'' that is, kernel threads could only be
+preempted at points where they explicitly called into the scheduler.
 (User programs can be preempted at any time in both models.)  As you
 might imagine, preemptible kernels require more explicit
 synchronization.
 
-With SMP-capable Pintos, disabling interrupts will be necessary but
-generally not fully sufficient in preventing race conditions 
-(@pxref{Spinlocks}).
+In this SMP-capable version of Pintos, disabling interrupts prevents
+context switches to other threads on the current CPU, but does not
+provide synchronization with accesses originating by threads running
+on other CPUs.  Thus, the main purpose of disabling interrupts is
+to prevent interrupt handlers from running on the current CPU
+and to disable preemption on the current CPU.
+
 You should have little need to set the interrupt state directly.  Most
 of the time you should use the other synchronization primitives
 described in the following sections.  
@@ -686,51 +808,88 @@ Types and functions for disabling and enabling interrupts are in
 @file{threads/interrupt.h}.
 
 @deftp Type {enum intr_level}
-One of @code{INTR_OFF} or @code{INTR_ON}, denoting that interrupts are
-disabled or enabled, respectively.
+One of @code{INTR_OFF} or @code{INTR_ON}, denoting that interrupts on
+the current CPU are disabled or enabled, respectively.
 @end deftp
 
 @deftypefun {enum intr_level} intr_get_level (void)
-Returns the current interrupt state.
+Returns the current CPU's interrupt state.
 @end deftypefun
 
 @deftypefun {enum intr_level} intr_set_level (enum intr_level @var{level})
-Turns interrupts on or off according to @var{level}.  Returns the
-previous interrupt state.
+Turns interrupts on or off on the current CPU according to @var{level}.  
+Returns the previous interrupt state.
 @end deftypefun
 
 @deftypefun {enum intr_level} intr_enable (void)
-Turns interrupts on.  Returns the previous interrupt state.
+Turns interrupts on on the current CPU.  Returns its previous interrupt state.
 @end deftypefun
 
 @deftypefun {enum intr_level} intr_disable (void)
-Turns interrupts off.  Returns the previous interrupt state.
+Turns interrupts off on the current CPU.  Returns its previous interrupt state.
 @end deftypefun
+
+@deftypefun {void} intr_disable_push (void)
+Turns interrupts off on the current CPU.  Increment current CPU's
+nesting count by 1.  If nesting count was zero, remember current interrupt level.
+@end deftypefun
+
+@deftypefun {void} intr_disable_pop (void)
+Decrement current CPU's nesting count.  If the count reaches zero, restore
+interrupt state present on outermost call to intr_disable_push().
+@end deftypefun
+
+Side note: the function pairs @code{intr_disable_push} and @code{intr_disable_pop} 
+provide overlapping functionality with @code{intr_set_level} and @code{intr_get_level}.
+@c and intr_disable_pop is a really bad name for a function that may enable interrupts.
 
 @node Spinlocks
 @subsection Spinlocks
 
-On an SMP-capable Operating System like PintOS, it is generally not
-safe to make any uniprocessor assumptions.
-On multiprocessor
-systems, disabling interrupts is not sufficient in preventing race
-conditions, since it does not prevent a thread running on another CPU
-from accessing shared data.
+@c repeats what's already said? FIX?
+On multiprocessor systems, disabling interrupts is not sufficient in 
+preventing race conditions, since it does not prevent a thread running 
+on another CPU from accessing shared data.
 
-A @dfn{spinlock} is a mutual exclusion lock that spins until the lock is 
-acquired. It also disables interrupts to avoid race conditions caused by
-external interrupts. Holding a spinlock for a long time may cause other CPUs to
-waste time spinning to acquire it.
+A @dfn{spinlock} is a synchronization device that can be used when threads
+run on multiple CPUs.  Acquiring a spinlock gives a thread the right
+to access a data structure or other resource protected by that lock.
+It is called a spinlock because a thread will simply ``spin'' (try repeatedly)
+to acquire it if the lock is currently held by a thread on another CPU.
+Consequently, spinlocks must not be held for long time periods to
+avoid wasting CPU time.
 
-In general, @ref{Locks} are preferred over spinlocks, since spinlocks can
-potentially cause a CPU to burn many cycles doing no work, while 
-locks can preempt the current thread. 
-Spinlocks are generally used when the current thread cannot be put to sleep, 
-such as when its servicing an external interrupt 
-(@pxref{External Interrupt Handling}), or inside the scheduler
+Threads holding a spinlock must not be preempted (otherwise,
+another thread could attempt to acquire the spinlock, leading to deadlock).
+In Pintos, this is accomplished by disabling interrupts as a side effect
+of acquiring a spinlock.  Other systems, such as Linux, merely disable
+preemption (rather than all interrupts) when acquiring a spinlock.
 
-Pintos' spinlock type and operatings are declared in
-@file{threads/synch.h}.
+Threads holding spinlocks must not block for any reason - otherwise,
+the same problems -- deadlock or wastage of CPU time -- could occur.  
+The current implementation will panic if an attempt is made to schedule
+another thread while the outgoing thread holds a spinlock.
+Because of this design, no two threads on the same CPU will ever
+hold or compete for a spinlock.  Consequently, we may sometimes refer 
+to a spinlock as being held by a given CPU when that CPU's current
+thread holds it.
+
+For this reason, @ref{Locks} are preferred
+over spinlocks for many synchronization tasks, but spinlocks must be
+used inside the ready queue core implementation and to implement 
+higher-level synchronization primitives.  However, if it is known
+that the thread holding the lock will not block, and if the time
+during which the lock is expected to be held is small, it is perfectly
+acceptable to use spinlocks to protect other data structures.
+
+Since Pintos spinlocks disable interrupts on the current CPU, it is
+safe to acquire them from an interrupt handler. As such, they can 
+be used to synchronize between threads and interrupt handlers when
+both access shared data, no matter on which CPU the thread or interrupt
+handler runs.  This feature is primarily used by Pintos's device drivers.
+
+Pintos' spinlock type and operations are declared in
+@file{threads/spinlock.h}.
 
 @deftp {Type} {struct spinlock}
 Represents a spinlock.
@@ -749,7 +908,7 @@ any current owner to release it if necessary.
 @deftypefun bool spinlock_try_acquire (struct spinlock *@var{spinlock})
 Tries to acquire @var{spinlock} for use by the current thread, without
 waiting.  Returns true if successful, false if the spinlock is already
-owned.  
+owned by another thread.
 @end deftypefun
 
 @deftypefun void spinlock_release (struct spinlock *@var{spinlock})
@@ -757,8 +916,7 @@ Releases @var{spinlock}, which the current thread must own.
 @end deftypefun
 
 @deftypefun bool spinlock_held_by_current_cpu (const struct spinlock *@var{spinlock})
-Returns true if this cpu owns @var{spinlock},
-false otherwise.
+Returns true if this cpu owns @var{spinlock}, false otherwise.
 @end deftypefun
 
 @node Semaphores

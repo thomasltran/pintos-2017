@@ -123,6 +123,9 @@ install @file{WWW} wherever you find most useful.
 @node Building Bochs for Pintos
 @section Building Bochs for Pintos
 
+The information in this section is currently out of date.
+The current version of Pintos has not been debugged with Bochs as of yet.
+
 Upstream Bochs has bugs and warts that should be fixed when used with
 Pintos.  Thus, Bochs should be installed manually for use with Pintos,
 instead of using the packaged version of Bochs included with an
@@ -147,10 +150,10 @@ of patches for this version of Bochs are included in @file{src/misc}:
 Makes the GDB stubs work on big-endian systems such as Solaris/Sparc, by
 doing proper byteswapping.  It should be harmless elsewhere.
 
-@item bochs-2.2.6-jitter.patch
+@c @item bochs-2.2.6-jitter.patch
 
-Adds the ``jitter'' feature, in which timer interrupts are delivered at
-random intervals (@pxref{Debugging versus Testing}).
+@c Adds the ``jitter'' feature, in which timer interrupts are delivered at
+@c random intervals (@pxref{Debugging versus Testing}).
 
 @item bochs-2.2.6-triple-fault.patch
 

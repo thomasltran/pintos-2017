@@ -64,11 +64,11 @@ terminates.  Each thread, therefore, acts like a mini-program running
 inside Pintos, with the function passed to @func{thread_create}
 acting like @func{main}.
 
-At any given time, exactly one thread runs and the rest, if any,
-become inactive.  The scheduler decides which thread to
-run next.  (If no thread is ready to run
-at any given time, then the special ``idle'' thread, implemented in
-@func{idle}, runs.)
+At any given time, exactly one thread runs on each CPU.
+The remaining threads, if any, become inactive.  
+The scheduler decides which thread to run next on a CPU.
+(If no thread is ready to run at any given time, then the 
+special ``idle'' thread, implemented in @func{idle}, runs.)
 Synchronization primitives can force context switches when one
 thread needs to wait for another thread to do something.
 
@@ -103,103 +103,19 @@ declare large data structures as non-static local variables,
 e.g. @samp{int buf[1000];}.  Alternatives to stack allocation include
 the page allocator and the block allocator (@pxref{Memory Allocation}).
 
-@node Struct CPU
-@subsection Struct CPU
+@node Understanding CPUs
+@subsection Understanding CPUs
 
-A CPU is similar to a worker in a threadpool. Each CPU has a list of 
- threads that it needs to run, as well as 
- other information about the state of that CPU. Each CPU also 
- needs to be able to identify itself. 
+In an operating system that supports multiple CPUs, such as this version
+of Pintos, each CPU must be independently managed.  For instance, the
+OS needs to track keep of which threads are currently assigned to
+that CPU, and which thread is currently running on that CPU (or whether
+that CPU's idle thread is running).
 
-@file{threads/cpu.h} declares two variables. @var{cpus} is an array of
-@code{struct cpu}. Each entry in the array holds information about a particular
-CPU. @var{ncpu} is set in @code{threads/mp.h} to the number of CPUs found 
-on the processor.
-@code{struct cpu} defines a structure that represents a CPU in the system.
-@deftypecv {Member} {@struct{cpu}} {uint8_t} id
-A unique ID number assigned to each CPU by the lapic, used as an index in the 
-@var{cpus} array. 
-@end deftypecv
+Per-CPU information is also used for interrupt management, as multiple
+CPUs may each be handling interrupts.
 
-@deftypecv {Member} {@struct{cpu}} {struct tss} ts
-The CPU's task state segment, which is used to identify a kernel stack
-used by the kernel when switching from user space to kernel space.
-See (@file{threads/tss.c})
-@end deftypecv
-  
-@deftypecv {Member} {@struct{cpu}} {struct gdt} gdt
-The CPU's global descriptor table, which is used to identify the memory segments.
-The segment registers point to their respective memory segments. Importantly,
-each CPU sets up a different segment for the %gs register, used to implement
-CPU local variables
-See (@file{threads/gdt.c})
-@end deftypecv
-  
-@deftypecv {Member} {@struct{cpu}} {int} started
-Indicates whether an application processor has been awoken. 
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {int} ncli
-Counter used by @code{pushcli ()} and @code{popcli ()} to 
-determine whether or not popcli () should re-enable 
-interrupts. 
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {int} intena
-Flag to indicate whether or not interrupts were disabled
-before @code{pushcli ()} was called. If so, then @code{popcli ()}
-won't enable interrupts even if @var{ncli} becomes 0.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {bool} in_external_intr
-Flag indicating whether or not the CPU is processing an external
-interrupt. (@xref{External Interrupt Handling}.)
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {bool} yield_on_return
-Flag used by the scheduler to enforce preemption upon return from
-a timer interrupt.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {uint64_t} idle_ticks
-Number of ticks that this CPU has spent running the idle thread.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {uint64_t} user_ticks
-Number of ticks that this CPU has spent running the user threads.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {uint64_t} kernel_ticks
-Number of ticks that this CPU has spent running the kernel threads.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {uint64_t} cs
-Number of context switches this CPU has made.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {struct rq} rq
-A structure defined by the scheduler that contains, among other things,
-a list of threads on the CPU's runqueue.
-@end deftypecv
-
-@deftypecv {Member} {@struct{cpu}} {struct cpu *} cpu
-A pointer to this struct cpu.
-@end deftypecv
-
-Each CPU needs a reference to its @code{struct cpu}. This is done 
-by taking advantage of memory segmentation, and the fact that each
-CPU has registers pointing to different segments of memory. 
-
-@deftypefun {struct cpu *} get_cpu (void)
-Returns a pointer to the caller's @code{struct cpu}. This is done
-by referencing memory stored in the %gs register
-@end deftypefun
-
-@deftypefun void set_cpu (struct cpu *cpu)
-Called by the GDT module to load the %gs register with &cpus[id].
-The id of the current CPU can be obtained from the lapic 
-(see @file{devices/lapic.c})
-@end deftypefun
+@xref{Struct CPU} for full details of how a CPU is represented in Pintos.
 
 @node Project 1 Source Files
 @subsection Source Files
@@ -279,9 +195,17 @@ off.  @xref{Interrupt Handling}, for more information.
 Assembly code for low-level interrupt handling.  @xref{Interrupt
 Infrastructure}, for more information.
 
+@item spinlock.c
+@itemx spinlock.h
+Implementation of spinlocks.  Spinlocks are low-level synchronization
+primitives.  Some parts of the kernel use them directly, but because of
+their restrictions, usually higher-level synchronization primitives
+such as locks or semaphores are being used.
+@xref{Synchronization}, for more information.
+
 @item synch.c
 @itemx synch.h
-Basic synchronization primitives: spinlocks, semaphores, locks, condition
+Basic synchronization primitives: semaphores, locks, condition
 variables, and optimization barriers.  You will need to use these for
 synchronization in all
 four projects.  @xref{Synchronization}, for more information.
@@ -581,9 +505,9 @@ milliseconds, microseconds, or nanoseconds, respectively, but these will
 call @func{timer_sleep} automatically when necessary.  You do not need
 to modify them.
 
-If your delays seem too short or too long, reread the explanation of the
-@option{-r} option to @command{pintos} (@pxref{Debugging versus
-Testing}).
+@c If your delays seem too short or too long, reread the explanation of the
+@c @option{-r} option to @command{pintos} (@pxref{Debugging versus
+@c Testing}).
 
 The alarm clock implementation is not needed for later projects,
 although it could be useful for project 4.
@@ -593,7 +517,15 @@ although it could be useful for project 4.
 
 For this part of the project, you will be working primarily in @file{threads/scheduler.c}.
 
-The goal of a general-purpose scheduler is to balance threads' different scheduling needs. Threads that perform a lot of I/O require a fast response time to keep input and output devices busy, but need little CPU time. On the other hand, compute-bound threads need to receive a lot of CPU time to finish their work, but have no requirement for fast response time. Other threads lie somewhere in between, with periods of I/O punctuated by periods of computation, and thus have requirements that vary over time. A well-designed scheduler can often accommodate threads with all these requirements simultaneously. 
+The goal of a general-purpose scheduler is to balance threads' different
+scheduling needs. Threads that perform a lot of I/O require a fast
+response time to keep input and output devices busy, but need little
+CPU time. On the other hand, compute-bound threads need to receive a
+lot of CPU time to finish their work, but have no requirement for fast
+response time. Other threads lie somewhere in between, with periods of
+I/O punctuated by periods of computation, and thus have requirements
+that vary over time. A well-designed scheduler can often accommodate
+threads with all these requirements simultaneously.
 
 In addition, schedulers also have the following general goals:@*
 @enumerate
@@ -608,7 +540,7 @@ Minimizing scheduling overhead.
 
 @end enumerate
 
-Often, the latter two goals conflict with each other. 
+Often, the latter two goals conflict with each other.
 
 Implement an advanced scheduler similar to the
 @acronym{CFS} scheduler used by Linux.
@@ -626,14 +558,14 @@ The advanced scheduler is not used in any later project.
 @node Load Balancer
 @subsection Load Balancer
 
-Multiprocessor scheduling is one of many difficulties that arose with the 
+Multiprocessor scheduling is one of many difficulties that arose with the
 arrival of multicore technology. How can an operating system keep all cores
 busy?
 
 One of the simplist ways to do this is to keep the threads in a global queue
 that is shared by all CPUs. An advantage to this approach is that it ensures
 that no CPU is idle while threads are ready to run (but are not currently
-running). However, global queue has two main weaknesses. 
+running). However, global queue has two main weaknesses.
 
 The first weakness is lack of
 scability. The global queue must be locked while choosing the next job to run.
@@ -641,9 +573,9 @@ Locking greatly reduces performance as the number of CPUs grow. Each CPU will
 spend more and more time contenting for the global queue lock and less time
 actually running threads.
 
-The second weakness is cache affinity. A thread builds up a fair amount of 
+The second weakness is cache affinity. A thread builds up a fair amount of
 state in the cache and TLB associated with its running CPU. It is advantageous
-to run it on the same CPU each time, as it will run faster than if it ran on 
+to run it on the same CPU each time, as it will run faster than if it ran on
 a different CPU where its memory is far less likely to be stored in the CPU cache.
 A global queue makes preserving cache affinity far less likely, since threads are
 equally likely to be chosen by any CPU.
