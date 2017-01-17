@@ -2,7 +2,7 @@
 #define DEVICES_INTQ_H
 
 #include "threads/interrupt.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 
 /* An "interrupt queue", a circular buffer shared between
    kernel threads and external interrupt handlers.
@@ -24,8 +24,7 @@
 struct intq
   {
     /* Waiting threads. */
-    struct lock lock;           /* Only one thread may wait at once. */
-    struct spinlock spinlock;   /* Protect threads from interrupt handlers */
+    struct spinlock spinlock;   /* Protects other fields in this struct. */
     struct thread *not_full;    /* Thread waiting for not-full condition. */
     struct thread *not_empty;   /* Thread waiting for not-empty condition. */
 

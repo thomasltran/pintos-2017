@@ -92,7 +92,7 @@ ioapic_init (void)
 
 /* Route interrupt irq to the CPU with ID cpunum */
 void
-ioapicenable (int irq, int cpunum)
+ioapic_enable (int irq, int cpunum)
 {
   if (!cpu_ismp)
     return;

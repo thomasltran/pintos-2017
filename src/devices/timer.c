@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "devices/pit.h"
 #include "threads/interrupt.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 #include "threads/thread.h"
 #include "threads/cpu.h"
 #include "devices/trap.h"

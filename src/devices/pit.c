@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 #include "threads/io.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 
 /* Interface to 8254 Programmable Interrupt Timer (PIT).
    Refer to [8254] for details. */

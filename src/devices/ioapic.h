@@ -6,7 +6,7 @@
 uint8_t ioapic_id;
 
 void ioapic_init (void);
-void ioapicenable (int irq, int cpu);
+void ioapic_enable (int irq, int cpu);
 
 
 #endif /* DEVICES_IOAPIC_H_ */

@@ -141,7 +141,7 @@ ide_init (void)
         }
 
       /* Route ide interrupts to cpu 0*/
-         ioapicenable (IRQ_IDE, IRQ_CPU);
+      ioapic_enable (IRQ_IDE, IRQ_CPU);
          
       /* Register interrupt handler. */
       intr_register_ext (c->irq, interrupt_handler, c->name);

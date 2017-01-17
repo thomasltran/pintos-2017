@@ -3,7 +3,7 @@
 #include "threads/io.h"
 #include "threads/interrupt.h"
 #include "devices/timer.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 
 /* Speaker port enable I/O register. */
 #define SPEAKER_PORT_GATE	0x61

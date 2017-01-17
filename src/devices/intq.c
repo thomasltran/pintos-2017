@@ -1,7 +1,7 @@
 #include "devices/intq.h"
 #include <debug.h>
 #include "threads/thread.h"
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 
 static int next (int pos);
 static void wait (struct intq *q, struct thread **waiter);
@@ -11,7 +11,6 @@ static void signal (struct intq *q, struct thread **waiter);
 void
 intq_init (struct intq *q) 
 {
-  lock_init (&q->lock);
   spinlock_init (&q->spinlock);
   q->not_full = q->not_empty = NULL;
   q->head = q->tail = 0;
@@ -20,20 +19,20 @@ intq_init (struct intq *q)
 void
 intq_acquire (struct intq *q) 
 {
-  spinlock_acquire(&q->spinlock);
+  spinlock_acquire (&q->spinlock);
 }
 
 void
 intq_release (struct intq *q) 
 {
-  spinlock_release(&q->spinlock);
+  spinlock_release (&q->spinlock);
 }
 
 /* Returns true if Q is empty, false otherwise. */
 bool
 intq_empty (struct intq *q) 
 {
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   return q->head == q->tail;
 }
 
@@ -41,7 +40,7 @@ intq_empty (struct intq *q)
 bool
 intq_full (struct intq *q) 
 {
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
   return next (q->head) == q->tail;
 }
 
@@ -53,14 +52,10 @@ intq_getc (struct intq *q)
 {
   uint8_t byte;
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (!intr_context ());
+
   while (intq_empty (q)) 
-    {
-      ASSERT (!intr_context ());
-      lock_acquire (&q->lock);
-      wait (q, &q->not_empty);
-      lock_release (&q->lock);
-    }
+    wait (q, &q->not_empty);
 
   byte = q->buf[q->tail];
   q->tail = next (q->tail);
@@ -75,14 +70,10 @@ void
 intq_putc (struct intq *q, uint8_t byte) 
 {
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (!intr_context ());
+
   while (intq_full (q))
-    {
-      ASSERT (!intr_context ());
-      lock_acquire (&q->lock);
-      wait (q, &q->not_full);
-      lock_release (&q->lock);
-    }
+    wait (q, &q->not_full);
 
   q->buf[q->head] = byte;
   q->head = next (q->head);
@@ -102,7 +93,6 @@ static void
 wait (struct intq *q, struct thread **waiter)
 {
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (intr_get_level () == INTR_OFF);
   ASSERT ((waiter == &q->not_empty && intq_empty (q))
           || (waiter == &q->not_full && intq_full (q)));
 
@@ -118,7 +108,6 @@ static void
 signal (struct intq *q, struct thread **waiter)
 {
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (intr_get_level () == INTR_OFF);
   ASSERT ((waiter == &q->not_empty && !intq_empty (q))
           || (waiter == &q->not_full && !intq_full (q)));
 

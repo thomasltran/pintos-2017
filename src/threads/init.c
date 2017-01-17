@@ -154,7 +154,7 @@ main (void)
   intr_enable ();
   timer_calibrate ();
 
-/*  usb_init (); */
+  usb_init ();
 #ifdef FILESYS
   /* Initialize file system. */
   usb_storage_init ();

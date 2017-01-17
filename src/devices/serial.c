@@ -96,7 +96,7 @@ serial_init_queue (void)
   serial_txq_acquire ();
   write_ier ();
   serial_txq_release ();
-  ioapicenable (IRQ_SERIAL, IRQ_CPU);
+  ioapic_enable (IRQ_SERIAL, IRQ_CPU);
   intr_register_ext (0x20 + IRQ_SERIAL, serial_interrupt, "serial");
 }
 
@@ -132,15 +132,15 @@ serial_putc (uint8_t byte)
       enum intr_level old_level = intr_get_level ();
       serial_txq_acquire ();
       if (old_level == INTR_OFF && intq_full (&txq)) 
-	{
+        {
           /* Interrupts are off; therefore we are likely
              in an interrupt handler, or else we are holding
              a spinlock. Transmit queue is
              full, so the next intq_putc would probably
              cause us to sleep. We can't sleep,
              so we'll send a character via polling instead. */
-	  putc_poll (intq_getc (&txq));
-	}
+          putc_poll (intq_getc (&txq));
+        }
 
       intq_putc (&txq, byte);
       write_ier ();
@@ -205,8 +205,10 @@ write_ier (void)
 
   /* Enable receive interrupt if we have room to store any
      characters we receive. */
+  input_acquire ();
   if (!input_full ())
     ier |= IER_RECV;
+  input_release ();
   
   outb (IER_REG, ier);
 }

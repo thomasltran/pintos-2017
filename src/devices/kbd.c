@@ -32,7 +32,7 @@ static intr_handler_func keyboard_interrupt;
 void
 kbd_init (void) 
 {
-  ioapicenable (IRQ_KBD, IRQ_CPU);
+  ioapic_enable (IRQ_KBD, IRQ_CPU);
   intr_register_ext (0x21, keyboard_interrupt, "8042 Keyboard");
 }
 

@@ -11,7 +11,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "threads/synch.h"
+#include "threads/spinlock.h"
 
 extern uint32_t *init_page_dir;
 
