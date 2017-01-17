@@ -30,7 +30,7 @@ print (void *args UNUSED)
   printf ("Thread %d: Printing Line 3\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 4\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 5\n", thread_current ()->tid);
-  intr_disable_pop ();
+  intr_enable_pop ();
   sema_up (&sema);
 }
 

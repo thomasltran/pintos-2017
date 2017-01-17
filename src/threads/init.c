@@ -314,7 +314,7 @@ start_other_cpus (void)
 {
   intr_disable_push ();
 
-  /* Temporarily clear cpu_can_acquire_spinlock until AP has started. */
+  /* Temporarily clear cpu_can_acquire_spinlock until all APs have started. */
   cpu_can_acquire_spinlock = 0;
 
   extern uint8_t _binary___threads_startother_start[],
@@ -331,6 +331,20 @@ start_other_cpus (void)
   memmove (code, _binary___threads_startother_start,
        (uint32_t) _binary___threads_startother_size);
 
+  /* Wake up each CPU (AP).  This is done sequentially (one at a time)
+   * because spinlocks cannot yet be used by those CPUs, but they must
+   * be able to call for instance palloc_get_page() to set up their
+   * idle threads.
+   *
+   * To avoid any races with interrupt handlers, all CPUs have interrupts
+   * turned off during this process.
+   *
+   * The startup code implements a simple rendezvous protocol in which
+   * the BSP waits until an AP signals that it has started by setting a
+   * flag.  The APs, in turn, wait until all APs have started before returning
+   * from ap_main().  At this point, all CPUs are properly set up so spinlocks
+   * can again be safely used.
+   */
   for (c = cpus; c < cpus + ncpu; c++)
     {
       if (c == cpus + lapic_get_cpuid ())     /* We've started already. */
@@ -350,18 +364,9 @@ start_other_cpus (void)
       num_started++;
     }
 
-  /* comment is incomprehensible. please fix XXX */
-  /* Each AP is woken up sequentially and blocks until startedothers
-   * is true. Interrupts are disabled here, therefore AP's do not 
-   * need to hold spinlocks. Attempting to do so will cause a triple
-   * fault because spinlocks at the minimum requires the lapic
-   * to be initialized and usually also requires the GDT to be set up
-   * with Per-CPU variables, although the latter can be circumvented by 
-   * polling the lapic instead for the cpu ID.
-   */
   atomic_store (&cpu_can_acquire_spinlock, 1);
   atomic_store (&cpu_started_others, 1);
-  intr_disable_pop ();
+  intr_enable_pop ();
   return num_started;
 }
 

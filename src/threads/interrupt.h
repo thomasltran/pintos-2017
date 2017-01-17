@@ -15,7 +15,7 @@ enum intr_level intr_get_level (void);
 void intr_enable (void);
 void intr_disable (void);
 void intr_disable_push (void);
-void intr_disable_pop (void);
+void intr_enable_pop (void);
 
 /* Interrupt stack frame. */
 struct intr_frame

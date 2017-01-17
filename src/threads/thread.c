@@ -57,6 +57,8 @@ static tid_t allocate_tid (void);
 static struct thread *do_thread_create (const char *, int, thread_func *, void *);
 static void init_boot_thread (struct thread *boot_thread, struct cpu *cpu);
 static void init_thread (struct thread *t, const char *name, int nice);
+static void lock_own_ready_queue (void);
+static void unlock_own_ready_queue (void);
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -134,9 +136,9 @@ thread_tick (void)
   else
     get_cpu ()->kernel_ticks++;
 
-  spinlock_acquire (&get_cpu ()->rq.lock);
+  lock_own_ready_queue ();
   sched_tick (&get_cpu ()->rq, t);
-  spinlock_release (&get_cpu ()->rq.lock);
+  unlock_own_ready_queue ();
 }
 
 /* Prints thread statistics. */
@@ -256,7 +258,7 @@ thread_block (struct spinlock *lk)
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (!intr_context ());
 
-  spinlock_acquire (&get_cpu ()->rq.lock);
+  lock_own_ready_queue ();
   struct thread *curr = thread_current ();
   if (lk != NULL)
     spinlock_release (lk);
@@ -264,7 +266,7 @@ thread_block (struct spinlock *lk)
   curr->status = THREAD_BLOCKED;
   sched_block (&get_cpu ()->rq, curr);
   schedule ();
-  spinlock_release (&get_cpu ()->rq.lock);
+  unlock_own_ready_queue ();
 
   if (lk != NULL)
     spinlock_acquire (lk);
@@ -325,6 +327,26 @@ thread_tid (void)
   return thread_current ()->tid;
 }
 
+/* Lock our ready queue from a context in which interrupts (and thus preemption)
+ * may be enabled.  To ensure that the CPU obtained by get_cpu() is not stale
+ * by the time we use it, we first disable preemption.  Otherwise, we may be
+ * preempted and possibly migrated to another CPU once load balancing is 
+ * implemented.
+ */
+static void
+lock_own_ready_queue (void)
+{
+  intr_disable_push ();
+  spinlock_acquire (&get_cpu ()->rq.lock);
+  intr_enable_pop ();
+}
+
+static void
+unlock_own_ready_queue (void)
+{
+  spinlock_release (&get_cpu ()->rq.lock);
+}
+
 static void
 do_thread_exit (void)
 {
@@ -333,15 +355,13 @@ do_thread_exit (void)
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
-  if (cpu_can_acquire_spinlock)
-    spinlock_acquire (&all_lock);
-  list_remove (&cur->allelem);
-  if (cpu_can_acquire_spinlock)
-    spinlock_release (&all_lock);
+  ASSERT (cpu_can_acquire_spinlock);
 
-  intr_disable_push ();
-  spinlock_acquire (&get_cpu ()->rq.lock);
-  intr_disable_pop ();
+  spinlock_acquire (&all_lock);
+  list_remove (&cur->allelem);
+  spinlock_release (&all_lock);
+
+  lock_own_ready_queue ();
   cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
@@ -370,9 +390,7 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   /* Lance, why this? */
-  intr_disable_push ();
-  spinlock_acquire (&get_cpu ()->rq.lock);
-  intr_disable_pop ();
+  lock_own_ready_queue ();
 
   cur->status = THREAD_READY;
   if (cur != get_cpu ()->rq.idle_thread)
@@ -640,7 +658,6 @@ schedule (void)
       prev = switch_threads (cur, next);
     }
 
-// XXX is this correct?  What if get_cpu() has changed b/c of load balancing?
   get_cpu ()->intena = intena;          /* Restore value of intena. */
   thread_schedule_tail (prev);
 }

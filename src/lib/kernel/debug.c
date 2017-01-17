@@ -170,7 +170,7 @@ debug_backtrace_all (void)
 {
   intr_disable_push();
   thread_foreach (print_stacktrace, 0);
-  intr_disable_pop();
+  intr_enable_pop();
 }
 
 void
@@ -188,7 +188,7 @@ savecallerinfo (struct callerinfo *info)
 {
   intr_disable_push ();
   info->cpu = get_cpu ();
-  intr_disable_pop ();
+  intr_enable_pop ();
   info->t = running_thread ();
   
   uint32_t *ebp;

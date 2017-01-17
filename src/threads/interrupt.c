@@ -75,9 +75,14 @@ intr_enable (void)
   sti();
 }
 
-/* disable_push/disable_pop are like disable/enable except that they 
-   are matched: it takes two popcli to undo two pushcli.  
-   Also, if interrupts are off, then pushcli, popcli leaves them off. */
+/* Disable interrupts and increment per-CPU nesting count.
+ * If nesting count was zero, store the current interrupt level.
+ *
+ * intr_disable_push is used in conjunction with intr_enable_pop.
+ * It allows a function to disable interrupts for its execution
+ * and safely restore the interrupt level that was in effect upon
+ * entry.
+ */
 void
 intr_disable_push (void)
 {
@@ -87,13 +92,18 @@ intr_disable_push (void)
     get_cpu ()->intena = old_level;
 }
 
+/*
+ * Decrement per-CPU nesting count.
+ * If nesting count reaches zero, restore interrupt level
+ * to the state it was when intr_disable_push was called.
+ */
 void
-intr_disable_pop (void)
+intr_enable_pop (void)
 {
-  if (intr_get_level () == INTR_ON)
-    PANIC("popcli - interruptible");
+  ASSERT (intr_get_level () == INTR_OFF);
+
   if (--get_cpu ()->ncli < 0)
-    PANIC("popcli");
+    PANIC("unmatched call to intr_enable_pop");
   if (get_cpu ()->ncli == 0 && get_cpu ()->intena)
     sti ();
 }
@@ -225,7 +235,7 @@ intr_context (void)
 {
   intr_disable_push ();
   bool in_external_intr = get_cpu ()->in_external_intr;
-  intr_disable_pop ();
+  intr_enable_pop ();
   return in_external_intr;
 }
 

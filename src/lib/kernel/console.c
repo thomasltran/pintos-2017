@@ -43,7 +43,7 @@ static bool use_console_lock = false;;
    schedule()
    thread_yield()
    intr_handler()         - timer interrupt
-   intr_set_level()
+   intr_enable_pop()
    serial_putc()
    putchar_have_lock()
    putbuf()

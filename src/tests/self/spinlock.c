@@ -34,7 +34,7 @@ test_trylock (void)
   switch_cpu (&vcpu2);
   failIfFalse (!spinlock_try_acquire (&lock), "Acquired a locked spinlock");
   switch_cpu (real);
-  intr_disable_pop ();
+  intr_enable_pop ();
 }
 
 struct shared_info {

@@ -7,27 +7,27 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 
-#define NCPU_MAX 8		/* Max number of cpus */
+#define NCPU_MAX 8      /* Max number of cpus */
 
 /* Per-CPU state */
 struct cpu
 {
-  uint8_t id;                   /* Local APIC ID; index into cpus[] below */
-  struct tss ts;		/* Per-process TSS */
-  uint64_t gdt[SEL_CNT];	/* Per-process GDT */
-  int started;    		/* Has the CPU started? */
+  uint8_t id;               /* Local APIC ID; index into cpus[] below */
+  struct tss ts;            /* Per-process TSS */
+  uint64_t gdt[SEL_CNT];    /* Per-process GDT */
+  int started;              /* Has this CPU been started? */
   
   /* State of interrupts. Owned by interrupt.c */
-  int ncli;                    	/* Depth of pushcli nesting. */
-  int intena;                   /* Were interrupts enabled before pushcli? */
-  bool in_external_intr; 	/* Are we processing an external interrupt? */
-  bool yield_on_return; 	/* Should we yield on interrupt return? */
+  int ncli;                 /* Depth of pushcli nesting. */
+  int intena;               /* Were interrupts enabled before pushcli? */
+  bool in_external_intr;    /* Are we processing an external interrupt? */
+  bool yield_on_return;     /* Should we yield on interrupt return? */
 
   /* Statistics. Owned by thread.c */
   uint64_t idle_ticks;
   uint64_t user_ticks;
   uint64_t kernel_ticks;
-  uint64_t cs;			/* Number of context switches */
+  uint64_t cs;          /* Number of context switches */
   
   /* Ready queue. Owned by scheduler.c */
   struct ready_queue rq;

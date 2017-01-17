@@ -32,5 +32,5 @@ test_change_cpu ()
     fail ("CPU should now refers to %p, actually refers to %p", &vcpu,
 	  get_cpu ());
   pass ();
-  intr_disable_pop ();
+  intr_enable_pop ();
 }

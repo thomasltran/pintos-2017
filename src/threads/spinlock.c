@@ -90,7 +90,7 @@ spinlock_release (struct spinlock *spinlock)
      the above assignments (and after the critical section). */
   atomic_xchg (&spinlock->locked, 0);
 
-  intr_disable_pop ();
+  intr_enable_pop ();
 }
 
 bool
@@ -102,7 +102,7 @@ spinlock_try_acquire (struct spinlock *spinlock)
 
   if (atomic_xchg (&spinlock->locked, 1) != 0)
     {
-      intr_disable_pop ();
+      intr_enable_pop ();
       return false;
     }
   else

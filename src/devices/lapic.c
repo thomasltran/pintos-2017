@@ -237,7 +237,7 @@ lapic_send_ipi_to_all_but_self (int irq)
       if (c != get_cpu ())
         sendipi (c->id, irq);
     }
-  intr_disable_pop ();
+  intr_enable_pop ();
 }
 
 /* Sends interrupt irq to the cpus defined by mask */
@@ -256,7 +256,7 @@ sendipi_mask (int irq, struct bitmap *mask)
       if (bitmap_test (mask, i))
         sendipi (i, irq);
     }
-  intr_disable_pop ();
+  intr_enable_pop ();
 }
 
 /* Sends interrupt irq to all cpus */

@@ -672,7 +672,7 @@ uhci_tx_pkt_wait (struct uhci_eop_info *ue, int token, void *pkt,
   uhci_run (ud->ui);
   uhci_unlock (ud->ui);
   sema_down (&w.sem);
-  intr_disable_pop();
+  intr_enable_pop();
 
   if (in_sz != NULL)
     {

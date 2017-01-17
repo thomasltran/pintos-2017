@@ -102,5 +102,5 @@ tearDown (void)
 {
   switch_cpu (real_cpu);
   timer_settime (real_time);
-  intr_disable_pop ();
+  intr_enable_pop ();
 }

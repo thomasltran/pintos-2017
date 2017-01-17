@@ -267,15 +267,15 @@ Indicates whether an application processor has been awoken.
 @end deftypecv
 
 @deftypecv {Member} {@struct{cpu}} {int} ncli
-Nesting counter used by @code{intr_disable_push ()} and @code{intr_disable_pop ()} to 
-determine whether or not intr_disable_pop () should re-enable 
+Nesting counter used by @code{intr_disable_push ()} and @code{intr_enable_pop ()} to
+determine whether or not intr_enable_pop () should re-enable
 interrupts. 
 @end deftypecv
 
 @deftypecv {Member} {@struct{cpu}} {int} intena
 Flag to indicate whether or not interrupts were disabled
 when @code{intr_disable_push ()} was called at the outermost level (@code{ncli == 0}).
-If so, then @code{intr_disable_pop ()} won't reenable interrupts 
+If so, then @code{intr_enable_pop ()} won't reenable interrupts
 even if @var{ncli} becomes 0.
 @end deftypecv
 
@@ -816,11 +816,6 @@ the current CPU are disabled or enabled, respectively.
 Returns the current CPU's interrupt state.
 @end deftypefun
 
-@deftypefun {enum intr_level} intr_set_level (enum intr_level @var{level})
-Turns interrupts on or off on the current CPU according to @var{level}.  
-Returns the previous interrupt state.
-@end deftypefun
-
 @deftypefun {enum intr_level} intr_enable (void)
 Turns interrupts on on the current CPU.  Returns its previous interrupt state.
 @end deftypefun
@@ -831,17 +826,15 @@ Turns interrupts off on the current CPU.  Returns its previous interrupt state.
 
 @deftypefun {void} intr_disable_push (void)
 Turns interrupts off on the current CPU.  Increment current CPU's
-nesting count by 1.  If nesting count was zero, remember current interrupt level.
+nesting count by 1.  If nesting count was zero, which is true for the outermost
+call, store current interrupt level in @var{intena} field in the current CPU's 
+struct CPU.
 @end deftypefun
 
-@deftypefun {void} intr_disable_pop (void)
+@deftypefun {void} intr_enable_pop (void)
 Decrement current CPU's nesting count.  If the count reaches zero, restore
-interrupt state present on outermost call to intr_disable_push().
+interrupt state that was present on outermost call to intr_disable_push ().
 @end deftypefun
-
-Side note: the function pairs @code{intr_disable_push} and @code{intr_disable_pop} 
-provide overlapping functionality with @code{intr_set_level} and @code{intr_get_level}.
-@c and intr_disable_pop is a really bad name for a function that may enable interrupts.
 
 @node Spinlocks
 @subsection Spinlocks

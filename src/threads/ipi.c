@@ -63,5 +63,5 @@ ipi_invalidate_tlb (struct intr_frame *f UNUSED)
   ASSERT(cpu_started_others);
   intr_disable_push ();
   flushtlb ();
-  intr_disable_pop ();
+  intr_enable_pop ();
 }
