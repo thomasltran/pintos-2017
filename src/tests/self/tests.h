@@ -18,6 +18,7 @@ extern test_func test_ipi_blocked;
 extern test_func test_ipi_all;
 extern test_func test_cli_print;
 extern test_func test_savecallerinfo;
+extern test_func test_console;
 
 void msg (const char *, ...);
 void failIfFalse (bool truth, const char *, ...);

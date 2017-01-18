@@ -72,10 +72,12 @@ void
 intq_putc (struct intq *q, uint8_t byte) 
 {
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (!intr_context ());
 
   while (intq_full (q))
-    wait (q, &q->not_full);
+    {
+      ASSERT (!intr_context ());
+      wait (q, &q->not_full);
+    }
 
   q->buf[q->head] = byte;
   q->head = next (q->head);

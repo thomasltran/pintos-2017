@@ -137,7 +137,7 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
       break;
   }
 
-  printf ("Call stack of thread `%s' (status %s, CPU%d):", t->name, status, t->cpu->id);
+  printf ("Call stack of thread '%s' (status %s, CPU%d):", t->name, status, t->cpu->id);
 
   if (t == thread_current() && t->cpu == get_cpu ())
     {

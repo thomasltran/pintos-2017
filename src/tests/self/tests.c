@@ -21,6 +21,7 @@ static const struct test tests[] =
     { "ipi-all", test_ipi_all },
     { "cli-print", test_cli_print },
     { "savecallerinfo", test_savecallerinfo },
+    { "console", test_console },
   };
 
 static const char *test_name;

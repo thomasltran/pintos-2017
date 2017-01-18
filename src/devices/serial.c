@@ -181,8 +181,11 @@ void
 serial_notify (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
+  serial_txq_acquire ();
   if (mode == QUEUE)
     write_ier ();
+
+  serial_txq_release ();
 }
 
 /* Configures the serial port for BPS bits per second. */
