@@ -26,3 +26,22 @@
   -> Well in Unix I can change the nice value of another process, but you're right,
   in Pintos you can't.
 
+- Note that code like
+
+    intr_disable_push();
+    printf ();
+
+ from outside an interrupt context is not legal unless the
+ console has been put in EMERGENCY_MODE.
+
+ This is because otherwise the assertion in schedule that ncli == 1
+ fails (which allows for exactly one call to intr_disable_push,
+ or indirectly via  spinlock_acquire).
+
+ We need to better comment this assertion.  It's intended
+ to detect when more than one spinlock is mistakenly held when calling
+ schedule.  Can cpu->ncli be > 1 for other reasons and it is ok to
+ call schedule?
+
+ I would not make the case for above scenario, that is, I would panic
+ there. But I'm not sure about all cases yet.

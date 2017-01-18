@@ -1,17 +1,4 @@
 /*
- * Note that code like
- *
- *          intr_disable_push();
- *          printf ();
- *
- * is not legal unless the console has been put in EMERGENCY_MODE.
- *
- * This is because otherwise the assertion in schedule that ncli == 1
- * fails.  However, it is this assertion that is wrong.  It's intended
- * to detect when more than one spinlock is mistakenly held when calling
- * schedule, but cpu->ncli may be > 1 for other reasons, such as disabling
- * interrupts, then calling schedule (perhaps indirectly via lock_acquire).
- *
  * This tests checks that the console separates printf() even when
  * in emergency mode.  Without this feature, kernel backtraces during
  * panics are impossible to read.
