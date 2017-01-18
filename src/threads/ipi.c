@@ -45,15 +45,15 @@ ipi_shutdown (struct intr_frame *f UNUSED)
 void
 ipi_schedule (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_started_others);
+  ASSERT (cpu_started_others);
   intr_yield_on_return ();
 }
 /* For debugging. Prints the backtrace of the thread running on the current CPU  */
 void
 ipi_debug (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_started_others);
-  debug_backtrace ();
+  ASSERT (cpu_started_others);
+  debug_backtrace_with_lock ();
 }
 
 /* Only needed for Multi-threaded Pintos. Flushes the TLB */

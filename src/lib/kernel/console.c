@@ -6,6 +6,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/synch.h"
+#include "threads/spinlock.h"
 
 static void
 vprintf_helper (char, void *);
@@ -18,6 +19,10 @@ putchar_have_lock (uint8_t c);
    But this lock is useful to prevent simultaneous printf() calls
    from mixing their output, which looks confusing. */
 static struct lock console_lock;
+
+/* Alternative lock for EMERGENCY_MODE. */
+static struct spinlock console_spinlock;
+
 /* True in ordinary circumstances: we want to use the console
    lock to avoid mixing output between threads, as explained
    above.
@@ -55,48 +60,53 @@ static bool use_console_lock = false;;
    problem by simulating a recursive lock with a depth
    counter. */
 static int console_lock_depth;
-/* A console spinlock that can be used as an alternative to the
-   console lock */
-static struct spinlock console_spinlock;
-/* True if serial_sleep is false. This makes threads acquire
-   a spinlock rather than a lock, so the thread that is printing
-   is guaranteed to not go into the scheduler. This also has
-   the effect of preventing threads from interleaving their 
-   print statements, but with the additional flexibility of 
-   being able to print inside the scheduler, from interrupt
-   handlers, or when interrupts are disabled */
-static bool use_console_spinlock = false;
 
 /* Number of characters written to console. */
 static int64_t write_cnt;
 
+/* Current console mode. */
+static enum console_mode current_mode = NORMAL_MODE;
+
 /* Enable console locking. */
 void
-console_init (void) 
+console_init (void)
 {
   lock_init (&console_lock);
   spinlock_init (&console_spinlock);
-  if (serial_putc_sleep) 
-    use_console_lock = true;          
-  else 
-    use_console_spinlock = true;
+  use_console_lock = true;
 }
 
-/* Notifies the console that a kernel panic is underway,
-   which warns it to avoid trying to take the console lock from
-   now on. */
+/*
+ * Normally, the console uses a regular lock to prevent output from
+ * interleaving, and it keeps the serial device in its default
+ * interrupt-driven (non-polling) mode.  This is necessary because
+ * output to serial or other device may be slow, and it is unacceptable
+ * to block a CPU until it completes.
+ *
+ * In certain situations, such as when panicking the kernel, or when
+ * using printfs from sensitive parts of the system, it may be desirable
+ * for the console to use a spinlock instead and to put the serial
+ * device in a mode where it does not require the use of interrupts.
+ *
+ * Not using a lock at all would be even more lightweight, but really
+ * useless since it makes it impossible to read backtraces.
+ */
 void
-console_panic (void) 
+console_set_mode (enum console_mode mode)
 {
-  use_console_lock = false;
-  use_console_spinlock = false;
+  current_mode = mode;
+  if (mode == NORMAL_MODE)
+    {
+      serial_set_poll_mode (false);
+      use_console_lock = true;
+    }
+  else
+    {
+      serial_set_poll_mode (true);
+      use_console_lock = false;
+    }
 }
 
-void
-console_use_spinlock (void)
-{
-  use_console_spinlock = true;
-}
 /* Prints console statistics. */
 void
 console_print_stats (void)
@@ -106,31 +116,31 @@ console_print_stats (void)
 
 /* Acquires the console lock. */
 static void
-acquire_console (void) 
+acquire_console (void)
 {
-  if (use_console_spinlock)
+  if (current_mode == EMERGENCY_MODE)
     spinlock_acquire (&console_spinlock);
   else if (!intr_context () && use_console_lock)
     {
-      if (lock_held_by_current_thread (&console_lock)) 
-	 console_lock_depth++; 
+      if (lock_held_by_current_thread (&console_lock))
+         console_lock_depth++;
       else
-	 lock_acquire (&console_lock); 
+         lock_acquire (&console_lock);
     }
 }
 
 /* Releases the console lock. */
 static void
-release_console (void) 
+release_console (void)
 {
-  if (use_console_spinlock)
+  if (current_mode == EMERGENCY_MODE)
     spinlock_release (&console_spinlock);
-  else if (!intr_context () && use_console_lock)
+  if (!intr_context () && use_console_lock)
     {
       if (console_lock_depth > 0)
-	 console_lock_depth--;
+         console_lock_depth--;
       else
-	 lock_release (&console_lock);
+         lock_release (&console_lock);
     }
 }
 
@@ -140,15 +150,14 @@ static bool
 console_locked_by_current_thread (void)
 {
   return (intr_context () || !use_console_lock
-          || lock_held_by_current_thread (&console_lock)
-          || spinlock_held_by_current_cpu (&console_spinlock));
+          || lock_held_by_current_thread (&console_lock));
 }
 
 /* The standard vprintf() function,
    which is like printf() but uses a va_list.
    Writes its output to both vga display and serial port. */
 int
-vprintf (const char *format, va_list args) 
+vprintf (const char *format, va_list args)
 {
   int char_cnt = 0;
 
@@ -162,7 +171,7 @@ vprintf (const char *format, va_list args)
 /* Writes string S to the console, followed by a new-line
    character. */
 int
-puts (const char *s) 
+puts (const char *s)
 {
   acquire_console ();
   while (*s != '\0')
@@ -175,7 +184,7 @@ puts (const char *s)
 
 /* Writes the N characters in BUFFER to the console. */
 void
-putbuf (const char *buffer, size_t n) 
+putbuf (const char *buffer, size_t n)
 {
   acquire_console ();
   while (n-- > 0)
@@ -185,18 +194,18 @@ putbuf (const char *buffer, size_t n)
 
 /* Writes C to the vga display and serial port. */
 int
-putchar (int c) 
+putchar (int c)
 {
   acquire_console ();
   putchar_have_lock (c);
   release_console ();
-  
+
   return c;
 }
 
 /* Helper function for vprintf(). */
 static void
-vprintf_helper (char c, void *char_cnt_) 
+vprintf_helper (char c, void *char_cnt_)
 {
   int *char_cnt = char_cnt_;
   (*char_cnt)++;
@@ -207,7 +216,7 @@ vprintf_helper (char c, void *char_cnt_)
    The caller has already acquired the console lock if
    appropriate. */
 static void
-putchar_have_lock (uint8_t c) 
+putchar_have_lock (uint8_t c)
 {
   ASSERT (console_locked_by_current_thread ());
   write_cnt++;

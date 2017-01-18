@@ -1,6 +1,20 @@
 /*
- * Test printing under when interrupts are disabled, and
- * console_use_spinlock () is called.
+ * Note that code like
+ *
+ *          intr_disable_push();
+ *          printf ();
+ *
+ * is not legal unless the console has been put in EMERGENCY_MODE.
+ *
+ * This is because otherwise the assertion in schedule that ncli == 1
+ * fails.  However, it is this assertion that is wrong.  It's intended
+ * to detect when more than one spinlock is mistakenly held when calling
+ * schedule, but cpu->ncli may be > 1 for other reasons, such as disabling
+ * interrupts, then calling schedule (perhaps indirectly via lock_acquire).
+ *
+ * This tests checks that the console separates printf() even when
+ * in emergency mode.  Without this feature, kernel backtraces during
+ * panics are impossible to read.
  */
 #include "threads/thread.h"
 #include "threads/interrupt.h"
@@ -8,6 +22,7 @@
 #include <stdio.h>
 #include "tests.h"
 #include "threads/synch.h"
+#include "threads/spinlock.h"
 #include <debug.h>
 #include "lib/atomic-ops.h"
 #include "devices/intq.h"
@@ -23,14 +38,11 @@ print (void *args UNUSED)
   while (!start) {
     ;  
   }
-  console_use_spinlock ();
-  intr_disable_push ();
   printf ("Thread %d: Printing Line 1\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 2\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 3\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 4\n", thread_current ()->tid);
   printf ("Thread %d: Printing Line 5\n", thread_current ()->tid);
-  intr_enable_pop ();
   sema_up (&sema);
 }
 
@@ -39,6 +51,7 @@ test_cli_print (void)
 {
   sema_init (&sema, 0);
   unsigned int i;
+  console_set_mode (EMERGENCY_MODE);
   for (i = 0; i < NUMTHREADS; i++)
     {
       thread_create ("print1", 0, print, 0);
@@ -48,5 +61,6 @@ test_cli_print (void)
     {
       sema_down (&sema);
     }
+  console_set_mode (NORMAL_MODE);
   pass ();
 }

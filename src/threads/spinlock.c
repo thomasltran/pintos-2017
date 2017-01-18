@@ -44,7 +44,7 @@ spinlock_init (struct spinlock *spinlock)
 {
   spinlock->locked = 0;
   spinlock->cpu = NULL;
-  callerinfo_init (&spinlock->debuginfo);
+  debug_init_callerinfo (&spinlock->debuginfo);
 }
 
 /* Acquire the spinlock.
@@ -55,9 +55,9 @@ void
 spinlock_acquire (struct spinlock *spinlock)
 {
   intr_disable_push ();     /* disable interrupts to avoid race conditions from interrupts */
-  if (spinlock_held_by_current_cpu (spinlock)) 
+  if (spinlock_held_by_current_cpu (spinlock))
     panic_on_already_acquired_lock (&spinlock->debuginfo);
-    
+
   /* The xchg is atomic.
      It also serializes, so that reads after acquire are not
      reordered before it. */
@@ -66,7 +66,7 @@ spinlock_acquire (struct spinlock *spinlock)
 
   /* Record info about lock acquisition for debugging. */
   spinlock->cpu = get_cpu ();
-  savecallerinfo (&spinlock->debuginfo);
+  debug_save_callerinfo (&spinlock->debuginfo);
 }
 
 /* Release the lock. */
@@ -77,7 +77,7 @@ spinlock_release (struct spinlock *spinlock)
     panic_on_non_acquired_lock (&spinlock->debuginfo);
 
   spinlock->cpu = NULL;
-  savecallerinfo (&spinlock->debuginfo);
+  debug_save_callerinfo (&spinlock->debuginfo);
 
   /* The xchg serializes, so that reads before release are
      not reordered after it.  The 1996 PentiumPro manual (Volume 3,
@@ -108,7 +108,7 @@ spinlock_try_acquire (struct spinlock *spinlock)
   else
     {
       spinlock->cpu = get_cpu ();
-      savecallerinfo (&spinlock->debuginfo);
+      debug_save_callerinfo (&spinlock->debuginfo);
       return true;
     }
 }
@@ -123,18 +123,21 @@ spinlock_held_by_current_cpu (const struct spinlock *lock)
 static void
 panic_on_already_acquired_lock (struct callerinfo *info)
 {
+  console_set_mode (EMERGENCY_MODE);
   printf ("ERROR: Tried to acquire an already held spinlock!\n");
   printf ("Lock last acquired by: ");
-  printcallerinfo (info);
-  printf ("\n");  
-  PANIC("acquire");  
+  debug_print_callerinfo (info);
+  printf ("\n");
+  PANIC ("acquire");
 }
 
 static void
 panic_on_non_acquired_lock (struct callerinfo *info)
 {
+  console_set_mode (EMERGENCY_MODE);
   printf ("ERROR: Tried to release an unacquired spinlock!\n");
   printf ("Lock last released by: ");
-  printcallerinfo (info);
-  printf ("\n");  
+  debug_print_callerinfo (info);
+  printf ("\n");
+  PANIC ("release");
 }

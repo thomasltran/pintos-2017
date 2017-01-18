@@ -32,7 +32,7 @@ intq_release (struct intq *q)
 bool
 intq_empty (struct intq *q) 
 {
-  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
+  ASSERT (spinlock_held_by_current_cpu (&q->spinlock));
   return q->head == q->tail;
 }
 
@@ -40,7 +40,7 @@ intq_empty (struct intq *q)
 bool
 intq_full (struct intq *q) 
 {
-  ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
+  ASSERT (spinlock_held_by_current_cpu (&q->spinlock));
   return next (q->head) == q->tail;
 }
 
@@ -52,10 +52,12 @@ intq_getc (struct intq *q)
 {
   uint8_t byte;
   ASSERT (spinlock_held_by_current_cpu(&q->spinlock));
-  ASSERT (!intr_context ());
 
   while (intq_empty (q)) 
-    wait (q, &q->not_empty);
+    {
+      ASSERT (!intr_context ());
+      wait (q, &q->not_empty);
+    }
 
   byte = q->buf[q->tail];
   q->tail = next (q->tail);

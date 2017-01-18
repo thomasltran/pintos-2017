@@ -46,6 +46,16 @@
 #include "threads/mp.h"
 #include "lib/atomic-ops.h"
 
+static struct spinlock debug_backtrace_lock;
+
+void 
+debug_backtrace_with_lock (void)
+{
+  spinlock_acquire (&debug_backtrace_lock);
+  debug_backtrace ();
+  spinlock_release (&debug_backtrace_lock);
+}
+
 /* Halts the OS, printing the source file name, line number, and
    function name, plus a user-specific message. */
 void
@@ -56,43 +66,43 @@ debug_panic (const char *file, int line, const char *function,
   va_list args;
 
   intr_disable ();
-  atomic_inci (&level);
-  if (level == 1) 
+  int new_level = atomic_inci (&level);
+  if (new_level == 1)
     {
-      /* After printing backtrace, send a message to all other CPUs
-       * to print their backtraces as well. Acquires a console spinlock
-       * so that per-CPU backtraces won't get mixed up. This is the only
-       * place where a console spinlock is used, since spinlocks cannot 
-       * protect the console against threads that print using the lock. 
-       * Finally, it print a backtrace of all the threads.
-       */
-      console_use_spinlock ();
+      spinlock_init (&debug_backtrace_lock);
 
-      printf ("Kernel PANIC from CPU %d at %s:%d in %s(): ", (cpu_started_others) ? get_cpu ()->id : 0, file, line, function);
+      /* After printing backtrace, send a message to all other CPUs
+       * to print their backtraces as well.
+       * Finally, it print a backtrace of all threads.
+       */
+      console_set_mode (EMERGENCY_MODE);
+
+      printf ("Kernel PANIC from CPU %d at %s:%d in %s(): ",
+        (cpu_started_others) ? get_cpu ()->id : 0, file, line, function);
 
       va_start (args, message);
       vprintf (message, args);
       printf ("\n");
       va_end (args);
 
-      debug_backtrace ();
-      
-      if (cpu_started_others) {
-        printf ("Printing a backtrace of all CPUs\n");
-        lapic_send_ipi_to_all_but_self(IPI_DEBUG);
-      }
-      
+      debug_backtrace_with_lock ();
+
+      if (cpu_started_others)
+        {
+          printf ("Printing a backtrace of all CPUs\n");
+          lapic_send_ipi_to_all_but_self (IPI_DEBUG);
+        }
+
       printf ("Printing a backtrace of all threads\n");
       debug_backtrace_all ();
       printf ("\n");
     }
-  else if (level == 2) 
+  else if (new_level == 2)
     {
       printf ("Kernel PANIC recursion at %s:%d in %s().\n",
         file, line, function);
     }
-
-  else 
+  else
     {
       /* Don't print anything: that's probably why we recursed. */
     }
@@ -129,13 +139,20 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
 
   printf ("Call stack of thread `%s' (status %s, CPU%d):", t->name, status, t->cpu->id);
 
-  if (t == thread_current()) 
+  if (t == thread_current() && t->cpu == get_cpu ())
     {
       frame = __builtin_frame_address (1);
       retaddr = __builtin_return_address (0);
     }
   else
     {
+      /* We can't really print backtraces for stack running on another CPU. */
+      if (t->status == THREAD_RUNNING)
+        {
+          printf ("thread appears currently running on another CPU, skipping.\n");
+          return;
+        }
+
       /* Retrieve the values of the base and instruction pointers
          as they were saved when this thread called switch_threads. */
       struct switch_threads_frame * saved_frame;
@@ -164,7 +181,14 @@ print_stacktrace(struct thread *t, void *aux UNUSED)
   printf (".\n");
 }
 
-/* Prints call stack of all threads. */
+/* Attempt to prints call stacks of all threads.
+   In the presence of multiple CPUs, this is inherently racy unless
+   we stopped those CPUs first.
+   print_stacktrace will skip threads it sees running on another CPU,
+   but it will to traverse stacktraces of all other threads.
+
+   We provide this only as a debugging aid.
+ */
 void
 debug_backtrace_all (void)
 {
@@ -174,17 +198,17 @@ debug_backtrace_all (void)
 }
 
 void
-callerinfo_init (struct callerinfo *info)
+debug_init_callerinfo (struct callerinfo *info)
 {
   memset (info, 0, sizeof (*info));
 }
 /*
- * Records the stack trace and information of the caller of 
+ * Records the stack trace and information of the caller of
  * this function into info. Useful for storing acquire/release
  * info for debugging locks/spinlocks
  */
 void
-savecallerinfo (struct callerinfo *info)
+debug_save_callerinfo (struct callerinfo *info)
 {
   intr_disable_push ();
   info->cpu = get_cpu ();
@@ -212,7 +236,7 @@ savecallerinfo (struct callerinfo *info)
  * up to caller to panic the console before calling this function.
  */
 void
-printcallerinfo (struct callerinfo *info) 
+debug_print_callerinfo (struct callerinfo *info) 
 {
   if (!info->t || !info->cpu) 
     {

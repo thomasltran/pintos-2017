@@ -179,7 +179,7 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   sema_init (&lock->semaphore, 1);
-  callerinfo_init (&lock->debuginfo);
+  debug_init_callerinfo (&lock->debuginfo);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -201,7 +201,7 @@ lock_acquire (struct lock *lock)
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
-  savecallerinfo (&lock->debuginfo);
+  debug_save_callerinfo (&lock->debuginfo);
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -223,7 +223,7 @@ lock_try_acquire (struct lock *lock)
   if (success) 
     {    
       lock->holder = thread_current ();
-      savecallerinfo (&lock->debuginfo);
+      debug_save_callerinfo (&lock->debuginfo);
     }
   return success;
 }
@@ -241,7 +241,7 @@ lock_release (struct lock *lock)
     panic_on_already_acquired_lock (&lock->debuginfo);
 
   lock->holder = NULL;
-  savecallerinfo (&lock->debuginfo);
+  debug_save_callerinfo (&lock->debuginfo);
   sema_up (&lock->semaphore);
 }
 
@@ -352,11 +352,12 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 static void
 panic_on_already_acquired_lock (struct callerinfo *info)
 {
+  console_set_mode (EMERGENCY_MODE);
   printf ("ERROR: Tried to acquire an already held lock!\n");
   printf ("Lock last acquired by: ");
-  printcallerinfo (info);
-  printf ("\n");  
-  PANIC("acquire");  
+  debug_print_callerinfo (info);
+  printf ("\n");
+  PANIC("acquire");
 }
 
 /* Print error message and panic if an attempt is made to release a
@@ -364,8 +365,10 @@ panic_on_already_acquired_lock (struct callerinfo *info)
 static void
 panic_on_non_acquired_lock (struct callerinfo *info)
 {
+  console_set_mode (EMERGENCY_MODE);
   printf ("ERROR: Tried to release an unacquired lock!\n");
   printf ("Lock last released by: ");
-  printcallerinfo (info);
-  printf ("\n");  
+  debug_print_callerinfo (info);
+  printf ("\n");
+  PANIC("release");
 }

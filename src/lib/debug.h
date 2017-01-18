@@ -24,6 +24,7 @@
 void debug_panic (const char *file, int line, const char *function,
                   const char *message, ...) PRINTF_FORMAT (4, 5) NO_RETURN;
 void debug_backtrace (void);
+void debug_backtrace_with_lock (void);
 void debug_backtrace_all (void);
 
 #define PCS_MAX 15
@@ -35,9 +36,9 @@ struct callerinfo {
 			   that made the call. */
 };
 
-void callerinfo_init (struct callerinfo *);
-void savecallerinfo (struct callerinfo *);
-void printcallerinfo (struct callerinfo *); 
+void debug_init_callerinfo (struct callerinfo *);
+void debug_save_callerinfo (struct callerinfo *);
+void debug_print_callerinfo (struct callerinfo *);
 #endif
 
 

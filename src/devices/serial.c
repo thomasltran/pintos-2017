@@ -13,9 +13,6 @@
 #include "devices/trap.h"
 #include <stdbool.h>
 
-/* Recommend false */
-bool serial_putc_sleep = false;
-
 /* Register definitions for the 16550A UART used in PCs.
    The 16550A has a lot more going on than shown here, but this
    is all we need.
@@ -94,10 +91,25 @@ serial_init_queue (void)
   ASSERT (mode == POLL);
   mode = QUEUE;
   serial_txq_acquire ();
+  input_acquire ();
   write_ier ();
+  input_release ();
   serial_txq_release ();
-  ioapic_enable (IRQ_SERIAL, IRQ_CPU);
   intr_register_ext (0x20 + IRQ_SERIAL, serial_interrupt, "serial");
+  ioapic_enable (IRQ_SERIAL, IRQ_CPU);
+}
+
+/* Normally, the serial driver will switch from polling mode to
+   interrupt-driven mode when serial_init_queue() is called.
+   By calling serial_enter_poll_mode () it is possible to reset
+   the driver into polling mode. This will enable to call
+   printf () even from inside the scheduler.
+ */
+void
+serial_set_poll_mode (bool on)
+{
+  ASSERT (mode != UNINIT);
+  mode = on ? POLL : QUEUE;
 }
 
 void
@@ -117,7 +129,7 @@ void
 serial_putc (uint8_t byte) 
 {
 
-  if (mode != QUEUE || !serial_putc_sleep)
+  if (mode != QUEUE)
     {
       /* If we're not set up for interrupt-driven I/O yet,
          use dumb polling to transmit a byte. */
@@ -143,7 +155,9 @@ serial_putc (uint8_t byte)
         }
 
       intq_putc (&txq, byte);
+      input_acquire ();
       write_ier ();
+      input_release ();
       serial_txq_release ();
     }
 }
@@ -191,7 +205,10 @@ set_serial (int bps)
   outb (LCR_REG, LCR_N81);
 }
 
-/* Update interrupt enable register. */
+/* Update interrupt enable register. 
+ * Since this function accesses both the txq and the input intq,
+ * the caller must hold the spinlocks protecting both intq.
+ */
 static void
 write_ier (void) 
 {
@@ -205,10 +222,8 @@ write_ier (void)
 
   /* Enable receive interrupt if we have room to store any
      characters we receive. */
-  input_acquire ();
   if (!input_full ())
     ier |= IER_RECV;
-  input_release ();
   
   outb (IER_REG, ier);
 }
@@ -245,9 +260,11 @@ serial_interrupt (struct intr_frame *f UNUSED)
      ready to accept a byte for transmission, transmit a byte. */
   while (!intq_empty (&txq) && (inb (LSR_REG) & LSR_THRE) != 0) 
     outb (THR_REG, intq_getc (&txq));
-  serial_txq_release ();
 
   /* Update interrupt enable register based on queue status. */
+  input_acquire ();
   write_ier ();
+  input_release ();
 
+  serial_txq_release ();
 }

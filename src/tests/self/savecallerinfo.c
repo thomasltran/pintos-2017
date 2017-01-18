@@ -14,7 +14,7 @@ void
 test_savecallerinfo (void)
 {
   struct callerinfo info;
-  savecallerinfo (&info);
-  printcallerinfo (&info);
+  debug_save_callerinfo (&info);
+  debug_print_callerinfo (&info);
   pass ();
 }

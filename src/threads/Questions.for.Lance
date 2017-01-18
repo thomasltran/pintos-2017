@@ -1,11 +1,4 @@
 
-- init.c - why is usb_init() commented out? (but usb_storage_init() not?)
-  There's still a TODO in the USB code 
-  because I'm not sure how the spinlocks should be applied, and with no 
-  way to test it I commented it out temporarily. 
-  We can probably put it back in.
-  //REPLY
-
 - Spinlock - why does it need both 'locked' and 'cpu'?  The comment says
   they are kept in sync.  Why can't you atomically swap in the cpu into &cpu?
   Spinlocks are frequent - every byte matters in terms of size.
