@@ -151,18 +151,6 @@ initializer, that variable goes into the BSS.  Because it's all zeros, the
 BSS isn't stored in the image that the loader brought into memory.  We
 just use @func{memset} to zero it out.
 
-Next, @func{main} calls @func{read_command_line} to break the kernel command
-line into arguments, then @func{parse_options} to read any options at
-the beginning of the command line.  (Actions specified on the
-command line execute later.)
-
-@func{thread_init} initializes the thread system.  We will defer full
-discussion to our discussion of Pintos threads below.  It is called so
-early in initialization because a valid thread structure is a
-prerequisite for acquiring a lock, and lock acquisition in turn is
-important to other Pintos subsystems.  Then we initialize the console
-and print a startup message to the console.
-
 The next block of functions we call initializes the kernel's memory
 system.  @func{palloc_init} sets up the kernel page allocator, which
 doles out memory one or more pages at a time (@pxref{Page Allocator}).
@@ -172,8 +160,34 @@ memory (@pxref{Block Allocator}).
 @func{paging_init} sets up a page table for the kernel (@pxref{Page
 Table}).
 
-In projects 2 and later, @func{main} also calls @func{tss_init} and
-@func{gdt_init}.
+Next, @func{mp_init} is called. Here we parse the MP Configuration Table
+which was written by the BIOS. This table tells us how many CPUs are on
+the processor. 
+
+Then, @func{lapic_init} is called. This initializes the @dfn{Local Advanced
+Programmable Interrupt Controller} (LAPIC) for the first CPU. The LAPIC
+provides local timer interrupts and also sends/receives inter-processor
+interrupts (@pxref{External Interrupt Handling}).
+
+@func{thread_init} initializes the thread system.  We will defer full
+discussion to our discussion of Pintos threads below.  It is called so
+early in initialization because a valid thread structure is a
+prerequisite for acquiring a lock, and lock acquisition in turn is
+important to other Pintos subsystems.
+
+@func{main} also calls @func{tss_init} and
+@func{gdt_init}. These functions set up the @dfn{Task State Segment} (TSS) and
+the @dfn{Global Descriptor Table} (GDT), respectively. The TSS sets up a kernel
+stack to use when switching from user-mode to kernel-mode, while the GDT sets 
+up segmentation and per-CPU variables.
+
+We have now done all the hardware set-up necessary to print, so we initialize the
+console and print a message.
+
+Next, @func{main} calls @func{read_command_line} to break the kernel command
+line into arguments, then @func{parse_options} to read any options at
+the beginning of the command line.  (Actions specified on the
+command line execute later.)
 
 The next set of calls initializes the interrupt system.
 @func{intr_init} sets up the CPU's @dfn{interrupt descriptor table}
@@ -197,9 +211,18 @@ If the file system is compiled in, as it will starting in project 2, we
 initialize the IDE disks with @func{ide_init}, then the
 file system with @func{filesys_init}.
 
-Boot is complete, so we print a message.
+Now, the BSP has been initialized but the APs have not yet been awoken. 
+@func{start_other_cpus} is called to wake up the other CPUs, one at a 
+time. We copy entry code for the APs to a magic address at 0x7000. For each CPU,
+we allocate a page that the AP's use as an initial stack. We then use the LAPIC
+to send a wakeup signal to each CPU. The AP's go through an initialization process
+similar to the BSP. When each AP finishes, it sends a signal to the BSP and wait for
+the other AP's to finish.
 
-Function @func{run_actions} now parses and executes actions specified on
+After all the other CPUs have been started, boot is complete, so we print a message.
+The AP's are now in the idle thread, waiting for threads to be added to their runqueue.
+
+The BSP calls @func{run_actions} now parses and executes actions specified on
 the kernel command line, such as @command{run} to run a test (in project
 1) or a user program (in later projects).
 
@@ -218,7 +241,8 @@ threads to continue running.
 
 @item @t{00000000}--@t{000003ff} @tab CPU @tab Real mode interrupt table.
 @item @t{00000400}--@t{000005ff} @tab BIOS @tab Miscellaneous data area.
-@item @t{00000600}--@t{00007bff} @tab --- @tab ---
+@item @t{00000600}--@t{00006fff} @tab --- @tab ---
+@item @t{00007000}--@t{00007bff} @tab Entry code for other CPUs
 @item @t{00007c00}--@t{00007dff} @tab Pintos @tab Loader.
 @item @t{0000e000}--@t{0000efff} @tab Pintos 
 @tab Stack for loader; kernel stack and @struct{thread} for initial
