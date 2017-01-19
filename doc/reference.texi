@@ -12,6 +12,7 @@ and variable names (@pxref{Tags}).
 
 @menu
 * Pintos Loading::              
+* Struct CPU::
 * Threads::                     
 * Synchronization::             
 * Interrupt Handling::          
@@ -236,7 +237,7 @@ kernel thread.
 @end multitable
 
 @node Struct CPU
-@subsection Struct CPU
+@section Struct CPU
 
 @file{threads/cpu.h} declares two variables. @var{cpus} is an array of
 @code{struct cpu}. Each entry in the array holds information about a particular

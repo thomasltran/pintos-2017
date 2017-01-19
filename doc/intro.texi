@@ -60,7 +60,7 @@ environment.
 * Source Tree Overview::        
 * Building Pintos::             
 * Running Pintos::              
-* Debugging versus Testing::    
+@c * Debugging versus Testing::    
 @end menu
 
 @node Source Tree Overview
@@ -274,7 +274,7 @@ using @option{-h}, e.g.@: @code{pintos -h}.
 @c interrupts will come at irregularly spaced intervals.  Within a single
 @c @var{seed} value, execution will still be reproducible, but timer
 @c behavior will change as @var{seed} is varied.  Thus, for the highest
-d@c egree of confidence you should test your code with many seed values.
+@c degree of confidence you should test your code with many seed values.
 
 @c On the other hand, when Bochs runs in reproducible mode, timings are not
 @c realistic, meaning that a ``one-second'' delay may be much shorter or

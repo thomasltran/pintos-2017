@@ -29,7 +29,7 @@ you will also need to read @ref{Completely Fair Scheduler}.
 
 @menu
 * Understanding Threads::       
-* Struct CPU::
+* Understanding CPUs::
 * Project 1 Source Files::      
 * Project 1 Synchronization::   
 * Development Suggestions::     
@@ -115,7 +115,7 @@ that CPU's idle thread is running).
 Per-CPU information is also used for interrupt management, as multiple
 CPUs may each be handling interrupts.
 
-@xref{Struct CPU} for full details of how a CPU is represented in Pintos.
+@xref{Struct CPU}. for full details of how a CPU is represented in Pintos.
 
 @node Project 1 Source Files
 @subsection Source Files
@@ -799,6 +799,9 @@ There is a special case when a newly created thread runs for the first
 time.  Such a thread calls releases the runqueue lock as the first action in
 @func{kernel_thread}, which is at the bottom of the call stack for every
 kernel thread but the first.
+
+@end itemize
+@end table
 
 @menu
 * Alarm Clock FAQ::             
