@@ -269,8 +269,6 @@ lapic_send_ipi_to_all (int irq)
   bitmap_destroy (mask);
 }
 
-/* Wait for a given number of microseconds.
-   On real hardware would want to tune this dynamically. */
 static void
 lapicw (int index, int value)
 {
@@ -288,6 +286,8 @@ sendipi (uint8_t apicid, int irq)
   microdelay (200);
 }
 
+/* Wait for a given number of microseconds.
+   On real hardware would want to tune this dynamically. */
 static void
 microdelay (int us UNUSED)
 {

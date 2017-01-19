@@ -836,6 +836,12 @@ Read the source files for the tests that you're failing, to make sure
 that you understand what's going on.  Each one has a comment at the
 top that explains its purpose and expected results.
 
+@item
+For the driver-related tests, make sure you understand how the scheduling
+driver works. Then, check which assertion you are failing. The tests call
+your scheduler multiple times under different events, and assert that the
+correct thread is running. See which one the test expects, and why your 
+code is not selecting the right thread to run. Beware of off-by-one errors.
 @end itemize
 
 @item I don't understand how the scheduling driver works/how tests are run

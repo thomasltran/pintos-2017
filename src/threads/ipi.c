@@ -41,13 +41,14 @@ ipi_shutdown (struct intr_frame *f UNUSED)
     ;
 }
 
-/* If running the idle thread, yield it */
+/* Preempt the currently running thread */
 void
 ipi_schedule (struct intr_frame *f UNUSED)
 {
   ASSERT (cpu_started_others);
   intr_yield_on_return ();
 }
+
 /* For debugging. Prints the backtrace of the thread running on the current CPU  */
 void
 ipi_debug (struct intr_frame *f UNUSED)
