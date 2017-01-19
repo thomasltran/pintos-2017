@@ -92,7 +92,7 @@ The initial thread's @var{vruntime} is initialized to 0. When a new thread is cr
 
 @center @var{vruntime} += @var{d} * @var{w0} / @var{w}
 
-@noindent where @var{d} is the amount of time the thread has run since a thread's @var{vruntime} was last updated, @var{w0} is the weight of a thread with 0 @var{nice}, and @var{w} is the weight of the thread.
+@noindent where @var{d} is the amount of wall-clock time the thread has run since a thread's @var{vruntime} was last updated, @var{w0} is the weight of a thread with 0 @var{nice}, and @var{w} is the weight of the thread.
 
 Notice that in the common case where all threads have the same weight, s = @var{n} * @var{w}, and therefore the ideal runtime is 4000000
 
@@ -124,7 +124,8 @@ When a thread is unblocked, its @var{vruntime} is likely to be lower than other 
 @section Summary
 @acronym{CFS} can be summarized by the following: At each timer tick, preempt the current thread if it ran for @var{ideal_runtime} or longer. When choosing which thread to run next, pick the thread with lowest @var{vruntime}. Break ties by choosing lowest tid. 
 
-Let @var{d} be the amount of time elapsed since a thread's @var{vruntime} was last updated, @var{w0} be the weight of a thread with 0 @var{nice}, and @var{w} be the weight of the thread. Then:
+
+Let @var{d} be the amount of wall-clock time elapsed since a thread's @var{vruntime} was last updated, @var{w0} be the weight of a thread with 0 @var{nice}, and @var{w} be the weight of the thread. Then:
 
 @center @var{vruntime} += @var{d} * @var{w0} / @var{w}
 

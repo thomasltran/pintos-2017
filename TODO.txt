@@ -17,8 +17,6 @@ Bugs/Possible bugs:
 Documentation:
  - Docs for MP configuration, lapic, and ioapic
  - Code needs more docs
- - Doc for scheduler.h/c
- - Change the P1 FAQ, in particular the one about "who enables interrupts"
  - Doc on how to install the new qemu
  - configure with --prefix=/home/courses/cs3204/bin/
  - Doc for BSP and AP

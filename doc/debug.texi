@@ -791,3 +791,17 @@ indicates that Pintos tried to access a file through an inode that has
 been closed and freed.  Freeing an inode clears its starting sector
 number to @t{0xcccccccc}, which is not a valid sector number for disks
 smaller than about 1.6 TB.
+
+When debugging locks and spinlocks, it is often useful to know how and when
+the lock was acquired and released, if for example you are trying to acquire
+a lock that is already held. This information is stored in @code{debuginfo}.
+The function @func{printcallerinfo} can be used to print this information in a 
+readable manner, and the backtrace program can again be used to convert the 
+addresses to line numbers. 
+
+When debugging locks and spinlocks, it is often useful to know how and when
+the lock was acquired and released, if for example you are trying to acquire
+a lock that is already held. This information is stored in @code{debuginfo}.
+The function @func{printcallerinfo} can be used to print this information in a 
+readable manner, and the backtrace program can again be used to convert the 
+addresses to line numbers. 

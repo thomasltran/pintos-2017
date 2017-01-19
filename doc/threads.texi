@@ -618,12 +618,11 @@ scheduled.
 
 Any CPU assignment policy, no matter how sophisticated, is not by itself enough
 to ensure that the first goal is met. Therefore, any acceptable load balancing 
-mechanism needs to move threads around. From now on, the migration of threads
-will be referred to as load balancing. 
+mechanism needs to move threads around. 
 
-Create a function called @code{load_balance_fair}.
+Create a function called @func{load_balance}.
 
-@deftypefun void load_balance_fair (void)
+@deftypefun void load_balance (void)
 Pull threads from another CPU's local queue and add
 it to the current CPU's local queue.
 @xref{Load Balancing}, to see the detailed requirements.
@@ -644,19 +643,34 @@ cares is that the correct thread is selected to run at the correct time,
 it doesn't bother actually running the threads. The goal
 is to be able to create a wide variety of scheduling scenarios and see 
 if your scheduler makes the correct decisions. 
+See @file{tests/threads/schedtest.c} and @file{tests/threads/simulator.c}.
 
-To do this, the simulator sets up a "fake CPU" that doesn't represent any
+The set up explained below. It is implemented in 
+@func{setUp} and @func{tearDown}, defined in @file{tests/threads/schedtest.c},
+so it may be useful to have that up in a separate window while reading.
+
+The simulator sets up a "fake CPU" that doesn't represent any
 CPU on the hardware, but rather a virtual environment where the simulator 
 can create threads, execute timer interrupts, etc, without affecting the 
-system. During setup, @code{change_cpu ()} is called so that the CPU local
+system. During setup, @func{change_cpu} is called so that the CPU local
 variable @code{cpu} points to the fake CPU. After that, all OS events are applied
 to the fake CPU. The real CPU is restored at the end of the test. 
 
-The simulator is abstracted in a way
-that you should not have to worry about it during development, but
-it may confuse you when trying to understand how the tests work.
+During testing, interrupts are disabled, so now real timer interrupts
+will arrive. Timer interrupts are simulated
+by setting the system time via @func{timer_settime} and then executing
+@func{driver_interrupt_tick}, which in turn invokes @func{driver_tick}.
+These functions are almost identical to @func{timer_interrupt} in 
+@file{devices/timer.c} and @func{thread_tick} in @file{thread.c} respectively.
 
-The alarm, child-fib, and load balance tests do not run the
+At the beginning of each test, the system time is set to 0, so any time spent
+prior to the test does not affect the test. Each test defines a set of OS events
+that arrive after a certain amount of time. Each OS event is a scheduling event
+that will invoke your scheduler. At the end of each event, the test checks that the
+thread that your scheduler would run at the end of the event is the correct one. The
+real time is restored at the end of the test.
+
+The alarm, child-run, and balance tests do not run the
 simulator, but rather schedule real threads doing real work under your 
 scheduler. As a consequence, those tests take significantly longer.
 
@@ -758,10 +772,12 @@ to be @func{pass}.
 
 @xref{Backtraces}, for more information.
 
-@item How do interrupts get re-enabled in the new thread following @func{schedule}?
+@item How do runqueue spinlocks get released in the new thread following @func{schedule}?
 
-Every path into @func{schedule} disables interrupts.  They eventually
-get re-enabled by the next thread to be scheduled.  Consider the
+Every path into @func{schedule} acquires a runqueue spinlock.  They eventually
+get released by the next thread to be scheduled. This is the special case
+where the thread that acquired a spinlock is not necessarily the thread
+that releases it. Consider the
 possibilities: the new thread is running in @func{switch_thread} (but
 see below), which is called by @func{schedule}, which is called by one
 of a few possible functions:
@@ -772,31 +788,17 @@ of a few possible functions:
 it's uninteresting.
 
 @item
-@func{thread_yield}, which immediately restores the interrupt level upon
+@func{thread_yield}, which immediately releases the runqueue lock upon
 return from @func{schedule}.
 
 @item
-@func{thread_block}, which is called from multiple places:
-
-@itemize @minus
-@item
-@func{sema_down}, which restores the interrupt level before returning.
-
-@item
-@func{idle}, which enables interrupts with an explicit assembly STI
-instruction.
-
-@item
-@func{wait} in @file{devices/intq.c}, whose callers are responsible for
-re-enabling interrupts.
-@end itemize
-@end itemize
+@func{thread_block}, which immediately releases the runqueue lock upon
+return from @func{schedule}.
 
 There is a special case when a newly created thread runs for the first
-time.  Such a thread calls @func{intr_enable} as the first action in
+time.  Such a thread calls releases the runqueue lock as the first action in
 @func{kernel_thread}, which is at the bottom of the call stack for every
 kernel thread but the first.
-@end table
 
 @menu
 * Alarm Clock FAQ::             
@@ -835,19 +837,28 @@ top that explains its purpose and expected results.
 
 @item I don't understand how the scheduling driver works/how tests are run
 
-First, if you haven't yet already, please @pxref{Project 1 Tests}.
-
-
+@xref{Project 1 Tests}.
 @end table
 
 @node Load Balancer FAQ
 @subsection Load Balancer FAQ
 
 @table @b
-@item TODO
+@item The synch tests take forever!
 
-TODO
+Race conditions are, by nature, not guaranteed to occur. The goal of the test
+is to fail with high probability if race conditions are present. We designed them
+by identifying the critical sections that you will have to protect with synchronization,
+and entering the critical sections enough times that it is likely two threads will try
+to enter at the same time, either because a timer interrupt preempted the first thread or
+because they are running on different CPUs. The critical sections are rather small, so
+the tests have to be repeated, which leads to high execution time.
 
+You can try speeding the tests up by enabling KVM if it is available to you, but it is not guaranteed
+to help because the speedup provided by KVM may make the already-small critical sections even
+smaller, meaning it may not produce a failure even if race conditions are present.
+Remember that timer interrupts still come at the same time intervals, despite the code
+running a lot faster. Instead we recommend writing a script to run the tests many times (and in parallel,
+by using tmux for example) and saving output in case of a kernel panic.
 @end table
-
 

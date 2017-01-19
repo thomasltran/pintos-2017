@@ -517,7 +517,7 @@ Interrupt controller changed from PIC to APIC. (See @file{devices/lapic.c} and
 @file{devices/ioapic.c}.)
 
 @item
-Interrupt save state changed from @code{enum_level} to @func{pushcli}/@func{popcli} mechanism.
+Interrupt save state changed from @code{enum_level} to @func{intr_disable_push}/@func{intr_disable_pop} mechanism.
 
 @item
 Many places where disabling interrupts were used to synchronize with interrupt
