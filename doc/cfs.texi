@@ -69,6 +69,7 @@ Each thread has a integer weight that is assigned based solely on its @var{nice}
 
 Here are the mappings from nice to weight.
 
+@example
 @group
 static const uint32_t prio_to_weight[40] =@*
 @	 @	 @{@*
@@ -82,6 +83,7 @@ static const uint32_t prio_to_weight[40] =@*
 @	 @	 @	 @	/* @ 15 */    @	 36, 29, 23, 18, 15,@*
 @	 @	 @};@*
 @end group 
+@end example
 
 @node Thread Vruntime
 @section Calculating @var{vruntime}

@@ -257,7 +257,7 @@ The basic threaded kernel also includes these files in the
 @table @file
 @item timer.c
 @itemx timer.h
-System timer that ticks, by default, 100 times per second.  You will
+System timer that ticks, by default, 1000 times per second.  You will
 modify this code in this project.
 
 @item vga.c

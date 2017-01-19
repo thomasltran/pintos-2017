@@ -59,6 +59,16 @@ Emacs and some versions of @command{vi} have their own interfaces to
 visit @url{http://cscope.sourceforge.net, the @command{cscope} home
 page}.
 
+@node git
+@section git
+
+As of 2012, we recommend you use git. We will set up an upstream repository
+to distribute the provided code.   We will commit any needed updates to this
+master repository.  You should clone this repository.
+
+To share work among team members, use NFSv4 ACLs to allow each other access
+to your repositories.  
+
 @node CVS
 @section CVS
 
@@ -78,17 +88,7 @@ Unix-like environments.
 For more information, visit the @uref{https://www.cvshome.org/, , CVS
 home page}.
 
-@include localcvsinstructions.texi
-
-@node git
-@section git
-
-As of 2012, we recommend you use git. We will set up an upstream repository
-to distribute the provided code.   We will commit any needed updates to this
-master repository.  You should clone this repository.
-
-To share work among team members, use NFSv4 ACLs to allow each other access
-to your repositories.  
+@c @include localcvsinstructions.texi
 
 @ifset recommendvnc
 @node VNC
@@ -115,5 +115,5 @@ and open a new xterm.  The X11 server also allows you to run pintos while
 displaying the bochs- or qemu-emulated console on your Windows desktop.
 @end ifset
 
-@localdevelopmenttools{}
+@c @localdevelopmenttools{}
 
