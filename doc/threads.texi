@@ -859,6 +859,13 @@ expect Pintos to have been phased out of the @value{coursenumber} curriculum.
 @subsection Fair Scheduler FAQ
 
 @table @b
+@item What data structure should we use to maintain the ready queue?
+
+Linux's implementation of @acronym{CFS} uses a red/black tree to implement
+insertion and retrieval in O(log n) time.  For the purposes of this
+project, it is acceptable for these operations to be performed in O(n)
+time.
+
 @item Some scheduler tests fail and I don't understand why.  Help!
 
 If your implementation mysteriously fails some of the advanced
@@ -887,6 +894,11 @@ code is not selecting the right thread to run. Beware of off-by-one errors.
 @subsection Load Balancer FAQ
 
 @table @b
+@item How do we select which threads to migrate?
+
+You should think about how your policy retains the potential for threads
+to retain processor affinity.
+
 @item The synch tests take forever!
 
 Race conditions are, by nature, not guaranteed to occur. The goal of the test
