@@ -58,29 +58,24 @@ to their @file{.bash_profile} file.
 
 @macro localcredits{}
 Adjustments for Virginia Tech's CS 3204 were made by Godmar Back.
-Vijay Kumar wrote the section on how to set up CVS. 
 @end macro
 
 @macro localcvspolicy{}
 Instead, we recommend integrating your team's changes early and often,
-using a source code control system such as CVS (@pxref{CVS}). 
-@c or a
-@c group collaboration site such as SourceForge (@pxref{SourceForge}).
-This is less likely to produce surprises, because everyone can see
-everyone else's code as it is written, instead of just when it is
-finished.  These systems also make it possible to review changes and,
+using the git source code control system (@pxref{git}).
+These systems also make it possible to review changes and,
 when a change introduces a bug, drop back to working versions of code.
+
+You can decide which model to use: either a shared repository
+model in which team partners share access to an upstream repository
+kept on git.cs.vt.edu, which in turn is forked from the provided
+pintos-2017 repository, or whether you want to use pull request
+based model to give other team member a chance to review changes
+first.
 @end macro
 
 @macro localcodingstandards{}
-All of you should have taken a class like CS 2604, so we expect you to be
-familiar with some set of coding standards such as
-@uref{http://courses.cs.vt.edu/%7Ecs2604/spring04/Standards.html
-, CS 2604 General Programming Standards}.  
-We also recommend that you review the
-@uref{http://www.stanford.edu/class/cs140/projects/misc/CodingStandards.pdf,
-, Stanford CS 107 Coding Standards}.
-We expect code at the ``Peer-Review Quality'' level described in that document.
+@c nothing to recommend right now
 @end macro
 
 @macro localdevelopmenttools{}
