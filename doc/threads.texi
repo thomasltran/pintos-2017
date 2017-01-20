@@ -688,6 +688,10 @@ confidence that the scheduler will work as advertised under real conditions?
 For instance, if there are race with an interrupt handler, how would
 they manifest?  Or all tests simulated, or do you have as I believe
 we discussed, also real integration tests?}
+@i{There are real tests as well, which I have added a note at the bottom.
+This design allows students to make their scheduler schedule real tests with
+minimum change to the code, since both simulator.c and thread.c call into 
+scheduler.c.} 
 
 The CFS tests do not actually create or schedule any real threads.
 Instead, they provide a scheduler simulator that simulates scheduling threads
@@ -723,7 +727,13 @@ that will invoke your scheduler. At the end of each event, the test checks that 
 thread that your scheduler would run at the end of the event is the correct one. The
 real time is restored at the end of the test.
 
-The alarm, child-run, and balance tests do not run the
+In addition, there are two tests that schedule real threads based on your scheduling
+policy. 
+This ensures that your scheduler works under real conditions. Since both the driver and
+@file{thread.c} calls into the same module @file{threads/scheduler.c}, you should not
+have to make any special changes to make Pintos invoke your scheduler.
+
+The alarm, cfs-run, and balance tests do not run the
 simulator, but rather schedule real threads doing real work under your 
 scheduler. As a consequence, those tests take significantly longer.
 

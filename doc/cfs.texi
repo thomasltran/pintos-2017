@@ -64,9 +64,9 @@ thread has a @var{nice} value of @var{NICE_DEFAULT} (0).
 Because CFS relies on weights to make actual scheduling decisions,
 nice values are used to compute and assign weights to each thread.
 
-You must implement the functions described below, which are for
-use by test programs.  We have provided skeleton definitions for them in
-@file{threads/thread.c}.
+Pintos uses the functions described below to set and get nice values.
+They have already been implemented for you, and you should not have
+to change them.
 
 @deftypefun int thread_get_nice (void)
 Returns the current thread's @var{nice} value.
@@ -128,12 +128,11 @@ of CPU time it has received, and its weight @var{w}.  Based on these variables,
 
 @center @var{vruntime} = @var{vruntime_0} + @var{d} * @var{w0} / @var{w}
 
-@i{Lance what math is being used here?  Integer? Fixed-point? Address.}
-
 @noindent where 
 @var{vruntime_0} is an initial value for the threads virtual runtime
 set when the thread is added to the ready queue, and where
 @var{w0} is the weight of a thread with a @var{nice} value of 0.
+For all CFS calculations, integer arithmetic will be sufficient.
 
 The very first thread's @var{vruntime_0} is initialized to 0, but consider
 what would happen if the @var{vruntime_0} values of threads created later
@@ -153,6 +152,21 @@ in updating vruntime (say not do it every timer tick), as a
 performance optimization.  But on the other hand you are requiring
 that vruntime values be accurate every time the scheduler is called, correct?}
 
+@i{I'm not sure if this paragraph is necessary. This paragraph is more 
+of a guidance than trying to tell students to optimize. Maybe I should
+take the part about delayed updates out, Linux does it but it really 
+does not help performance that much, since updating statistics is quick.
+Essentially I am trying to
+guide students to create an update_curr () method, realizing that only the
+"current" thread ever needs its vruntime update. Second, the only real
+delayed update policy I can think of is not updating current statistics
+at a timer tick if your thread is the only one running. However in this
+case you want to ensure that the thread is penalized accordingly when
+there are other tasks in the runqueue again. Then there is the case of 
+the idle thread, whose vruntime doesn't need to be updated because it can't
+be returned from pick_next (), but most importantly it should not affect 
+the runqueues load sum nor min_vruntime.} 
+
 A question that arises is when to update the @var{vruntime} of a
 thread. Clearly, there is no need to update the @var{vruntime} of a
 thread that is on the ready queue (but not running) or is blocked 
@@ -163,6 +177,9 @@ to run or when calculating @var{min_vruntime}. Otherwise, the scheduler can
 choose to delay updating @var{vruntime} to only when it is necessary.
 
 @i{Lance, Add how the choice of a delayed update policy affects the students' ability to pass tests.}
+@i{I'm not certain how to do that since I do not know what kind of micro-optimizations they might make,
+but it just has to make the same scheduling decisions as a scheduler that doesn't optimize and follow
+the specs exactly. But that should be kind of obvious.}
 
 @node Thread Ideal Runtime
 @section Calculating @var{ideal_runtime}
