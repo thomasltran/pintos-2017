@@ -85,7 +85,7 @@ Threads with higher weights tend to not only be scheduled more often,
 but run for longer periods of time when scheduled.
 
 The following table shows the mapping from @var{nice} value to weight, 
-as used in CFS.  All values are represented as unsigned 32-bit integers.
+as used in CFS.  All values are represented as unsigned 64-bit integers.
 
 @verbatim
 static const uint32_t prio_to_weight[40] =
@@ -112,11 +112,11 @@ which represents the thread that is farthest behind relative to
 its desired share.
 
 If multiple threads have the same @var{vruntime} value, you should break ties 
-by scheduling the thread with the lower tid. (This tie breaker is needed only 
+by scheduling the thread with the lowest tid. (This tie breaker is needed only 
 for the tests, it is not used in the actual CFS algorithm.)
 
 A thread's virtual runtime increases linearly as a function of consumed CPU time @var{d}
-where a thread's weight determines the slope of the increase.
+where a thread's weight determines the rate of the increase.
 Hence, given the same amount of CPU consumption, @var{vruntime}
 increases more slowly for threads with higher weight and more quickly
 for a thread with lower weight.
@@ -130,7 +130,7 @@ consumed CPU time @var{d} and its weight @var{w} as follows:
 @var{vruntime_0} is an initial value for the threads virtual runtime
 set when the thread is added to the ready queue, and where
 @var{w0} is the weight of a thread with a @var{nice} value of 0.
-(Unsigned 32-bit integer arithmetic must be used for all @acronym{CFS} calculations.)
+(Unsigned 64-bit integer arithmetic must be used for all @acronym{CFS} calculations.)
 
 The very first thread's @var{vruntime_0} is initialized to 0, but consider
 what would happen if the @var{vruntime_0} values of threads created later
@@ -269,7 +269,7 @@ If so, a CPU would move threads from another CPU's ready queue to its own.
 To decide whether to pull threads from another CPU's ready queue, @acronym{CFS}
 examines the load on each CPU, represented by a variable @var{cpu_load}.
 @var{cpu_load} is defined as the sum of the weights of all threads in the ready queue (notice that 
-unlike for the definition of @var{min_vruntime}, the weight of the thread currently running 
+unlike the previous definition for sum of weights, @var{s} which was used to calculate @var{ideal_runtime}, the weight of the thread currently running 
 on that CPU is not taken into account here). 
 
 A CPU's @var{imbalance} is calculated as follows:
