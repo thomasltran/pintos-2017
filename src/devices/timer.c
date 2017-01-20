@@ -171,10 +171,12 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
-  if (get_cpu ()->id == 0) {
-    ticks++;
-    timer_settime (timer_ticks () * NSEC_PER_SEC / TIMER_FREQ);
-  }
+  /* CPU 0 is in charge of maintaining wall-clock time */
+  if (get_cpu ()->id == 0) 
+    {
+      ticks++;
+      timer_settime (timer_ticks () * NSEC_PER_SEC / TIMER_FREQ);
+    }
     
   thread_tick ();
 }
@@ -250,8 +252,13 @@ real_time_delay (int64_t num, int32_t denom)
   busy_wait (loops_per_tick * num / 1000 * TIMER_FREQ / (denom / 1000)); 
 }
 
+/*
+ * Set the current (wall-clock) time.
+ * This is done by the simulation framework during testing, and
+ * done by CPU0 during the actual execution.
+ */
 void
-timer_settime(uint64_t time) 
+timer_settime (uint64_t time) 
 {
   cur_time = time;
 }

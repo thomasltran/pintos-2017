@@ -538,11 +538,13 @@ Threads are assigned to a CPU upon creation and will never migrate
 between CPUs.  The scheduler pursues a simple round-robin
 policy: when a thread's time slice expires, it is moved to the
 end of the ready queue and whichever thread is at the front
-is scheduled.  
+is scheduled. The length of a time slice is the same for
+all threads.
 
 Clearly, this simple policy lacks sophistication.
 Therefore, in this project, we ask that you implement a simplified version
-of the so-called @acronym{CFS} (``Completely Fair Scheduler'')
+of the so-called @uref{http://people.redhat.com/mingo/cfs-scheduler/sched-design-CFS.txt,@acronym{CFS}} 
+(``Completely Fair Scheduler'')
 scheduler used in the Linux kernel since about 2009.
 
 This scheduler pursues the following goals:
@@ -569,7 +571,7 @@ that vary over time.
 
 @item
 Minimizing scheduling overhead.  This is a general goal for any
-scheduler as scheduling costs are overhead that do not directly
+scheduler as scheduling costs are overhead that does not directly
 benefit applications.
 
 @end enumerate
@@ -584,7 +586,7 @@ in @file{threads/scheduler.c}.
 
 Many scheduling decisions in @acronym{CFS} depends on how much CPU time
 a thread has received.  Your scheduler must calculate this by recording
-when a starts and when it stops using the CPU.
+when a thread starts and when it stops using the CPU.
 You will find the function @code{timer_gettime ()} useful.
 
 @deftypefun uint64_t timer_gettime (void)
@@ -608,29 +610,29 @@ running). However, using a global queue has two main weaknesses.
 
 The first weakness is lack of
 scability. The global queue must be locked while choosing the next job to run.
-Locking greatly reduces performance as the number of CPUs grow. Each CPU will
+Locking greatly reduces performance as the number of CPUs grows. Each CPU will
 spend more and more time contenting for the global queue lock and less time
 actually running threads.
 
-The second weakness is processor affinity. A thread builds up a fair amount of
-state in the cache and TLB associated with its running CPU. It is advantageous
+The second weakness is processor affinity. A thread can build up a fair amount of
+state in the caches and TLB associated with its running CPU. It is advantageous
 to try run it on the same CPU each time, as it will run faster than if it ran on
 a different CPU where its data is far less likely to be stored in the CPU cache.
 A global queue in which threads are equally likely to be chosen by any CPU
 may not preserve processor affinity.
 
 Because of the weaknesses described above, many operating systems, including Pintos,
-uses per-CPU queues.  Each CPU manages only the threads on their own queue, 
-independent of other CPUs, thereby avoiding the scalability problem outlined
+use per-CPU queues.  Each CPU manages only the threads on their own queue, 
+independent of the other CPUs, thereby avoiding the scalability problem outlined
 above and improving processor affinity.
 
-Using separate, per-CPU ready queues does have a potential drawback in that it
-may lead to load imbalance, which in turn can affect fairness and the ability
-to use all CPUs fully.  For instance, if CPU0 has manages thread A, and 
+Using separate, per-CPU ready queues, however, has the potential drawback in that it
+may lead to load imbalance between CPUs, which in turn can affect fairness and the ability
+to use all CPUs fully.  For instance, if CPU0 manages thread A, and 
 CPU1 manages two threads B and C, then A has exclusive access to CPU0, while 
 B and C take turns being scheduled on CPU1. A then
 is given twice as much CPU time as B and C. Even worse, imagine if thread A finishes. 
-Then CPU0 would be idle, while CPU1 is shared between threads B and C.
+Then CPU0 would be idle, while CPU1 is still shared between threads B and C.
 Load balancing avoids this problem by providing mechanisms and policies
 to migrate threads between CPUs so that each is shared between approximately
 the same number of threads.
@@ -638,15 +640,15 @@ the same number of threads.
 @b{Implement load balancing in Pintos.}
 
 In Pintos, when a thread is created, it is assigned a CPU in a round-robin fashion and
-added to its local queue first.   Although one could imagine better policies for
+added to its ready queue first.   Although one could imagine better policies for
 initial placement, for the purposes of this project we require that you 
 @b{DO NOT} change this, as it is an assumption made by the load balance tests. 
 
-As shown by the example above, this simple policy does not guarantee that CPUs 
+As shown by the example above, this simple placement policy does not guarantee that CPUs 
 will be balanced because the threads initially placed on one CPU may finish faster
 than those placed on another, causing the former to become idle.
 
-Thus, general goals of a load balancing strategy are the following:
+Thus, a good load balancing strategy should pursue the following goals:
 @enumerate
 @item
 No CPU should be idle while there are ready threads
@@ -657,7 +659,7 @@ Each CPU should be equally loaded to maximize fairness.
 
 @item
 Wherever possible, minimize the migration of threads, since migrating a thread
-to a different CPU diminishes ignores their processor affinity.
+to a different CPU diminishes their processor affinity.
 
 @end enumerate
 
@@ -669,35 +671,36 @@ You should create a function called @func{load_balance} and call it
 from appropriate places.
 
 @deftypefun void load_balance (void)
-Pull threads from another CPU's local queue and add
-it to the current CPU's local queue.
+Pull threads from another CPU's ready queue and add
+it to the current CPU's ready queue.
 @xref{Load Balancing}, to see the detailed requirements.
 @end deftypefun
 
-It is up to you how frequently you call load balance; at the very least, 
+It is up to you how frequently you call @func{load_balance}; at the very least, 
 load balancing must be performed inside the idle loop to avoid missing
 when there are available threads in other CPU's ready queues.
 
 @node Project 1 Tests
 @section Test Overview
 
-@i{Lance, insert a paragraph here describing your motivation for this approach.
-Why not just write a Java program to simulate CFS?
-How does this setup ensure both functional testing and yet increases
-confidence that the scheduler will work as advertised under real conditions?
-For instance, if there are race with an interrupt handler, how would
-they manifest?  Or all tests simulated, or do you have as I believe
-we discussed, also real integration tests?}
-@i{There are real tests as well, which I have added a note at the bottom.
-This design allows students to make their scheduler schedule real tests with
-minimum change to the code, since both simulator.c and thread.c call into 
-scheduler.c.} 
+Testing the correct behavior of a scheduler can be tricky.  On the one hand,
+tests need to verify that the desired policy is implemented correctly,
+which tends to favor a unit-test based approach.  On the other hand, the
+scheduler implementation must work in an actual kernel environment to
+schedule a workload of real threads.
 
-The CFS tests do not actually create or schedule any real threads.
-Instead, they provide a scheduler simulator that simulates scheduling threads
-under your scheduler. The simulator framework asks your scheduler for which
-scheduling decisions to make, but it does not actually context switch between
-threads! Instead, it verifies that the correct thread is selected to run 
+For this project, we pursue a dual approach to testing that includes both
+simulation and actual execution.  The simulator framework is built into the Pintos
+kernel, ensuring no changes are needed to your scheduler for testing.
+
+@b{Simulated Tests.}
+The majority of CFS tests is performed under the simulated scheduler.
+In these tests, we do not actually create or schedule any real threads.
+Instead, the scheduler simulator simulates how threads would be scheduled
+under your scheduler. 
+The simulator framework asks your scheduler for which
+scheduling decisions to make at which point, but it does not actually switch
+between threads.  Instead, it verifies that the correct thread is selected to run 
 at the correct time, based on the algorithm.
 As such, it is able to create a wide variety of scheduling scenarios and check 
 if your scheduler makes the correct decisions. 
@@ -727,35 +730,38 @@ that will invoke your scheduler. At the end of each event, the test checks that 
 thread that your scheduler would run at the end of the event is the correct one. The
 real time is restored at the end of the test.
 
-In addition, there are two tests that schedule real threads based on your scheduling
-policy. 
-This ensures that your scheduler works under real conditions. Since both the driver and
-@file{thread.c} calls into the same module @file{threads/scheduler.c}, you should not
-have to make any special changes to make Pintos invoke your scheduler.
+@b{Real Workload Tests.}
+The alarm, cfs-run, and balance tests do not run the simulator, but rather schedule 
+real threads doing work under your scheduler to ensure that your scheduler works 
+under real conditions. 
 
-The alarm, cfs-run, and balance tests do not run the
-simulator, but rather schedule real threads doing real work under your 
-scheduler. As a consequence, those tests take significantly longer.
+Since both the driver and @file{thread.c} calls into the same module 
+@file{threads/scheduler.c}, you should not have to make any special changes 
+to make Pintos invoke your scheduler, provided that you do not remove
+any of its exported functions.
+
+The real workload tests take significantly longer to run than the simulated ones.
 
 @node Project 1 FAQ
 @section FAQ
 
 @table @b
-@item How much code will I need to write?
 
-Here's a summary of our reference solution, produced by the
-@command{diffstat} program.  The final row gives total lines inserted
-and deleted; a changed line counts as both an insertion and a deletion.
+@c @item How much code will I need to write?
+@c 
+@c Here's a summary of our reference solution, produced by the
+@c @command{diffstat} program.  The final row gives total lines inserted
+@c and deleted; a changed line counts as both an insertion and a deletion.
+@c 
+@c The reference solution represents just one possible solution.  Many
+@c other solutions are also possible and many of those differ greatly from
+@c the reference solution.  Some excellent solutions may not modify all the
+@c files modified by the reference solution, and some may modify files not
+@c modified by the reference solution.
 
-The reference solution represents just one possible solution.  Many
-other solutions are also possible and many of those differ greatly from
-the reference solution.  Some excellent solutions may not modify all the
-files modified by the reference solution, and some may modify files not
-modified by the reference solution.
-
-@verbatim
- TODO
-@end verbatim
+@c @verbatim
+@c  We can fill that once we have refined the project enough to have a good reference solution.
+@c @end verbatim
 
 @item How do I update the @file{Makefile}s when I add a new source file?
 
@@ -885,9 +891,6 @@ correct thread is running. See which one the test expects, and why your
 code is not selecting the right thread to run. Beware of off-by-one errors.
 @end itemize
 
-@item I don't understand how the scheduling driver works/how tests are run
-
-@xref{Project 1 Tests}.
 @end table
 
 @node Load Balancer FAQ
