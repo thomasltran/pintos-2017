@@ -33,7 +33,10 @@
 @am{\MATH\, \MATH\}
 @end macro
 
-For project 1, you must implement the scheduler described in this appendix. This scheduler is a simplified version of the Completely Fair Scheduler (@acronym{CFS}) in Linux. 
+For project 1, you must implement the scheduler described in this
+appendix. This scheduler is a simplified version of the Completely Fair
+Scheduler (@acronym{CFS}) in Linux, which in turn is a variant of
+a weighted fair queuing scheduler.
 
 @menu
 * Thread Niceness::             
@@ -48,7 +51,18 @@ For project 1, you must implement the scheduler described in this appendix. This
 @node Thread Niceness
 @section Niceness
 
-Each thread has an integer @var{nice} value that determines how "nice" the thread should be to other threads. A positive @var{nice}, to the maximum of @w{@var{NICE_MAX} (19)}, decreases the priority of a thread and causes it to give up some CPU time it would otherwise receive. On the other hand, a negative @var{nice}, to the minimum of @var{NICE_MIN} (-20), tends to take away CPU time from other threads. By default, each thread has a @var{nice} value of @var{NICE_DEFAULT} (0). Nice values are used to assign weights to each thread
+Niceness is the traditional way in which Unix systems allow users to
+express the relative importance of threads.
+Each thread has an integer @var{nice} value that determines how ``nice''
+the thread should be to other threads. A positive @var{nice}, to the
+maximum of @w{@var{NICE_MAX} (19)}, decreases the priority of a thread,
+thus causing it to give up some CPU time it would otherwise receive. On
+the other hand, a negative @var{nice}, to the minimum of @var{NICE_MIN}
+(-20), tends to take away CPU time from other threads. By default, each
+thread has a @var{nice} value of @var{NICE_DEFAULT} (0). 
+
+Because CFS relies on weights to make actual scheduling decisions,
+nice values are used to compute and assign weights to each thread.
 
 You must implement the functions described below, which are for
 use by test programs.  We have provided skeleton definitions for them in
@@ -63,104 +77,214 @@ Sets the current thread's @var{nice} value to @var{new_nice}.
 @end deftypefun
 
 @node Thread Weight
-@section Weight
+@section Computing Weights
 
-Each thread has a integer weight that is assigned based solely on its @var{nice} value. Threads with lower @var{nice} values have more priority, and therefore have higher weight. In contrast, threads with higher @var{nice} values have lower weight. The weight of each thread is directly involved when making scheduling decisions. In general, threads with higher weights tend to not only be scheduled more often, but run for longer periods of time when scheduled.
+Each thread has a integer weight that is assigned based solely on
+its @var{nice} value. Threads with lower @var{nice} values have higher
+priority, and therefore have higher weight. In contrast, threads with
+higher @var{nice} values have lower weight. The weight of each thread
+is taken into account when making scheduling decisions.
+Threads with higher weights tend to not only be scheduled more often,
+but run for longer periods of time when scheduled.
 
-Here are the mappings from nice to weight.
+Here are the mappings from nice to weight as used in CFS.
 
-@example
-@group
-static const uint32_t prio_to_weight[40] =@*
-@	 @	 @{@*
-@	 @	 @	 @	/* -20 */     @	 88761, 71755, 56483, 46273, 36291,@*
-@	 @	 @	 @	/* -15 */     @	 29154, 23254, 18705, 14949, 11916,@*
-@	 @	 @	 @	/* -10 */     @	 9548, 7620, 6100, 4904, 3906,@* 
-@	 @	 @	 @	/* @ @ -5 */  @	 3121, 2501, 1991, 1586, 1277,@*
-@	 @	 @	 @	/* @ @ @ 0 */ @	 1024, 820, 655, 526, 423,@*
-@	 @	 @	 @	/* @ @ @ 5 */ @	 335, 272, 215, 172, 137,@*
-@	 @	 @	 @	/* @ 10 */    @	 110, 87, 70, 56, 45,@*
-@	 @	 @	 @	/* @ 15 */    @	 36, 29, 23, 18, 15,@*
-@	 @	 @};@*
-@end group 
-@end example
+@verbatim
+static const uint32_t prio_to_weight[40] =
+  {
+    /* -20 */    88761, 71755, 56483, 46273, 36291,
+    /* -15 */    29154, 23254, 18705, 14949, 11916,
+    /* -10 */    9548, 7620, 6100, 4904, 3906,
+    /*  -5 */    3121, 2501, 1991, 1586, 1277,
+    /*   0 */    1024, 820, 655, 526, 423,
+    /*   5 */    335, 272, 215, 172, 137,
+    /*  10 */    110, 87, 70, 56, 45,
+    /*  15 */    36, 29, 23, 18, 15,
+  }
+@end verbatim
 
 @node Thread Vruntime
-@section Calculating @var{vruntime}
+@section Calculating Virtual Runtime @var{vruntime}
 
-Each thread keeps track of its @var{vruntime}. Vruntime stands for "virtual runtime." It is a weighted measurement of how much time a thread has run on the CPU. @acronym{CFS} wants to be fair to all threads. Therefore, when picking a task to run, the thread with the lowest @var{vruntime} clearly deserves to run and is therefore selected. If multiple threads have the same @var{vruntime}, choose the one with lowest tid. When updating @var{vruntime}, the weight of the thread is taken into account. Given the same amount of cpu runtime, @var{vruntime} increases more slowly for a thread with higher weight and more quickly for a thread with lower weight. 
+Each thread keeps track of its @var{vruntime}. Vruntime stands for
+``virtual runtime.'' It is a normalized measure of how much CPU time
+a thread has already consumed. @acronym{CFS} always selects the thread
+with the lowest @var{vruntime} value when picking a task to run,
+which represents the thread that is farthest behind relative to
+its desired share.
 
-The initial thread's @var{vruntime} is initialized to 0. When a new thread is created, it's @var{vruntime} is initialized to @var{min_vruntime}, which is the @var{vruntime} of the thread with the lowest @var{vruntime} that is either ready or running. Afterwards, it is incremented periodically based on its runtime and its weight. 
+If multiple threads have the same @var{vruntime} value, break ties by scheduling
+the thread with the lower tid. (This tie breaker is needed only for the tests,
+it is not used in the actual CFS algorithm.)
 
-@center @var{vruntime} += @var{d} * @var{w0} / @var{w}
+    When updating @var{vruntime}, the weight of the thread is
+    taken into account. Given the same amount of cpu runtime, @var{vruntime}
+    increases more slowly for a thread with higher weight and more quickly
+    for a thread with lower weight.
 
-@noindent where @var{d} is the amount of wall-clock time the thread has run since a thread's @var{vruntime} was last updated, @var{w0} is the weight of a thread with 0 @var{nice}, and @var{w} is the weight of the thread.
+A thread's virtual runtime depends on two variables: @var{d}, the amount
+of CPU time it has received, and its weight @var{w}.  Based on these variables,
+@var{vruntime} is computed as
 
-Notice that in the common case where all threads have the same weight, s = @var{n} * @var{w}, and therefore the ideal runtime is 4000000
+@center @var{vruntime} = @var{vruntime_0} + @var{d} * @var{w0} / @var{w}
 
-A question that arises is when to update the @var{vruntime} of a thread. Clearly, there is no need to update the @var{vruntime} of a thread that is on the ready queue or sleep queue, since they do not get runtime. The currently running thread's @var{vruntime} must be updated when the scheduler makes important decisions, such as selecting a task to run and calculating @var{min_vruntime}. Otherwise, the scheduler can choose to delay updating @var{vruntime} to only when it is necessary. 
+@i{Lance what math is being used here?  Integer? Fixed-point? Address.}
+
+@noindent where 
+@var{vruntime_0} is an initial value for the threads virtual runtime
+set when the thread is added to the ready queue, and where
+@var{w0} is the weight of a thread with a @var{nice} value of 0.
+
+The very first thread's @var{vruntime_0} is initialized to 0, but consider
+what would happen if the @var{vruntime_0} values of threads created later
+were set to 0 as well: those threads would appear to have no CPU time
+consumed at all, and would be preferred by the scheduler until they
+caught up with the threads that were already running in the system.
+
+Instead, CFS chooses as the initial value of @var{vruntime_0} for
+threads that are created later the minimum value of @var{vruntime}
+of all threads already running or ready at that point.
+This value, called @var{min_vruntime}, is maintained for each ready
+queue.
+
+@i{Lance, how should I read the following paragraph?
+Are you asking me to minimize scheduling overhead by being lazy
+in updating vruntime (say not do it every timer tick), as a
+performance optimization.  But on the other hand you are requiring
+that vruntime values be accurate every time the scheduler is called, correct?}
+
+A question that arises is when to update the @var{vruntime} of a
+thread. Clearly, there is no need to update the @var{vruntime} of a
+thread that is on the ready queue (but not running) or is blocked 
+for any reason, since they do not consume CPU. 
+The currently running thread's @var{vruntime} must be updated
+when the scheduler makes important decisions, such as selecting a task
+to run or when calculating @var{min_vruntime}. Otherwise, the scheduler can
+choose to delay updating @var{vruntime} to only when it is necessary.
+
+@i{Lance, Add how the choice of a delayed update policy affects the students' ability to pass tests.}
 
 @node Thread Ideal Runtime
 @section Calculating @var{ideal_runtime}
 
-At each timer interrupt, the scheduler has to make an important decision. That is: should it let the current thread continue running, or let someone else run? If it always decides to let someone else run, then threads will be scheduled more frequently and run for short periods, incurring high scheduling overhead. On the other hand, if the scheduler consistently refuses to preempt the current thread, then the overall effect is that threads do not get picked to run very often, but once picked they run for a long time, causing slow perceived response time. 
+At each timer interrupt the scheduler needs to decide whether to
+preempt the currently running thread or not.  A thread is preempted
+if it has run for more than its ``ideal runtime,'' which represents
+the length of this thread's time slice.  In @acronym{CFS}, the
+length of a thread's time slice depends on its niceness:  higher 
+priority threads receive longer time slices than lower priority
+threads.
 
-In @acronym{CFS}, threads run for some time before they are preempted. That amount of time is called the @var{ideal_runtime}, and it is different for each thread, depending on that thread's weight relative to the weight of the other threads.
+Specifically, @var{ideal_runtime} is computed as
 
 @center @var{ideal_runtime} = 4000000 * @var{n} * @var{w} / s
 
-@noindent where @var{n} is the number of threads either running or ready to run, @var{w} is the weight of the currently running thread, and s is the sum of weights of all threads that are either running or ready to run.
+@noindent where @var{n} is the number of threads either running or ready
+to run, @var{w} is the weight of the thread, and s is
+the sum of weights of all threads that are either running or ready to run.
 
-Notice that in the common case where all threads have the same weight (s = @var{n} * @var{w}), the ideal runtime is 4000000
+Notice that in the common case where all threads have the same weight
+(s = @var{n} * @var{w}), the ideal runtime is 4,000,000ns, or 4ms.
+For example, assuming a timer frequency of 1000 Hz, if 2 CPU bound threads 
+were running on a CPU, they would be taking turns every 4 clock ticks.
+
+This time interval is long enough to avoid excessive context switch
+overhead, but short enough so that users can perceive their
+threads as making progress simultaneously.
 
 @node Sleeper Threads
-@section Sleeper threads
+@section I/O bound threads
 
-Some threads are I/O bound and spend much of their time in the blocked state. We refer them as "sleepers." 
+I/O bound threads spend much of their time in the blocked state.
+(The Linux kernel designers refer them as ``sleepers.'')
+An example is a program such as PowerPoint, which may run only
+when a user presses a key to update a slide, then go back sleeping
+to wait for more input.  To increase responsiveness, the scheduler
+should schedule such threads as early as possible when they become 
+ready.  Most general-purpose schedulers, @acronym{CFS} included,
+include a special policy for this case.
 
-When a thread is unblocked, its @var{vruntime} is likely to be lower than other threads that did not sleep. Therefore, it will be repeatedly scheduled (aka "hog the CPU") until its @var{vruntime} has caught up with the other threads. To avoid this, @acronym{CFS} sets its @var{vruntime} to be @var{min_vruntime}. However, we also want to give sleepers a small "sleeper bonus." After all, it spent a lot being ignored by the scheduler because it was not on the ready queue. Therefore, we give it a "sleeper bonus" of 20000000. However, this could potentially cause a short sleeper to "gain" time by intentionally sleeping for a short amount of time and taking advantage of the sleeper bonus. Therefore we make sure that its new @var{vruntime} is strictly greater or equal to its previous @var{vruntime} - the @var{vruntime} it had when it went to sleep.
+When a thread is unblocked, its @var{vruntime} is likely to be lower
+than that of other threads that did not sleep.  As in the case discussed
+of newly created threads discussed above, without adjustment, 
+those threads would be scheduled by the scheduler until they have
+caught up with the others.  Although this meets the goal of minimizing
+latency, it is in general undesirable, particularly if the thread
+now started using the CPU extensively.
 
-@center @var{sleeper_vruntime} = max(@var{sleeper_prev_vruntime}, @var{min_vruntime} - 20000000)
+To avoid this, @acronym{CFS} sets an unblocked thread's @var{vruntime}
+to a slightly smaller value than @var{min_vruntime}, specifically:
+
+@center @var{vruntime} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
+
+where 20000000 represents the ``sleeper bonus'' given to I/O bound 
+processes when they wake up (unblock).  This adjustment tends to place
+these threads at the front of the ready queue.
+
+To avoid threads manipulating this system by intentionally sleeping,
+the previous @var{vruntime} value when it began sleeping is included 
+as a lower bound, ensuring that a thread's @var{vruntime} cannot 
+decrease, thus threads not getting more CPU time than if they
+had been continously ready.
 
 @node CFS Scheduler Summary
 @section Summary
-@acronym{CFS} can be summarized by the following: At each timer tick, preempt the current thread if it ran for @var{ideal_runtime} or longer. When choosing which thread to run next, pick the thread with lowest @var{vruntime}. Break ties by choosing lowest tid. 
+A summary of the @acronym{CFS} algorithm is provided below:
 
+@itemize
+@item
+    At each timer tick, preempt the current thread if it has run for at least @var{ideal_runtime}.
+    When choosing which thread to run next, pick the thread with
+    lowest @var{vruntime}. Break ties by choosing lowest tid.
 
-Let @var{d} be the amount of wall-clock time elapsed since a thread's @var{vruntime} was last updated, @var{w0} be the weight of a thread with 0 @var{nice}, and @var{w} be the weight of the thread. Then:
+@item Let @var{d} be the amount of CPU time consumed since a thread's
+    @var{vruntime} was last updated, @var{w0} be the weight of a thread with
+    0 @var{nice}, and @var{w} be the weight of the thread. Then:
 
-@center @var{vruntime} += @var{d} * @var{w0} / @var{w}
+    @center @var{vruntime} += @var{d} * @var{w0} / @var{w}
 
-Let @var{n} be the number of threads either running or ready to run, @var{w} be the weight of the currently running thread, and s be the sum of weights of all threads that are either running or ready to run. Then:
+@item Maintain @var{min_vruntime}, the minimum value of @var{vruntime} of all
+        running or ready threads.
 
-@center @var{ideal_runtime} = 4000000 * @var{n} * @var{w} / s
+@item
+    Let @var{n} be the number of threads either running or ready to run,
+    @var{w} be the weight of the currently running thread, and s be the sum
+    of weights of all threads that are either running or ready to run. Then:
 
-When a thread is unblocked for the first time, its @var{vruntime} is:
+    @center @var{ideal_runtime} = 4000000 * @var{n} * @var{w} / s
 
-@center @var{initial_vruntime} = @var{min_vruntime}
+@item
+    When a thread is unblocked for the first time, set its @var{vruntime} to:
 
-When a thread is unblocked after going to sleep, its @var{vruntime} is:
+    @center @var{initial_vruntime} = @var{min_vruntime}
 
-@center @var{sleeper_vruntime} = max(@var{sleeper_prev_vruntime}, @var{min_vruntime} - 20000000)
+@item
+    When a thread is unblocked subsequently, set its @var{vruntime} to:
+
+    @center @var{vruntime} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
+
+@end itemize
 
 @node Load Balancing
 @section Load Balancing
 
 While the previous sections focused on the per-processor scheduling policy, this section
-focuses on the how CFS balances the load between two CPUs.
-This load balancing policy is specific towards the CFS scheduler. Thus we recommend that 
-you get CFS working before attempting to implement a load balancer. The only part your 
-load balancer will not need working is sleeper threads.
+focuses on how CFS balances the load between two CPUs.
+This load balancing policy is specific towards the CFS scheduler because its load metric
+is CFS specific. Thus we recommend that 
+you get CFS working before attempting to implement a load balancer. 
+@c The only part your load balancer will not need working is sleeper threads.
 
-When a CPU wants to pull threads from another CPU, CFS examines the @var{load} on each CPU. 
-@var{Load} is the sum of weights of all threads in the ready queue (notice that 
-unlike previous definitions, the weight of the running thread is not taken into account
-here). An @var{imbalance} is calculated as follows:
+When a CPU wants to pull threads from another CPU, CFS examines the load on each CPU,
+represented by a variable @var{load}.
+@var{load} is the sum of weights of all threads in the ready queue (notice that 
+unlike for the definition of @var{min_vruntime}, the weight of the running thread is not taken into account
+here). An @var{imbalance} is calculated for each CPU as follows:
 
 @center @var{imbalance} = (@var{busiest_load - my_load}) / 2
 
 @noindent where busiest_load is the @var{load} of the CPU with highest load and my_load is the
-@var{load} of the CPU that initiated the load balancing. 
+@var{load} of the CPU that is executing the load balancing. 
 
 If @var{imbalance} is small (@var{imbalance} * 4 < @var{busiest_load}) 
 then no rebalancing occurs. 
@@ -168,12 +292,17 @@ Otherwise,  CFS pulls threads from the busiest CPU to the CPU that initiated the
 It continues to do so until @var{load_moved}, defined as the sum of weights of threads that 
 have been migrated, equals or exceeds @var{imbalance}.
 
-The @var{vruntime} of the threads between the two CPUs can be vastly different. A thread's @var{vruntime} is only significant when compared to the @var{vruntime} of other threads on its local queue.
-Therefore, @var{vruntime} on each of the migrated threads are adjusted as follows:
+The @var{vruntime} of the threads between the two CPUs can be vastly
+different. A thread's @var{vruntime} is only significant when compared
+to the @var{vruntime} of other threads on its local queue.  Therefore,
+@var{vruntime} on each of the migrated threads are adjusted as follows:
 
 @center @var{new_vruntime} = @var{old_vruntime} - @var{busiest_minvruntime} + @var{my_vruntime}
 
-@noindent where @var{old_vruntime} is the thread's original vruntime, @var{busiest_minvruntime} is the @var{minvruntime} of the busiest CPU and @var{my_minvruntime} is the @var{minvruntime} of the CPU that initiated the load balancing. 
+@noindent where @var{old_vruntime} is the thread's original vruntime,
+@var{busiest_minvruntime} is the @var{minvruntime} of the busiest CPU and
+@var{my_minvruntime} is the @var{minvruntime} of the CPU that initiated
+the load balancing.
 
 @html
 </CENTER>

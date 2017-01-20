@@ -825,35 +825,6 @@ to be @func{pass}.
 
 @xref{Backtraces}, for more information.
 
-@item How do runqueue spinlocks get released in the new thread following @func{schedule}?
-
-Every path into @func{schedule} acquires a runqueue spinlock.  They eventually
-get released by the next thread to be scheduled. This is the special case
-where the thread that acquired a spinlock is not necessarily the thread
-that releases it. Consider the
-possibilities: the new thread is running in @func{switch_thread} (but
-see below), which is called by @func{schedule}, which is called by one
-of a few possible functions:
-
-@itemize @bullet
-@item
-@func{thread_exit}, but we'll never switch back into such a thread, so
-it's uninteresting.
-
-@item
-@func{thread_yield}, which immediately releases the runqueue lock upon
-return from @func{schedule}.
-
-@item
-@func{thread_block}, which immediately releases the runqueue lock upon
-return from @func{schedule}.
-
-There is a special case when a newly created thread runs for the first
-time.  Such a thread calls releases the runqueue lock as the first action in
-@func{kernel_thread}, which is at the bottom of the call stack for every
-kernel thread but the first.
-
-@end itemize
 @end table
 
 @menu

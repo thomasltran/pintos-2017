@@ -1,8 +1,9 @@
 @c Local settings
 
-@set coursenumber CS 3204
-@set localpintostarpath /home/courses/cs3204/pintos/pintos.tar.gz
-@set localpintoshttppath http://@/courses.cs.vt.edu/@/~cs3204/@/pintos/@/pintos.@/tar.gz
+@set coursenumber CS 4284
+@c these are not valid and should not be used.
+@c @set localpintostarpath /home/courses/cs3204/pintos/pintos.tar.gz
+@c @set localpintoshttppath http://@/courses.cs.vt.edu/@/~cs3204/@/pintos/@/pintos.@/tar.gz
 @set localpintosbindir  /home/courses/cs3204/bin
 
 @clear recommendsourceforge
@@ -10,7 +11,7 @@
 @set recommendcygwin
 
 @macro localmachines{}
-The CS 3204 ``officially supported''
+The CS 4284 ``officially supported''
 Pintos development machines are the remote Linux cluster.
 You can log on to those machines remotely using
 @example
@@ -19,16 +20,7 @@ ssh -Y yourlogin@@rlogin.cs.vt.edu
 @end macro
 
 @macro localpathsetup{}
-Under @command{csh} you can do so with this command:
-
-@example
-set path = ( ~cs3204/bin $path )
-@end example
-@noindent
-It is a good idea to add this line to the @file{.cshrc} file
-in your home directory.  Otherwise, you'll have to type it every time
-you log in.
-@command{bash} shell users would instead add
+@command{bash} shell users should instead add
 @example
 export PATH=~cs3204/bin:$PATH
 @end example
