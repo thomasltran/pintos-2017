@@ -33,6 +33,8 @@ our ($loader_fn);		# Bootstrap loader.
 our (%geometry);		# IDE disk geometry.
 our ($align);			# Partition alignment.
 our ($fake_usb) = 0;		# Use fake USB disks instead of IDE?
+our ($smp) = 2;		# Number of cpus
+our ($kvm) = 0;		# Enable KVM Virtualization (qemu)
 
 parse_command_line ();
 prepare_scratch_disk ();
@@ -97,6 +99,9 @@ sub parse_command_line {
 		    "disk=s" => sub { set_disk ($_[1]); },
 		    "loader=s" => \$loader_fn,
 		    "fake-usb" => \$fake_usb,
+
+			"smp=i" => \$smp,
+			"kvm" => \$kvm,
 
 		    "geometry=s" => \&set_geometry,
 		    "align=s" => \&set_align)
@@ -182,6 +187,8 @@ Advanced disk configuration options:
                            let fdisk guess correct geometry and quiet warnings
   --align=none             Don't align partitions at all, to save space
   --fake-usb               Use USB disks, not IDE, except for boot (qemu only)
+  --smp                    Number of CPUs 
+  --kvm                    Enable KVM (qemu only)
 Other options:
   -h, --help               Display this help message.
 EOF
@@ -643,7 +650,8 @@ sub run_qemu {
     print "warning: qemu doesn't support jitter\n"
       if defined $jitter;
     my (@cmd) = ('qemu');
-    push (@cmd, '-no-kqemu');
+    # not supported/needed in 1.0 push (@cmd, '-no-kqemu');
+    push (@cmd, '-L', '/home/courses/cs3204/share/pc-bios');
     if ($fake_usb) {
 	push (@cmd, '-hda', $disks[0]) if defined $disks[0];
 	push (@cmd, '-usb');
@@ -655,13 +663,14 @@ sub run_qemu {
 	push (@cmd, '-hdd', $disks[3]) if defined $disks[3];
     }
     push (@cmd, '-m', $mem);
-    push (@cmd, '-smp', '2');
+    push (@cmd, '-smp', $smp);
     push (@cmd, '-net', 'none');
     push (@cmd, '-nographic') if $vga eq 'none';
     push (@cmd, '-serial', 'stdio') if $serial && $vga ne 'none';
     push (@cmd, '-S') if $debug eq 'monitor';
     push (@cmd, '-s', '-S') if $debug eq 'gdb';
     push (@cmd, '-monitor', 'null') if $vga eq 'none' && $debug eq 'none';
+    push (@cmd, '-machine', 'type=pc,accel=kvm') if $kvm;
     run_command (@cmd);
 }
 
@@ -808,7 +817,7 @@ sub disk_geometry {
 # Also prints the command it's running and checks that it succeeded.
 sub run_command {
     print join (' ', @_), "\n";
-    die "command failed\n" if xsystem (@_);
+    die "command failed\n" if xsystem (@_) && ($_[0] ne "qemu");
 }
 
 # xsystem(@args)
@@ -888,7 +897,7 @@ sub xsystem {
 	alarm (0);
 	&$cleanup ();
 
-	if (WIFSIGNALED ($?) && WTERMSIG ($?) == SIGVTALRM ()) {
+	if (WIFSIGNALED ($?) && WTERMSIG ($?) == SSIGVTALRM ()) {
 	    seek (STDOUT, 0, 2);
 	    print "\nTIMEOUT after $timeout seconds of host CPU time\n";
 	    exit 0;
@@ -959,7 +968,7 @@ sub exec_setitimer {
     exit (1);
 }
 
-sub SIGVTALRM {
+sub SSIGVTALRM {
     use Config;
     my $i = 0;
     foreach my $name (split(' ', $Config{sig_name})) {
