@@ -15,6 +15,14 @@
 #include "threads/cpu.h"
 #include "threads/ipi.h"
 
+/* Programmable Interrupt Controller (PIC) registers.
+   A PC has two PICs, called the master and slave PICs, with the
+   slave attached ("cascaded") to the master IRQ line 2. */
+#define PIC0_CTRL	0x20    /* Master PIC control register address. */
+#define PIC0_DATA	0x21    /* Master PIC data register address. */
+#define PIC1_CTRL	0xa0    /* Slave PIC control register address. */
+#define PIC1_DATA	0xa1    /* Slave PIC data register address. */
+
 /* Number of x86 interrupts. */
 #define INTR_CNT 256
 
@@ -426,11 +434,27 @@ bool intr_is_registered(uint8_t vec_no)
 static void
 pic8259_disable (void)
 {
-  /* Disable PIC2 */
-  outb (0xA1, 0xFF);
+  /* Mask all interrupts on PIC1 */
+  outb (PIC1_DATA, 0xFF);
   
-  /* Disable PIC1 */
-  outb (0x21, 0xFF);
+  /* Mask all interrupts on PIC0 */
+  outb (PIC0_DATA, 0xFF);
+
+  /* Even though all interrupts are masked on both PIC's, interrupts fired
+     before masking will still be delivered. Thus we still need to 
+     remap the PICs so that they won't be interpreted by the OS as exceptions */
+
+  /* Initialize master. */
+  outb (PIC0_CTRL, 0x11); /* ICW1: single mode, edge triggered, expect ICW4. */
+  outb (PIC0_DATA, 0x20); /* ICW2: line IR0...7 -> irq 0x20...0x27. */
+  outb (PIC0_DATA, 0x04); /* ICW3: slave PIC on line IR2. */
+  outb (PIC0_DATA, 0x01); /* ICW4: 8086 mode, normal EOI, non-buffered. */
+
+  /* Initialize slave. */
+  outb (PIC1_CTRL, 0x11); /* ICW1: single mode, edge triggered, expect ICW4. */
+  outb (PIC1_DATA, 0x28); /* ICW2: line IR0...7 -> irq 0x28...0x2f. */
+  outb (PIC1_DATA, 0x02); /* ICW3: slave ID is 2. */
+  outb (PIC1_DATA, 0x01); /* ICW4: 8086 mode, normal EOI, non-buffered. */
 }
 
 /* Set intr_context status */

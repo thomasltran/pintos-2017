@@ -585,7 +585,7 @@ sub run_bochs {
 romimage: file=\$BXSHARE/BIOS-bochs-latest
 vgaromimage: file=\$BXSHARE/VGABIOS-lgpl-latest
 boot: disk
-cpu: ips=1000000
+cpu: count=$smp, ips=1000000
 megs: $mem
 log: bochsout.txt
 panic: action=fatal
