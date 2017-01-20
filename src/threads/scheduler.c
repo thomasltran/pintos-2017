@@ -30,10 +30,8 @@ sched_init (struct ready_queue *rq)
 /* Called from thread.c:wake_up_new_thread () and
    thread_unblock () with the current CPU's ready queue locked.
 
-   Thread is unblocked, either from a synchronization
-   mechanism or because it was just created.
-   If awoken from synchronization mechanism, initial
-   is 0, else initial is 1. */
+   If called from wake_up_new_thread (), initial will be 1.
+   If called from thread_unblock (), initial will be 0. */
 void
 sched_unblock (struct ready_queue *rq, struct thread *t, int initial UNUSED)
 {
@@ -55,7 +53,10 @@ sched_yield (struct ready_queue *rq, struct thread *t)
 
 /* Called from next_thread_to_run ().
    Find the next thread to run and remove it from the ready list
-   Return NULL if no thread found.
+   Return NULL if the ready list is empty.
+
+   If the thread returned is different from the thread currently
+   running, a context switch will take place.
 
    Called with current ready queue locked.
  */
@@ -73,8 +74,8 @@ sched_pick_next (struct ready_queue *rq)
 /* Called from thread_tick ().
  * Ready queue rq is locked upon entry.
  *
- * Check if the current thread has finished its timeslice, and preempt
- * if it did.
+ * Check if the current thread has finished its timeslice,
+ * arrange for its preemption if it did.
  */
 void
 sched_tick (struct ready_queue *rq, struct thread *current UNUSED)
