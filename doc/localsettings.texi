@@ -49,7 +49,7 @@ to their @file{.bash_profile} file.
 @end macro
 
 @macro localcredits{}
-Adjustments for Virginia Tech's CS 3204 were made by Godmar Back.
+@c Adjustments for Virginia Tech's CS 3204 were made by Godmar Back.
 @end macro
 
 @macro localcvspolicy{}

@@ -527,7 +527,7 @@ handlers, a spinlock is held instead.
 Bitmap updated to use atomic library, which doesn't make uniprocessor assumptions
 
 @item
-Base code scheduler extended to per-CPU runqueues.
+Base code scheduler extended to per-CPU ready queues.
 
 @end itemize
 

@@ -161,8 +161,8 @@ memory (@pxref{Block Allocator}).
 Table}).
 
 Next, @func{mp_init} is called. Here we parse the MP Configuration Table
-which was written by the BIOS. This table tells us how many CPUs are on
-the processor. 
+which was written by the BIOS. This table tells us how many CPUs are in
+the system. 
 
 Then, @func{lapic_init} is called. This initializes the @dfn{Local Advanced
 Programmable Interrupt Controller} (LAPIC) for the first CPU. The LAPIC
@@ -220,7 +220,7 @@ similar to the BSP. When each AP finishes, it sends a signal to the BSP and wait
 the other AP's to finish.
 
 After all the other CPUs have been started, boot is complete, so we print a message.
-The AP's are now in the idle thread, waiting for threads to be added to their runqueue.
+The AP's are now in the idle thread, waiting for threads to be added to their ready queue.
 
 The BSP calls @func{run_actions} now parses and executes actions specified on
 the kernel command line, such as @command{run} to run a test (in project
@@ -332,7 +332,7 @@ Number of context switches this CPU has made.
 
 @deftypecv {Member} {@struct{cpu}} {struct ready_queue} rq
 A structure defined by the scheduler that contains, among other things,
-a list of threads on the CPU's runqueue.
+a list of threads on the CPU's ready queue.
 @end deftypecv
 
 @deftypecv {Member} {@struct{cpu}} {struct cpu *} cpu
