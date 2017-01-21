@@ -20,6 +20,7 @@ extern test_func test_ipi_missed;
 extern test_func test_cli_print;
 extern test_func test_savecallerinfo;
 extern test_func test_console;
+extern test_func test_realclock;
 
 void msg (const char *, ...);
 void failIfFalse (bool truth, const char *, ...);

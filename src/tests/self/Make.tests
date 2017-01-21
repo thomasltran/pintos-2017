@@ -25,6 +25,7 @@ tests/self_SRC += tests/self/ipi-missed.c
 tests/self_SRC += tests/self/cli-print.c
 tests/self_SRC += tests/self/savecallerinfo.c
 tests/self_SRC += tests/self/console.c
+tests/self_SRC += tests/self/wallclock-est.c
 
 tests/self/ipi.output: SMP = 8
 tests/self/ipi-blocked.output: SMP = 8

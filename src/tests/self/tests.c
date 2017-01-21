@@ -23,6 +23,7 @@ static const struct test tests[] =
     { "cli-print", test_cli_print },
     { "savecallerinfo", test_savecallerinfo },
     { "console", test_console },
+    { "realclock", test_realclock },
   };
 
 static const char *test_name;
