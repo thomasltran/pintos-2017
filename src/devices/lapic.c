@@ -279,11 +279,13 @@ lapicw (int index, int value)
 static void
 sendipi (uint8_t apicid, int irq)
 {
+  intr_disable_push ();
   lapicw (ICRHI, apicid << 24);
   lapicw (ICRLO, T_IPI + irq);
   while (lapic_base_addr[ICRLO] & DELIVS)
     ;
   microdelay (200);
+  intr_enable_pop ();
 }
 
 /* Wait for a given number of microseconds.

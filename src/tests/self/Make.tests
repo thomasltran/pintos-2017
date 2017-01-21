@@ -4,13 +4,13 @@
 tests/self_TESTS = $(addprefix tests/self/, \
 change-cpu \
 atomics \
-spinlock \
 all-list \
 ipi \
 ipi-blocked \
 ipi-all \
 cli-print \
 savecallerinfo \
+spinlock \
 )
 
 # Sources for tests.
@@ -23,3 +23,7 @@ tests/self_SRC += tests/self/ipi.c
 tests/self_SRC += tests/self/cli-print.c
 tests/self_SRC += tests/self/savecallerinfo.c
 tests/self_SRC += tests/self/console.c
+
+tests/self/ipi.output: SMP = 8
+tests/self/ipi-blocked.output: SMP = 8
+tests/self/ipi-all.output: SMP = 8

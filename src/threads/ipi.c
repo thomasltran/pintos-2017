@@ -17,8 +17,6 @@ ipi_init ()
 {
   intr_register_ipi (T_IPI + IPI_SHUTDOWN, ipi_shutdown,
                      "#IPI SHUTDOWN");
-  intr_register_ipi (T_IPI + IPI_TLB, ipi_invalidate_tlb,
-                     "#IPI TLBINVALIDATE");
   intr_register_ipi (T_IPI + IPI_DEBUG, ipi_debug,
                      "#IPI DEBUG");
   intr_register_ipi (T_IPI + IPI_SCHEDULE, ipi_schedule,
@@ -55,14 +53,4 @@ ipi_debug (struct intr_frame *f UNUSED)
 {
   ASSERT (cpu_started_others);
   debug_backtrace_with_lock ();
-}
-
-/* Only needed for Multi-threaded Pintos. Flushes the TLB */
-void
-ipi_invalidate_tlb (struct intr_frame *f UNUSED)
-{
-  ASSERT(cpu_started_others);
-  intr_disable_push ();
-  flushtlb ();
-  intr_enable_pop ();
 }

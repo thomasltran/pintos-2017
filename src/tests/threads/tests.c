@@ -69,7 +69,7 @@ msg (const char *format, ...)
 {
   va_list args;
   
-  static char buf[1024];
+  char buf[1024];
   memset (buf, 0, sizeof buf);
   
   snprintf (buf, sizeof buf, "(%s) ", test_name);
