@@ -57,6 +57,8 @@ extern int cpu_started_others;  /* 1 if the application processors have been sta
 static inline struct cpu *
 get_cpu (void)
 {
+  /* Calling get_cpu () without first disabling interrupts creates a
+     race condition in the presence of a load balancing regime. */
   ASSERT (intr_get_level () == INTR_OFF);
   struct cpu *ret;
   asm volatile("mov %%gs:0 ,%0" : "=r" (ret));

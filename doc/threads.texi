@@ -680,6 +680,15 @@ It is up to you how frequently you call @func{load_balance}; at the very least,
 load balancing must be performed inside the idle loop to avoid missing
 when there are available threads in other CPU's ready queues.
 
+In the presence of load balancing, care must be taken whenever accessing the
+data structure representing the current CPU.  You must avoid a scenario where
+a thread reads the current CPU value (via @func{get_cpu ()} or by accessing
+@func{thread_current ()->cpu}) and has been migrated by the load balancer
+to another CPU by the time it is ready to use that value.  The easiest way
+to do that is prevent preemption of that thread on its CPU, which is accomplished
+by disabling interrupts. See @func{lock_own_ready_queue ()} in @file{threads/thread.c}
+for an example.
+
 @node Project 1 Tests
 @section Test Overview
 

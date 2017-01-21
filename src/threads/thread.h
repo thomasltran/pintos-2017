@@ -94,7 +94,10 @@ struct thread
   struct list_elem allelem; /* List element for all threads list. */
 
   struct cpu *cpu; /* Points to the CPU state of the cpu on
-                      which this thread is running or last ran. */
+                      which this thread is running or last ran.
+                      Be careful with accessing it to avoid races,
+                      see cpu.h:get_cpu() for a discussion.
+                    */
 
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */

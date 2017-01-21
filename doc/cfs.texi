@@ -141,16 +141,15 @@ caught up with the threads that were already running in the system.
 Instead, CFS chooses as the initial value of @var{vruntime_0} for
 newly created threads the minimum value of @var{vruntime}
 of all threads already running or ready at that point.
-This value, called @var{min_vruntime}, must be maintained for each ready
-queue.
+This value, called @var{min_vruntime}, must be maintained 
+for each ready queue.  
 
 The scheduler must calculate the @var{vruntime} values of all
 threads in accordance with their actual CPU consumption,
 so that accurate values are used when the scheduler makes
-decisions, such as selecting a task to run or updating 
-calculating @var{min_vruntime}. 
-You should think about how to implement these updates
-efficiently.
+decisions.  Specifically, your scheduler must use updated
+values of @var{vruntime} when a new thread is created
+and whenever a thread is unblocked.  
 
 @node Thread Ideal Runtime
 @section Calculating @var{ideal_runtime}
@@ -215,6 +214,12 @@ the previous value of @var{vruntime} from when the thread began sleeping
 is included as a lower bound.  This ensures that a thread's @var{vruntime} 
 cannot decrease. thus threads will not be receiving more CPU time than if 
 they had been continuously ready.
+
+Threads receiving a sleeper bonus may temporarily obtain a @var{vruntime} value
+that is less than @var{min_vruntime}.  In this case, do not take
+the @var{vruntime} of the thread receiving the bonus into account
+when updating the ready queue's @var{min_vruntime}.  You must maintain 
+the invariant that @var{min_vruntime} increases monotonically.
 
 @node CFS Scheduler Summary
 @section Summary
