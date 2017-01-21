@@ -11,6 +11,7 @@
 #include "threads/synch.h"
 #include "devices/ioapic.h"
 #include "devices/trap.h"
+#include <string.h>
 
 /* The code in this file is an interface to an ATA (IDE)
    controller.  It attempts to comply to [ATA-3]. */
@@ -288,7 +289,7 @@ identify_ata_device (struct ata_disk *d)
 
   /* Calculate capacity.
      Read model name and serial number. */
-  capacity = *(uint32_t *) &id[60 * 2];
+  memcpy (&capacity, &id[60*2], sizeof (uint32_t));
   model = descramble_ata_string (&id[10 * 2], 20);
   serial = descramble_ata_string (&id[27 * 2], 40);
   snprintf (extra_info, sizeof extra_info,
