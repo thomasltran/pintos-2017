@@ -8,6 +8,7 @@ all-list \
 ipi \
 ipi-blocked \
 ipi-all \
+ipi-missed \
 cli-print \
 savecallerinfo \
 spinlock \
@@ -20,6 +21,7 @@ tests/self_SRC += tests/self/atomics.c
 tests/self_SRC += tests/self/spinlock.c
 tests/self_SRC += tests/self/all-list.c
 tests/self_SRC += tests/self/ipi.c
+tests/self_SRC += tests/self/ipi-missed.c
 tests/self_SRC += tests/self/cli-print.c
 tests/self_SRC += tests/self/savecallerinfo.c
 tests/self_SRC += tests/self/console.c

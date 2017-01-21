@@ -16,6 +16,7 @@ extern test_func test_all_list;
 extern test_func test_ipi;
 extern test_func test_ipi_blocked;
 extern test_func test_ipi_all;
+extern test_func test_ipi_missed;
 extern test_func test_cli_print;
 extern test_func test_savecallerinfo;
 extern test_func test_console;

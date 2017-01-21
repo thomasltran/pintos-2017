@@ -19,6 +19,7 @@ static const struct test tests[] =
     { "ipi", test_ipi },
     { "ipi-blocked", test_ipi_blocked },
     { "ipi-all", test_ipi_all },
+    { "ipi-missed", test_ipi_missed },
     { "cli-print", test_cli_print },
     { "savecallerinfo", test_savecallerinfo },
     { "console", test_console },
