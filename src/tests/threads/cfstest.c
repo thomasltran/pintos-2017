@@ -10,7 +10,7 @@
 #include <debug.h>
 #include "threads/gdt.h"
 #include "tests/threads/simulator.h"
-#include "tests/threads/schedtest.h"
+#include "tests/threads/cfstest.h"
 
 static struct cpu *real_cpu;
 static struct cpu vcpu;
@@ -62,7 +62,7 @@ switch_cpu (struct cpu *cpu)
 }
 
 void
-check_current (struct thread *expect)
+cfstest_check_current (struct thread *expect)
 {
   struct thread *actual = driver_current ();
   failIfFalse (actual == expect, "Current thread should be %p, actually %p",
@@ -75,7 +75,7 @@ check_current (struct thread *expect)
  * in order to make CFS behave in a predictable way that we can test
  */
 void
-advancetime (int64_t advance)
+cfstest_advance_time (int64_t advance)
 {
   timer_settime (timer_gettime () + advance);
 }
@@ -84,7 +84,7 @@ advancetime (int64_t advance)
  * Set up vcpu. Requires a working implementation of init and task_new
  */
 void
-setUp (void)
+cfstest_set_up (void)
 {
   /* Must come before switch_cpu so stats are recorded on the right CPU */
   intr_disable_push ();
@@ -98,7 +98,7 @@ setUp (void)
 }
 
 void
-tearDown (void)
+cfstest_tear_down (void)
 {
   switch_cpu (real_cpu);
   timer_settime (real_time);

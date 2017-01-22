@@ -389,7 +389,6 @@ thread_yield (void)
   struct thread *cur = thread_current ();
   ASSERT (!intr_context ());
 
-  /* Lance, why this? */
   lock_own_ready_queue ();
 
   cur->status = THREAD_READY;
@@ -398,7 +397,7 @@ thread_yield (void)
       sched_yield (&get_cpu ()->rq, cur);
     }
   schedule ();
-  spinlock_release (&get_cpu ()->rq.lock);
+  unlock_own_ready_queue ();
 }
 
 /* Called from ap_main to terminate an AP's main thread.  */
@@ -490,7 +489,7 @@ kernel_thread_entry (thread_func *function, void *aux)
    * is the rq spinlock acquired by the previous thread
    */
   ASSERT (get_cpu ()->ncli == 1);
-  spinlock_release (&get_cpu ()->rq.lock);
+  unlock_own_ready_queue ();
   ASSERT (intr_get_level () == INTR_ON);
   function (aux); /* Execute the thread function. */
   thread_exit (); /* If function() returns, kill the thread. */

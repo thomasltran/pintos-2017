@@ -10,46 +10,46 @@
  */
 
 #include "threads/thread.h"
-#include "tests/threads/schedtest.h"
+#include "tests/threads/cfstest.h"
 #include "tests/threads/simulator.h"
 #include "tests/threads/tests.h"
 
 void
 test_renice ()
 {
-  setUp ();
+  cfstest_set_up ();
   struct thread *initial = driver_current ();
-  advancetime (0);
+  cfstest_advance_time (0);
   struct thread *renice = driver_create ("renice", 0);
-  check_current (initial);
-  advancetime (4000000);
+  cfstest_check_current (initial);
+  cfstest_advance_time (4000000);
   driver_interrupt_tick ();
-  check_current (renice);
-  advancetime (0);
+  cfstest_check_current (renice);
+  cfstest_advance_time (0);
   driver_set_nice (1);
-  check_current (renice);
-  advancetime (3557500);
+  cfstest_check_current (renice);
+  cfstest_advance_time (3557500);
   driver_interrupt_tick ();
-  check_current (initial);
-  advancetime (2221300);
+  cfstest_check_current (initial);
+  cfstest_advance_time (2221300);
   driver_interrupt_tick ();
-  check_current (initial);
-  advancetime (2221300);
+  cfstest_check_current (initial);
+  cfstest_advance_time (2221300);
   driver_interrupt_tick ();
-  check_current (renice);
-  advancetime (3557500);
+  cfstest_check_current (renice);
+  cfstest_advance_time (3557500);
   driver_interrupt_tick ();
-  check_current (initial);
-  advancetime (0);
+  cfstest_check_current (initial);
+  cfstest_advance_time (0);
   driver_set_nice (-1);
-  check_current (initial);
-  advancetime (4871800);
+  cfstest_check_current (initial);
+  cfstest_advance_time (4871800);
   driver_interrupt_tick ();
-  check_current (renice);
-  advancetime (3128300);
+  cfstest_check_current (renice);
+  cfstest_advance_time (3128300);
   driver_interrupt_tick ();
-  check_current (initial);
+  cfstest_check_current (initial);
   pass ();
-  tearDown ();
+  cfstest_tear_down ();
 
 }

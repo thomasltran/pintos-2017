@@ -40,7 +40,6 @@
 #include "userprog/pagedir.h"
 #else
 #include "tests/threads/tests.h"
-#include "tests/threads/schedtest.h"
 #ifdef SELFTEST
 #include "tests/self/tests.h"
 #endif /* SELFTEST */

@@ -78,7 +78,7 @@ sched_pick_next (struct ready_queue *rq)
  * arrange for its preemption if it did.
  */
 void
-sched_tick (struct ready_queue *rq, struct thread *current UNUSED)
+sched_tick (struct ready_queue *rq, struct thread *curr UNUSED)
 {
   /* Enforce preemption. */
   if (++rq->thread_ticks >= TIME_SLICE)
@@ -90,10 +90,11 @@ sched_tick (struct ready_queue *rq, struct thread *current UNUSED)
     }
 }
 
-/* Called from thread_block (). The base scheduler does
-   not need to do anything here, but your scheduler may. */
+/* Called from thread_block (). Blocks the current thread.
+   The base scheduler does not need to do anything here,
+   but your scheduler may. */
 void
-sched_block (struct ready_queue *rq UNUSED, struct thread *p UNUSED)
+sched_block (struct ready_queue *rq UNUSED, struct thread *curr UNUSED)
 {
   ;
 }

@@ -1,5 +1,5 @@
 #include "tests/threads/tests.h"
-#include "schedtest.h"
+#include "cfstest.h"
 #include <debug.h>
 #include <string.h>
 #include <stdio.h>
