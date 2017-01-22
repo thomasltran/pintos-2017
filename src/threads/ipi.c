@@ -34,7 +34,6 @@ ipi_shutdown (struct intr_frame *f UNUSED)
      if an AP calls shutdown, it may get stuck trying to print to console */
   if (get_cpu ()->id == 0)
     return;
-  intr_disable ();
   while (1)
     ;
 }

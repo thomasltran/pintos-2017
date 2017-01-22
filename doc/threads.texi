@@ -666,11 +666,11 @@ to a different CPU diminishes their processor affinity.
 In this assignment, we ask that you implement the load balancing
 policy used by the CFS scheduler, which uses a load metric that is
 specific to it.
-@c is the name 'load_balance' required by anything?
+
 You should create a function called @func{load_balance} and call it
 from appropriate places.
 
-@deftypefun void load_balance (void)
+@deftypefun void sched_load_balance (void)
 Pull threads from another CPU's ready queue and add
 it to the current CPU's ready queue.
 @xref{Load Balancing}, to see the detailed requirements.
