@@ -7,7 +7,7 @@
 static void
 check_value (int actual, int expected)
 {
-  failIfFalse (expected == actual, "Expected %d, actually %d\n", expected,
+  fail_if_false (expected == actual, "Expected %d, actually %d\n", expected,
 	       actual);
 }
 
@@ -43,13 +43,13 @@ test_atomics (void)
   var = 0;
   new = 5;
   int cmpTrue = 0;
-  failIfFalse (atomic_cmpxchg (&var, &cmpTrue, &new), "cmpxchg returned false");
+  fail_if_false (atomic_cmpxchg (&var, &cmpTrue, &new), "cmpxchg returned false");
   check_value (var, new);
 
   var = 0;
   new = 5;
   int cmpFalse = 1;
-  failIfFalse (!atomic_cmpxchg (&var, &cmpFalse, &new),
+  fail_if_false (!atomic_cmpxchg (&var, &cmpFalse, &new),
 	       "cmpxchg returned true");
   check_value (var, 0);
 

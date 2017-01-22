@@ -34,7 +34,7 @@ extern test_func test_balance_synch1;
 extern test_func test_balance_sleepers;
 
 void msg (const char *, ...);
-void failIfFalse (bool truth, const char *, ...);
+void fail_if_false (bool truth, const char *, ...);
 void fail (const char *, ...);
 void pass (void);
 

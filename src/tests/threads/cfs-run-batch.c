@@ -34,9 +34,9 @@ static int fib (int n);
 static void
 fibtest (void)
 {
-  failIfFalse (N <= N_MAX, "fibonacci test argument exceeds max");
+  fail_if_false (N <= N_MAX, "fibonacci test argument exceeds max");
   int num = fib (N);
-  failIfFalse (num == fib_numbers[N], "Fib of %d should be %d, calculated %d",
+  fail_if_false (num == fib_numbers[N], "Fib of %d should be %d, calculated %d",
                N, fib_numbers[N], num);
   msg ("fib of %d is %d", N, num);
 

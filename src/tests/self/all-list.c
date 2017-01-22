@@ -30,7 +30,7 @@ threads_func (void *aux UNUSED)
 void
 test_all_list (void)
 {
-  failIfFalse (ncpu >= 2, "Please run with a system with at least 2 CPUs");
+  fail_if_false (ncpu >= 2, "Please run with a system with at least 2 CPUs");
   thread_create ("t1", 0, threads_func, 0);
   thread_create ("t2", 0, threads_func, 0);
   thread_create ("t3", 0, threads_func, 0);

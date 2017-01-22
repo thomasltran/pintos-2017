@@ -32,7 +32,7 @@ void
 test_ipi (void)
 {
   console_set_mode (EMERGENCY_MODE);
-  failIfFalse (ncpu > 1, "This test >1 cpu running");
+  fail_if_false (ncpu > 1, "This test >1 cpu running");
   register_test_ipi ();
   intr_disable_push ();
   lapic_send_ipi_to_all_but_self (IPI_NUM);
@@ -71,7 +71,7 @@ AP_disable (void *aux UNUSED)
 void
 test_ipi_blocked (void)
 {
-  failIfFalse (ncpu > 1, "This test > 1 cpu running");
+  fail_if_false (ncpu > 1, "This test > 1 cpu running");
   register_test_ipi ();
   unsigned int i;
   for (i = 0; i < ncpu - 1; i++)
@@ -82,7 +82,7 @@ test_ipi_blocked (void)
     ;
   lapic_send_ipi_to_all_but_self (IPI_NUM);
   timer_sleep (5);
-  failIfFalse (flag == 0, "Other CPUs responded to IPI, despite interrupts "
+  fail_if_false (flag == 0, "Other CPUs responded to IPI, despite interrupts "
 	       "being off");
   pass ();
 }
@@ -91,7 +91,7 @@ void
 test_ipi_all (void)
 {
   console_set_mode (EMERGENCY_MODE);
-  failIfFalse (ncpu > 1, "This test requires > 1 cpu running");
+  fail_if_false (ncpu > 1, "This test requires > 1 cpu running");
   register_test_ipi ();
   lapic_send_ipi_to_all (IPI_NUM);
   int expected_flag = 0;

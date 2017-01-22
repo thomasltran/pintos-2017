@@ -43,10 +43,10 @@ calc_fib (void *aux UNUSED)
       barrier ();
     }
   int n = N;
-  failIfFalse (n <= N_MAX, "fibonacci test argument exceeds max");
+  fail_if_false (n <= N_MAX, "fibonacci test argument exceeds max");
 
   int num = fib (n);
-  failIfFalse (num == fib_numbers[n], "Fib of %d should be %d, calculated %d",
+  fail_if_false (num == fib_numbers[n], "Fib of %d should be %d, calculated %d",
                n, fib_numbers[n], num);
   sema_up (&finished_sema);
 }
@@ -83,7 +83,7 @@ test_fib (void)
 void
 test_balance_synch1 (void)
 {
-  failIfFalse (ncpu == 2, "number of cpus must be 2");
+  fail_if_false (ncpu == 2, "number of cpus must be 2");
   msg ("Load balancing test is run multiple times.");
   msg ("to look for race conditions that may occur during.");
   msg ("load balancing..");

@@ -41,7 +41,7 @@ check_num (void)
   }
   struct list_elem *e = list_pop_front (&shared_list);
   struct shared_info *f = list_entry (e, struct shared_info, elem);
-  failIfFalse (f->num == shared_counter, "Number from list is wrong");
+  fail_if_false (f->num == shared_counter, "Number from list is wrong");
   shared_counter++;  
 }
 
@@ -97,15 +97,15 @@ test_inc_shared (void)
   for(i=0;i<NUM_THREADS_PER_CPU;i++) {
       sema_down (&finished_sema);
   }  
-  failIfFalse (list_empty (&shared_list), "List should be empty");
-  failIfFalse (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
+  fail_if_false (list_empty (&shared_list), "List should be empty");
+  fail_if_false (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
   free (info);
 }
 
 void
 test_balance_sleepers (void)
 {
-  failIfFalse (ncpu == 2, "number of cpus must be 2");
+  fail_if_false (ncpu == 2, "number of cpus must be 2");
   msg("This test is very unforgiving of race conditions.");
   msg("It will not run fast!.");
   msg ("Running %d tests.", NUM_TESTS);

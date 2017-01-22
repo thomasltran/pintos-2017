@@ -23,7 +23,7 @@ extern test_func test_console;
 extern test_func test_realclock;
 
 void msg (const char *, ...);
-void failIfFalse (bool truth, const char *, ...);
+void fail_if_false (bool truth, const char *, ...);
 void fail (const char *, ...);
 void pass (void);
 

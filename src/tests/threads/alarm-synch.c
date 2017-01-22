@@ -75,7 +75,7 @@ static void
 check_time (int64_t expected) UNUSED
 {
   int64_t actual = timer_ticks ();
-  failIfFalse (llabs (actual - expected) <= TICK_MAX_ERROR, 
+  fail_if_false (llabs (actual - expected) <= TICK_MAX_ERROR, 
                "Sleeper thread not awoken at the right time. "
                "Expected %"PRId64", actually %"PRId64"", expected, actual);
 }

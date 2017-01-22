@@ -39,7 +39,7 @@ check_num (void)
     }
   struct list_elem *e = list_pop_front (&shared_list);
   struct shared_info *f = list_entry(e, struct shared_info, elem);
-  failIfFalse (f->num == shared_counter, "Number from list is wrong");
+  fail_if_false (f->num == shared_counter, "Number from list is wrong");
   shared_counter++;
 }
 
@@ -83,8 +83,8 @@ test_inc_shared (void)
     {
       sema_down (&finished_sema);
     }
-  failIfFalse (list_empty (&shared_list), "List should be empty");
-  failIfFalse (shared_counter == FINAL_VALUE,
+  fail_if_false (list_empty (&shared_list), "List should be empty");
+  fail_if_false (shared_counter == FINAL_VALUE,
                "Incorrect value of shared counter!");
   free (info);
 }

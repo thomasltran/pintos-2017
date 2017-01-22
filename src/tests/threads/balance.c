@@ -34,10 +34,10 @@ fibtest (void *aux UNUSED)
 {
 
   int n = N;
-  failIfFalse (n <= N_MAX, "fibonacci test argument exceeds max");
+  fail_if_false (n <= N_MAX, "fibonacci test argument exceeds max");
 
   int num = fib (n);
-  failIfFalse (num == fib_numbers[n], "Fib of %d should be %d, calculated %d",
+  fail_if_false (num == fib_numbers[n], "Fib of %d should be %d, calculated %d",
                n, fib_numbers[n], num);
   msg ("fib of %d is %d", n, num);
   sema_up (&finished_sema);
@@ -52,7 +52,7 @@ NOP (void *aux UNUSED)
 void
 balance (void)
 {
-  failIfFalse (ncpu == 2, "number of cpus must be 2");
+  fail_if_false (ncpu == 2, "number of cpus must be 2");
   msg ("This test creates short-running threads on one CPU.");
   msg ("and long-running threads on the other..");
   msg ("Checks that one CPU finishes quickly and attempts.");

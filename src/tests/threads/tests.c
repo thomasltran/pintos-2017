@@ -85,7 +85,7 @@ msg (const char *format, ...)
  * 	fail (msg)
  */
 void
-failIfFalse (bool truth, const char *format, ...)
+fail_if_false (bool truth, const char *format, ...)
 {
   if (!truth)
     {

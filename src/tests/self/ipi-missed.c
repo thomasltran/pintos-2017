@@ -60,7 +60,7 @@ spam_ipi (void *aux UNUSED)
 void
 test_ipi_missed (void)
 {
-  failIfFalse (ncpu > 1, "This test > 1 cpu running");
+  fail_if_false (ncpu > 1, "This test > 1 cpu running");
   register_test_ipi ();
   spinlock_init (&lock);
   unsigned int i;
@@ -73,7 +73,7 @@ test_ipi_missed (void)
 
   timer_sleep (10000);
   int expected = (ncpu- 1) * NUM_IPI_PER_THREAD;
-  failIfFalse (hits == expected,
+  fail_if_false (hits == expected,
                "Some IPI were missed: expected %d, actually %d\n", expected, hits);
   pass ();
 }

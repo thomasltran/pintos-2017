@@ -27,12 +27,12 @@ test_trylock (void)
   memset (&vcpu2, 0, sizeof (struct cpu));
   struct cpu *real = get_cpu ();
   switch_cpu (&vcpu1);
-  failIfFalse (spinlock_try_acquire (&lock),
+  fail_if_false (spinlock_try_acquire (&lock),
 	       "Failed to acquire an unlocked spinlock");
-  failIfFalse (spinlock_held_by_current_cpu (&lock),
+  fail_if_false (spinlock_held_by_current_cpu (&lock),
 	       "Failed to show spinlock held by CPU");
   switch_cpu (&vcpu2);
-  failIfFalse (!spinlock_try_acquire (&lock), "Acquired a locked spinlock");
+  fail_if_false (!spinlock_try_acquire (&lock), "Acquired a locked spinlock");
   switch_cpu (real);
   intr_enable_pop ();
 }
@@ -59,7 +59,7 @@ check_num (void)
   }
   struct list_elem *e = list_pop_front (&shared_list);
   struct shared_info *f = list_entry (e, struct shared_info, elem);
-  failIfFalse (f->num == shared_counter, "Number from list is wrong");
+  fail_if_false (f->num == shared_counter, "Number from list is wrong");
   shared_counter++;  
 }
 static void
@@ -111,8 +111,8 @@ test_inc_shared (void)
   for(i=0;i<NUM_THREADS;i++) {
       sema_down (&finished_sema);
   }
-  failIfFalse (list_empty (&shared_list), "List should be empty");
-  failIfFalse (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
+  fail_if_false (list_empty (&shared_list), "List should be empty");
+  fail_if_false (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
   free (info);
 }
 
