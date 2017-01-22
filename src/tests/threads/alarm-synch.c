@@ -16,7 +16,7 @@
 #define NUM_TESTS 10
 #define NUM_SLEEPERS 300
 #define MAX_SLEEP_LENGTH 500L
-#define TICK_MAX_ERROR 20
+#define TICK_MAX_ERROR 50
 
 static struct semaphore finished_sema;
 
