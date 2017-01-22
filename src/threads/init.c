@@ -80,7 +80,7 @@ static char ** parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
 static unsigned start_other_cpus (void);
-static void ap_main (void);
+static void ap_main (void) NO_RETURN;
 
 #ifdef FILESYS
 static void locate_block_devices (void);
@@ -172,6 +172,7 @@ main (void)
   /* Finish up. */
   shutdown ();
   thread_exit ();
+  NOT_REACHED ();
 }
 
 /* Clear the "BSS", a segment that should be initialized to
@@ -298,7 +299,7 @@ ap_main (void)
    * its main thread is no longer needed.  Let it exit.
    */
   thread_exit_ap ();
-  PANIC("AP main thread should have exited!");
+  NOT_REACHED ();
 }
 
 /* Start the non-boot processors.
