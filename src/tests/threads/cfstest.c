@@ -65,8 +65,11 @@ void
 cfstest_check_current (struct thread *expect)
 {
   struct thread *actual = driver_current ();
-  failIfFalse (actual == expect, "Current thread should be %p, actually %p",
-	       expect, actual);
+  if (actual != expect)
+    {
+      cfstest_tear_down ();
+      fail ("Current thread should be %p, actually %p", expect, actual);
+    }
 }
 
 /*
