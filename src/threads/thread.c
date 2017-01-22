@@ -241,9 +241,10 @@ thread_create (const char *name, int nice, thread_func *function, void *aux)
   if (!t)
     return 0;
 
+  tid_t tid = t->tid;
   /* Add to ready queue. */
   wake_up_new_thread (t);
-  return t->tid;
+  return tid;
 }
 
 /* Puts the current thread to sleep (i.e., in the BLOCKED state).

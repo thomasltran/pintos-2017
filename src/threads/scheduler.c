@@ -62,7 +62,7 @@ sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial UNUS
    Current ready queue is locked upon entry.
  */
 void
-sched_yield (struct ready_queue *curr_rq, struct thread * current)
+sched_yield (struct ready_queue *curr_rq, struct thread *current)
 {
   list_push_back (&curr_rq->ready_list, &current->elem);
   curr_rq->nr_ready ++;
@@ -98,7 +98,7 @@ sched_pick_next (struct ready_queue *curr_rq)
  * when this function returns, else returns RETURN_NONE.
  */
 enum sched_return_action
-sched_tick (struct ready_queue *curr_rq, struct thread *curr UNUSED)
+sched_tick (struct ready_queue *curr_rq, struct thread *current UNUSED)
 {
   /* Enforce preemption. */
   if (++curr_rq->thread_ticks >= TIME_SLICE)
