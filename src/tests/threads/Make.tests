@@ -61,3 +61,19 @@ tests/threads/cfs-run-iobound.output: TIMEOUT = 600
 tests/threads/balance.output: TIMEOUT = 120
 tests/threads/balance-synch1.output: TIMEOUT = 900
 tests/threads/balance-synch2.output: TIMEOUT = 600
+
+# Set CFS tests to run single-threaded, to improve debugging experience
+tests/threads/cfs-create-new.output: SMP = 1
+tests/threads/cfs-delayed-tick.output: SMP = 1
+tests/threads/cfs-idle.output: SMP = 1
+tests/threads/cfs-idle-unblock.output: SMP = 1
+tests/threads/cfs-new-minvruntime.output: SMP = 1
+tests/threads/cfs-nice.output: SMP = 1
+tests/threads/cfs-renice.output: SMP = 1
+tests/threads/cfs-short-sleeper.output: SMP = 1
+tests/threads/cfs-sleeper.output: SMP = 1
+tests/threads/cfs-sleeper-minvruntime.output: SMP = 1
+tests/threads/cfs-tick.output: SMP = 1
+tests/threads/cfs-tick2.output: SMP = 1
+tests/threads/cfs-vruntime.output: SMP = 1
+tests/threads/cfs-yield.output: SMP = 1
