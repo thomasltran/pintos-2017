@@ -28,15 +28,28 @@ sched_init (struct ready_queue *rq)
 }
 
 /* Called from thread.c:wake_up_new_thread () and
-   thread_unblock () with the current CPU's ready queue locked.
+   thread_unblock () with the CPU's ready queue locked.
+   rq is the ready queue that t should be added to when
+   it is awoken. It is not necessarily the current CPU.
 
    If called from wake_up_new_thread (), initial will be 1.
-   If called from thread_unblock (), initial will be 0. */
-void
+   If called from thread_unblock (), initial will be 0.
+
+   Returns RETURN_YIELD if the CPU containing rq should
+   be rescheduled when this function returns, else returns
+   RETURN_NONE */
+enum sched_return_action
 sched_unblock (struct ready_queue *rq, struct thread *t, int initial UNUSED)
 {
   list_push_back (&rq->ready_list, &t->elem);
   rq->nr_ready++;
+
+  /* CPU is idle */
+  if (!rq->curr)
+    {
+      return RETURN_YIELD;
+    }
+  return RETURN_NONE;
 }
 
 /* Called from thread_yield ().
@@ -76,18 +89,22 @@ sched_pick_next (struct ready_queue *rq)
  *
  * Check if the current thread has finished its timeslice,
  * arrange for its preemption if it did.
+ *
+ * Returns RETURN_YIELD if current thread should yield
+ * when this function returns, else returns RETURN_NONE.
  */
-void
+enum sched_return_action
 sched_tick (struct ready_queue *rq, struct thread *curr UNUSED)
 {
   /* Enforce preemption. */
   if (++rq->thread_ticks >= TIME_SLICE)
     {
-      intr_yield_on_return ();
-
       /* Start a new time slice. */
       rq->thread_ticks = 0;
+
+      return RETURN_YIELD;
     }
+  return RETURN_NONE;
 }
 
 /* Called from thread_block (). Blocks the current thread.

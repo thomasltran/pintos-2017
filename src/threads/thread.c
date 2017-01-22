@@ -137,7 +137,14 @@ thread_tick (void)
     get_cpu ()->kernel_ticks++;
 
   lock_own_ready_queue ();
-  sched_tick (&get_cpu ()->rq, t);
+  enum sched_return_action ret_action = sched_tick (&get_cpu ()->rq, t);
+  if (ret_action == RETURN_YIELD)
+    {
+      /* We are processing an external interrupt, so we cannot yield
+         right now. Instead, set a flag to yield at the end of the
+         interrupt. */
+      intr_yield_on_return ();
+    }
   unlock_own_ready_queue ();
 }
 
@@ -285,12 +292,32 @@ thread_unblock (struct thread *t)
 {
   ASSERT (is_thread (t));
   ASSERT (t->cpu != NULL);
-
+  /* Indicates whether this CPU should yield at the end
+     of the function call */
+  bool yield_on_return = false;
   spinlock_acquire (&t->cpu->rq.lock);
   ASSERT (t->status == THREAD_BLOCKED);
   t->status = THREAD_READY;
-  sched_unblock (&t->cpu->rq, t, 0);
+  enum sched_return_action ret_action = sched_unblock (&t->cpu->rq, t, 0);
+
+  if (ret_action == RETURN_YIELD)
+    {
+      /* If t was added to the this CPU, then we yield immediately.
+         Otherwise, send an inter-processor interrupt to let the
+         other CPU know that it should reschedule. */
+      if (t->cpu == get_cpu ())
+        yield_on_return = true;
+      else
+        lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
+    }
   spinlock_release (&t->cpu->rq.lock);
+
+  /* thread_yield () must be called without any spinlocks held
+     Unfortunately, this means that t may have been migrated
+     to a different CPU, in which case the current thread
+     would be preempted unnecessarily */
+  if (yield_on_return)
+    thread_yield ();
 }
 
 /* Returns the name of the running thread. */

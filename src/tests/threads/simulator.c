@@ -84,7 +84,14 @@ driver_tick (void)
     get_cpu ()->kernel_ticks++;
 
   spinlock_acquire (&get_cpu ()->rq.lock);
-  sched_tick (&get_cpu ()->rq, t);
+  enum sched_return_action ret_action = sched_tick (&get_cpu ()->rq, t);
+  if (ret_action == RETURN_YIELD)
+    {
+      /* We are processing an external interrupt, so we cannot yield
+         right now. Instead, set a flag to yield at the end of the
+         interrupt. */
+      intr_yield_on_return ();
+    }
   spinlock_release (&get_cpu ()->rq.lock);
 }
 
@@ -164,18 +171,28 @@ driver_create (const char *name, int nice)
   return t;
 }
 
-/* Simulates thread_unblock in thread.c
- * No changes were made. */
+/* Simulates thread_unblock in thread.c. There is only one CPU in the
+   simulation, so there is no need to check which CPU t got placed on. */
 void
 driver_unblock (struct thread *t)
 {
   ASSERT(is_thread (t));
   ASSERT(t->cpu != NULL);
   ASSERT(t->status == THREAD_BLOCKED);
+  bool yield_on_return = false;
   spinlock_acquire (&t->cpu->rq.lock);
   t->status = THREAD_READY;
-  sched_unblock (&t->cpu->rq, t, 0);
+  enum sched_return_action ret_action = sched_unblock (&t->cpu->rq, t, 0);
+
+  if (ret_action == RETURN_YIELD)
+    {
+      /* In the simulator, there is only one CPU */
+      ASSERT (t->cpu == get_cpu ());
+      yield_on_return = true;
+    }
   spinlock_release (&t->cpu->rq.lock);
+  if (yield_on_return)
+    driver_yield ();
 }
 
 /* This simulates thread_exit in thread.c. */

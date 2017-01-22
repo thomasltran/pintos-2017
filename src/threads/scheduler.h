@@ -5,6 +5,11 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 
+enum sched_return_action {
+  RETURN_NONE,
+  RETURN_YIELD,
+};
+
 /*
  * Data structure for the ready queue, which keeps track of a CPU's
  * READY threads.  Ready queues may use different representations
@@ -36,10 +41,10 @@ struct ready_queue
 };
 
 void sched_init (struct ready_queue *);
-void sched_unblock (struct ready_queue *, struct thread *, int );
+enum sched_return_action sched_unblock (struct ready_queue *, struct thread *, int );
 void sched_yield (struct ready_queue *, struct thread *);
 struct thread *sched_pick_next (struct ready_queue *);
-void sched_tick (struct ready_queue *, struct thread *);
+enum sched_return_action sched_tick (struct ready_queue *, struct thread *);
 void sched_block (struct ready_queue *, struct thread *);
 
 #endif /* THREADS_SCHEDULER_H_ */
