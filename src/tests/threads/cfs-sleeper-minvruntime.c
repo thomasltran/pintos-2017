@@ -25,25 +25,25 @@ test_sleeper_minvruntime ()
   cfstest_check_current (initial);
   cfstest_advance_time (20000000);
   driver_unblock (t1);
-  cfstest_check_current (initial);
+  cfstest_check_current (t1);
   cfstest_advance_time (0);
   struct thread *t2 = driver_create ("t2", 0);
+  cfstest_check_current (t1);
+  cfstest_advance_time (4000000);
+  driver_interrupt_tick ();
+  cfstest_check_current (t1);
+  cfstest_advance_time (4000000);
+  driver_interrupt_tick ();
+  cfstest_check_current (t1);
+  cfstest_advance_time (4000000);
+  driver_interrupt_tick ();
+  cfstest_check_current (t1);
+  cfstest_advance_time (4000000);
+  driver_interrupt_tick ();
+  cfstest_check_current (t1);
+  cfstest_advance_time (4000000);
+  driver_interrupt_tick ();
   cfstest_check_current (initial);
-  cfstest_advance_time (4000000);
-  driver_interrupt_tick ();
-  cfstest_check_current (t1);
-  cfstest_advance_time (4000000);
-  driver_interrupt_tick ();
-  cfstest_check_current (t1);
-  cfstest_advance_time (4000000);
-  driver_interrupt_tick ();
-  cfstest_check_current (t1);
-  cfstest_advance_time (4000000);
-  driver_interrupt_tick ();
-  cfstest_check_current (t1);
-  cfstest_advance_time (4000000);
-  driver_interrupt_tick ();
-  cfstest_check_current (t1);
   cfstest_advance_time (4000000);
   driver_interrupt_tick ();
   cfstest_check_current (t1);
@@ -55,5 +55,4 @@ test_sleeper_minvruntime ()
   cfstest_check_current (initial);
   pass ();
   cfstest_tear_down ();
-
 }

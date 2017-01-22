@@ -292,9 +292,6 @@ thread_unblock (struct thread *t)
 {
   ASSERT (is_thread (t));
   ASSERT (t->cpu != NULL);
-  /* Indicates whether this CPU should yield at the end
-     of the function call */
-  bool yield_on_return = false;
   spinlock_acquire (&t->cpu->rq.lock);
   ASSERT (t->status == THREAD_BLOCKED);
   t->status = THREAD_READY;
@@ -302,22 +299,14 @@ thread_unblock (struct thread *t)
 
   if (ret_action == RETURN_YIELD)
     {
-      /* If t was added to the this CPU, then we yield immediately.
-         Otherwise, send an inter-processor interrupt to let the
-         other CPU know that it should reschedule. */
-      if (t->cpu == get_cpu ())
-        yield_on_return = true;
-      else
-        lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
+      /* Send an inter-processor interrupt to instruct the CPU responsible for
+         running thread t to preempt.
+
+         Even if t->cpu == get_cpu (), we can't directly call thread_yield ()
+         here, since we may be in an interrupt context, or holding a spinlock. */
+      lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
     }
   spinlock_release (&t->cpu->rq.lock);
-
-  /* thread_yield () must be called without any spinlocks held
-     Unfortunately, this means that t may have been migrated
-     to a different CPU, in which case the current thread
-     would be preempted unnecessarily */
-  if (yield_on_return)
-    thread_yield ();
 }
 
 /* Returns the name of the running thread. */

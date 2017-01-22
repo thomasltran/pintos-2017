@@ -29,9 +29,6 @@ test_idle_unblock ()
   cfstest_check_current (idle);
   cfstest_advance_time (4000000);
   driver_unblock (t1);
-  cfstest_check_current (idle);
-  cfstest_advance_time (0);
-  driver_block ();
   cfstest_check_current (t1);
   cfstest_advance_time (0);
   struct thread *t2 = driver_create ("t2", 0);

@@ -103,16 +103,16 @@ test_sleeper ()
   cfstest_check_current (t1);
   cfstest_advance_time (0);
   driver_unblock (initial);
-  cfstest_check_current (t1);
+  cfstest_check_current (initial);
   cfstest_advance_time (4000000);
   driver_interrupt_tick ();
   cfstest_check_current (initial);
   cfstest_advance_time (24000000);
   driver_interrupt_tick ();
-  cfstest_check_current (t2);
+  cfstest_check_current (t1);
   cfstest_advance_time (4000000);
   driver_interrupt_tick ();
-  cfstest_check_current (initial);
+  cfstest_check_current (t2);
   cfstest_advance_time (4000000);
   driver_interrupt_tick ();
   cfstest_check_current (t1);
@@ -121,5 +121,4 @@ test_sleeper ()
   cfstest_check_current (t2);
   pass ();
   cfstest_tear_down ();
-
 }
