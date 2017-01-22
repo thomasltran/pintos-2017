@@ -20,7 +20,11 @@
  */
 
 /* Called from thread_init () and thread_init_on_ap ().
-   Initializes data structures used by the scheduler. */
+   Initializes data structures used by the scheduler. 
+ 
+   This function is called very early.  It is unsafe to call
+   thread_current () at this point.
+ */
 void
 sched_init (struct ready_queue *rq)
 {
@@ -53,14 +57,14 @@ sched_unblock (struct ready_queue *rq, struct thread *t, int initial UNUSED)
 }
 
 /* Called from thread_yield ().
-   Current thread is about to yield. Add it to the ready list
+   Current thread is about to yield.  Add it to the ready list
 
    Current ready queue is locked upon entry.
  */
 void
-sched_yield (struct ready_queue *rq, struct thread *t)
+sched_yield (struct ready_queue *rq, struct thread * current)
 {
-  list_push_back (&rq->ready_list, &t->elem);
+  list_push_back (&rq->ready_list, &current->elem);
   rq->nr_ready ++;
 }
 
@@ -107,11 +111,13 @@ sched_tick (struct ready_queue *rq, struct thread *curr UNUSED)
   return RETURN_NONE;
 }
 
-/* Called from thread_block (). Blocks the current thread.
-   The base scheduler does not need to do anything here,
-   but your scheduler may. */
+/* Called from thread_block (). The base scheduler does
+   not need to do anything here, but your scheduler may. 
+
+   'cur' is the current thread, about to block.
+ */
 void
-sched_block (struct ready_queue *rq UNUSED, struct thread *curr UNUSED)
+sched_block (struct ready_queue *rq UNUSED, struct thread *current UNUSED)
 {
   ;
 }
