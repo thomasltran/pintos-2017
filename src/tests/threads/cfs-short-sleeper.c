@@ -4,7 +4,7 @@
  * 2) Sleepers vruntime is updated prior to sleeping
  * A "short sleep" is defined as a sleep for less than sched_latency (20ms by default)
  * In this test, even though initial thread went blocked at t=20ms, 
- * it only blocked for 10ms, which is not long enough to receive a bonus.
+ * it only blocked for 10ms, which means it won't receive the full sleeper bonus.
  */
 
 #include "threads/thread.h"
