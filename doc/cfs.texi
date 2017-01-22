@@ -221,6 +221,16 @@ the @var{vruntime} of the thread receiving the bonus into account
 when updating the ready queue's @var{min_vruntime}.  You must maintain 
 the invariant that @var{min_vruntime} increases monotonically.
 
+Keep in mind that thread's are not necessarily unblocked onto the current CPU.
+To preserve cache affinity, thread's are unblocked onto the CPU that it last
+ran on.
+
+Since I/O bound threads require quick response times, your scheduler must arrange
+for the unblocked thread to preempt the running thread 
+if the idle thread is running, or if 
+the vruntime of the newly unblocked thread is lower than that of the currently
+running thread.
+
 @node CFS Scheduler Summary
 @section Summary
 A summary of the @acronym{CFS} algorithm is provided below:
@@ -256,6 +266,9 @@ A summary of the @acronym{CFS} algorithm is provided below:
     When a thread is unblocked subsequently, set its @var{vruntime} to:
 
     @center @var{vruntime} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
+
+    If the vruntime of the unblocked thread is lower than that of the current
+    thread, or if the CPU is idle, arrange for the CPU to yield.
 
 @end itemize
 

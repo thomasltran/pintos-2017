@@ -26,9 +26,9 @@
    thread_current () at this point.
  */
 void
-sched_init (struct ready_queue *rq)
+sched_init (struct ready_queue *curr_rq)
 {
-  list_init (&rq->ready_list);
+  list_init (&curr_rq->ready_list);
 }
 
 /* Called from thread.c:wake_up_new_thread () and
@@ -43,13 +43,13 @@ sched_init (struct ready_queue *rq)
    be rescheduled when this function returns, else returns
    RETURN_NONE */
 enum sched_return_action
-sched_unblock (struct ready_queue *rq, struct thread *t, int initial UNUSED)
+sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial UNUSED)
 {
-  list_push_back (&rq->ready_list, &t->elem);
-  rq->nr_ready++;
+  list_push_back (&rq_to_add->ready_list, &t->elem);
+  rq_to_add->nr_ready++;
 
   /* CPU is idle */
-  if (!rq->curr)
+  if (!rq_to_add->curr)
     {
       return RETURN_YIELD;
     }
@@ -62,10 +62,10 @@ sched_unblock (struct ready_queue *rq, struct thread *t, int initial UNUSED)
    Current ready queue is locked upon entry.
  */
 void
-sched_yield (struct ready_queue *rq, struct thread * current)
+sched_yield (struct ready_queue *curr_rq, struct thread * current)
 {
-  list_push_back (&rq->ready_list, &current->elem);
-  rq->nr_ready ++;
+  list_push_back (&curr_rq->ready_list, &current->elem);
+  curr_rq->nr_ready ++;
 }
 
 /* Called from next_thread_to_run ().
@@ -78,13 +78,13 @@ sched_yield (struct ready_queue *rq, struct thread * current)
    Called with current ready queue locked.
  */
 struct thread *
-sched_pick_next (struct ready_queue *rq)
+sched_pick_next (struct ready_queue *curr_rq)
 {
-  if (list_empty (&rq->ready_list))
+  if (list_empty (&curr_rq->ready_list))
     return NULL;
 
-  struct thread *ret = list_entry(list_pop_front (&rq->ready_list), struct thread, elem);
-  rq->nr_ready--;
+  struct thread *ret = list_entry(list_pop_front (&curr_rq->ready_list), struct thread, elem);
+  curr_rq->nr_ready--;
   return ret;
 }
 
@@ -98,13 +98,13 @@ sched_pick_next (struct ready_queue *rq)
  * when this function returns, else returns RETURN_NONE.
  */
 enum sched_return_action
-sched_tick (struct ready_queue *rq, struct thread *curr UNUSED)
+sched_tick (struct ready_queue *curr_rq, struct thread *curr UNUSED)
 {
   /* Enforce preemption. */
-  if (++rq->thread_ticks >= TIME_SLICE)
+  if (++curr_rq->thread_ticks >= TIME_SLICE)
     {
       /* Start a new time slice. */
-      rq->thread_ticks = 0;
+      curr_rq->thread_ticks = 0;
 
       return RETURN_YIELD;
     }
