@@ -93,8 +93,8 @@ struct thread
   int nice; /* Nice value. */
   struct list_elem allelem; /* List element for all threads list. */
 
-  struct cpu *cpu; /* Points to the CPU state of the cpu on
-                      which this thread is running or last ran.
+  struct cpu *cpu; /* Points to the CPU that this thread, if unblocked
+                      will be added on.
                       Be careful with accessing it to avoid races,
                       see cpu.h:get_cpu() for a discussion.
                     */

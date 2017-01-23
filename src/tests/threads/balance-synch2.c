@@ -17,9 +17,9 @@
 #include <stdio.h>
 #include "threads/thread.h"
 
-#define NUM_TESTS 5000
+#define NUM_TESTS 1000
 #define NUM_THREADS_PER_CPU 10
-#define FINAL_VALUE 10
+#define FINAL_VALUE 2000
 
 struct shared_info {
   struct list_elem elem;
@@ -30,7 +30,6 @@ static struct spinlock shared_lock;
 static struct list shared_list;
 static int shared_counter;
 static bool done;
-static volatile bool NOP_FINISHED;
 
 static void
 check_num (void) 
@@ -54,14 +53,8 @@ inc_shared (void *aux UNUSED)
       spinlock_acquire (&shared_lock);
       check_num ();
       spinlock_release (&shared_lock);
-      thread_yield ();  
+      thread_yield ();
   } 
-
-  /* This flag indicates whether or not all the NOP threads have finished yet.
-     If they haven't, then we don't want to finish either because we want to
-     get migrated */
-  while (!NOP_FINISHED)
-      barrier ();
 
   sema_up (&finished_sema);
 }
@@ -84,7 +77,6 @@ test_inc_shared (void)
   spinlock_init (&shared_lock);
   shared_counter = 0;
   done = false;
-  NOP_FINISHED = false;
   unsigned int i;
   
   struct shared_info *info = malloc (FINAL_VALUE * sizeof (*info));
@@ -99,17 +91,12 @@ test_inc_shared (void)
       thread_create (name, NICE_DEFAULT, func, NULL);    
   }
 
-  for(i=0;i<NUM_THREADS_PER_CPU;i++) {
+  for(i=0;i<NUM_THREADS_PER_CPU * ncpu;i++) {
       sema_down (&finished_sema);
   }
 
-  NOP_FINISHED = true;
-  for(i=0;i<NUM_THREADS_PER_CPU;i++) {
-      sema_down (&finished_sema);
-  }
-
-  failIfFalse (list_empty (&shared_list), "List should be empty");
-  failIfFalse (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
+  fail_if_false (list_empty (&shared_list), "List should be empty");
+  fail_if_false (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
   free (info);
 }
 
@@ -123,8 +110,8 @@ test_balance_sleepers (void)
   int i;
   for (i = 0;i<NUM_TESTS;i++) {
       test_inc_shared ();   
-      if (i % 100 == 0)
-	msg("Finished test %d", i);
+      if (i % 10 == 0)
+        msg("Finished test %d", i);
   }
   
   pass ();

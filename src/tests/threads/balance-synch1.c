@@ -23,7 +23,6 @@
 #define NUM_TESTS 500
 
 static struct semaphore finished_sema;
-static volatile bool NOP_FINISHED;
 
 static int fib_numbers[] =
   { 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597,
@@ -44,11 +43,6 @@ calc_fib (void *aux UNUSED)
   int num = fib (n);
   fail_if_false (num == fib_numbers[n], "Fib of %d should be %d, calculated %d",
                n, fib_numbers[n], num);
-  /* This flag indicates whether or not all the NOP threads have finished yet.
-     If they haven't, then we don't want to finish either because we want to
-     get migrated */
-  while (!NOP_FINISHED)
-      barrier ();
   sema_up (&finished_sema);
 }
 
@@ -63,7 +57,6 @@ test_fib (void)
 {
   sema_init (&finished_sema, 0);
   unsigned int i;
-  NOP_FINISHED = false;
 
   for (i = 0; i < NUM_THREADS_PER_CPU * ncpu; i++)
     {
@@ -71,12 +64,7 @@ test_fib (void)
       char *name = i % 2 == 0 ? "calc_fib" : "nop";
       thread_create (name, NICE_DEFAULT, func, NULL);
     }
-  for (i = 0; i < NUM_THREADS_PER_CPU; i++)
-    {
-      sema_down (&finished_sema);
-    }
-  NOP_FINISHED = true;
-  for (i = 0; i < NUM_THREADS_PER_CPU; i++)
+  for (i = 0; i < NUM_THREADS_PER_CPU * ncpu; i++)
     {
       sema_down (&finished_sema);
     }
