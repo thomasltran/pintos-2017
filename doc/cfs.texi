@@ -130,7 +130,7 @@ consumed CPU time @var{d} and its weight @var{w} as follows:
 @var{vruntime_0} is an initial value for the threads virtual runtime
 set when the thread is added to the ready queue, and where
 @var{w0} is the weight of a thread with a @var{nice} value of 0.
-(Unsigned 64-bit integer arithmetic must be used for all @acronym{CFS} calculations.)
+(64-bit integer arithmetic must be used for all @acronym{CFS} calculations.)
 
 The very first thread's @var{vruntime_0} is initialized to 0, but consider
 what would happen if the @var{vruntime_0} values of threads created later
@@ -169,6 +169,9 @@ Specifically, the @var{ideal_runtime} is computed as
 @noindent where @var{n} is the number of threads either running or ready
 to run, @var{w} is the weight of the thread, and s is
 the sum of weights of all threads that are either running or ready to run.
+Since all of these variables may change as a thread runs, the preemption
+decision should be made based on their current values when a timer
+interrupt occurs.
 
 Notice that in the common case where all threads have the same weight
 (s = @var{n} * @var{w}), the ideal runtime is 4,000,000ns, or 4ms.
@@ -222,8 +225,8 @@ when updating the ready queue's @var{min_vruntime}.  You must maintain
 the invariant that @var{min_vruntime} increases monotonically.
 
 Keep in mind that thread's are not necessarily unblocked onto the current CPU.
-To preserve cache affinity, thread's are unblocked onto the CPU that it last
-ran on.
+To preserve cache affinity, threads are unblocked onto the CPU on which they
+last ran.
 
 Since I/O bound threads require quick response times, your scheduler must arrange
 for the unblocked thread to preempt the running thread 
@@ -248,7 +251,8 @@ A summary of the @acronym{CFS} algorithm is provided below:
     @center @var{vruntime} += @var{d} * @var{w0} / @var{w}
 
 @item Maintain @var{min_vruntime}, the minimum value of @var{vruntime} of all
-        running or ready threads.
+     running or ready threads.
+     Both @var{vruntime} and @var{min_vruntime} are always nonnegative.
 
 @item
     Let @var{n} be the number of threads either running or ready to run,
@@ -314,7 +318,9 @@ threads must be adjusted upon migration as follows:
 @noindent where @var{old_vruntime} is the thread's original @var{vruntime},
 @var{busiest_cpu_minvruntime} is the @var{min_vruntime} of the busiest CPU and
 @var{my_minvruntime} is the @var{min_vruntime} of the CPU that initiated
-the load balancing.
+the load balancing.  This adjustment will allow a thread to retain an
+sleeper bonus it may have had.  The @var{min_vruntime} of the receiving CPU
+is not updated.  Make sure that @var{vruntime} stays nonnegative.
 
 @html
 </CENTER>
