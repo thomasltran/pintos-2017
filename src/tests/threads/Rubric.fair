@@ -13,5 +13,5 @@ Functionality of advanced scheduler:
 3	cfs-idle-unblock
 3	cfs-vruntime
 
-10	cfs-run-batch
-10	cfs-run-iobound
+1	cfs-run-batch
+1	cfs-run-iobound
