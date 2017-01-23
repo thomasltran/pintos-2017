@@ -65,6 +65,8 @@ sleeper (void *aux UNUSED)
   sema_up (&finished_sema);
 }
 
+static void check_time (int64_t expected) UNUSED;
+
 /* Check that thread was woken up at the right time. Allow for some error
    because there can be a slight delay between getting woken up and actually
    getting scheduled.
@@ -72,7 +74,7 @@ sleeper (void *aux UNUSED)
    to reliable calibrate TICK_MAX_ERROR, we will not used it for now, lest
    we cause the tests to spuriously fail. */
 static void
-check_time (int64_t expected) UNUSED
+check_time (int64_t expected)
 {
   int64_t actual = timer_ticks ();
   fail_if_false (llabs (actual - expected) <= TICK_MAX_ERROR, 
