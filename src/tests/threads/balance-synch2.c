@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include "threads/thread.h"
 
-#define NUM_TESTS 10000
+#define NUM_TESTS 5000
 #define NUM_THREADS_PER_CPU 10
 #define FINAL_VALUE 10
 
@@ -30,7 +30,7 @@ static struct spinlock shared_lock;
 static struct list shared_list;
 static int shared_counter;
 static bool done;
-static volatile bool start;
+static volatile bool NOP_FINISHED;
 
 static void
 check_num (void) 
@@ -45,12 +45,10 @@ check_num (void)
   shared_counter++;  
 }
 
+/* This thread gets migrated */
 static void
 inc_shared (void *aux UNUSED) 
 {
-  while (!start) {
-      barrier ();
-  }
   /* Done can be checked locklessly */
   while (!done) {
       spinlock_acquire (&shared_lock);
@@ -58,9 +56,18 @@ inc_shared (void *aux UNUSED)
       spinlock_release (&shared_lock);
       thread_yield ();  
   } 
+
+  /* This flag indicates whether or not all the NOP threads have finished yet.
+     If they haven't, then we don't want to finish either because we want to
+     get migrated */
+  while (!NOP_FINISHED)
+      barrier ();
+
   sema_up (&finished_sema);
 }
 
+/* This thread finishes quickly on one CPU.
+   When all the NOP threads finish, that CPU will load balance. */
 static void
 NOP (void *aux UNUSED)
 {
@@ -77,6 +84,7 @@ test_inc_shared (void)
   spinlock_init (&shared_lock);
   shared_counter = 0;
   done = false;
+  NOP_FINISHED = false;
   unsigned int i;
   
   struct shared_info *info = malloc (FINAL_VALUE * sizeof (*info));
@@ -90,15 +98,18 @@ test_inc_shared (void)
       char *name = i % 2 == 0 ? "inc_shared" : "nop";
       thread_create (name, NICE_DEFAULT, func, NULL);    
   }
+
   for(i=0;i<NUM_THREADS_PER_CPU;i++) {
       sema_down (&finished_sema);
   }
-  start = true;
+
+  NOP_FINISHED = true;
   for(i=0;i<NUM_THREADS_PER_CPU;i++) {
       sema_down (&finished_sema);
-  }  
-  fail_if_false (list_empty (&shared_list), "List should be empty");
-  fail_if_false (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
+  }
+
+  failIfFalse (list_empty (&shared_list), "List should be empty");
+  failIfFalse (shared_counter == FINAL_VALUE, "Incorrect value of shared counter!");
   free (info);
 }
 
