@@ -438,18 +438,21 @@ thread_foreach (thread_action_func *func, void *aux)
   spinlock_release (&all_lock);
 }
 
-/* Sets the current thread's nice value to NICE. */
+/* Sets t's nice value to NICE.
+   You will implement this function for Project 1 */
 void
-thread_set_nice (int nice)
+thread_set_nice (struct thread *t UNUSED, int nice UNUSED)
 {
-  thread_current ()->nice = nice;
+  /* Not yet implemented */
 }
 
-/* Returns the current thread's nice value. */
+/* Returns t's nice value.
+   You will implement this function for Project 1 */
 int
-thread_get_nice (void)
+thread_get_nice (struct thread *t UNUSED)
 {
-  return thread_current ()->nice;
+  /* Not yet implemented */
+  return 0;
 }
 
 /* Idle thread.  Executes when no other thread is ready to run.
