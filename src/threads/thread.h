@@ -93,10 +93,10 @@ struct thread
   int nice; /* Nice value. */
   struct list_elem allelem; /* List element for all threads list. */
 
-  struct cpu *cpu; /* Points to the CPU that this thread, if unblocked
-                      will be added on.
-                      Be careful with accessing it to avoid races,
-                      see cpu.h:get_cpu() for a discussion.
+  struct cpu *cpu; /* Points to the CPU this thread is currently bound to.
+                      thread_unblock () will add a thread to the rq of
+                      this CPU.  A load balancer needs to update this
+                      field when migrating threads.
                     */
 
   /* Shared between thread.c and synch.c. */

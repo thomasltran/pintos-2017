@@ -1537,10 +1537,29 @@ ASSERT (!intr_context ());
 @end deftypefun
 
 @deftypefun void intr_yield_on_return (void)
-When called in an interrupt context, causes @func{thread_yield} to be
-called just before the interrupt returns.  Used
-in the timer interrupt handler when a thread's time slice expires, to
-cause a new thread to be scheduled.
+Make a note that a call to @func{thread_yield} is requested on the
+current CPU.
+
+When called in an interrupt context, @func{thread_yield} will be
+called just before the interrupt returns.  This is used in the timer
+interrupt handler when a thread's time slice expires, to cause a
+new thread to be scheduled.
+@end deftypefun
+
+@deftypefun void intr_yield_if_requested (void)
+When called from a process context, call @func{thread_yield} if @func{intr_yield_on_return}
+was previously called and clear the request.  Do nothing when called
+from an interrupt context.
+
+This function is used by @func{sema_up} to yield if the scheduler
+requested it as a result of unblocking a thread.  In general, it would
+be used at ``safe'' points where the code is prepared to lose
+access to the CPU as a result of calling @func{thread_yield}.
+
+Note that it is not ok to have interrupts disabled or to hold
+any spinlock when calling @func{intr_yield_if_requested} since the
+current thread may be descheduled and not scheduled until the
+scheduler will choose it again.
 @end deftypefun
 
 @node Memory Allocation

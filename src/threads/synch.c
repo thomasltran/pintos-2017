@@ -118,6 +118,9 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   spinlock_release (&sema->lock);
+
+  /* Preempt the current CPU if the scheduler requested it. */
+  intr_yield_if_requested ();
 }
 
 static void sema_test_helper (void *sema_);

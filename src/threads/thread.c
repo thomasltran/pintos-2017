@@ -300,12 +300,14 @@ thread_unblock (struct thread *t)
 
   if (ret_action == RETURN_YIELD)
     {
-      /* Send an inter-processor interrupt to instruct the CPU responsible for
-         running thread t to preempt.
-
-         Even if t->cpu == get_cpu (), we can't directly call thread_yield ()
-         here, since we may be in an interrupt context, or holding a spinlock. */
-      lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
+      if (t->cpu == get_cpu ())
+        /* Make a note that the scheduler requested yielding
+           the CPU at the earliest opportunity. */
+        intr_yield_on_return ();
+      else
+        /* Send an inter-processor interrupt to instruct the CPU
+           responsible for running thread t to preempt. */
+        lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
     }
   spinlock_release (&t->cpu->rq.lock);
 }

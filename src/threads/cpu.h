@@ -21,7 +21,11 @@ struct cpu
   int ncli;                 /* Depth of pushcli nesting. */
   int intena;               /* Were interrupts enabled before pushcli? */
   bool in_external_intr;    /* Are we processing an external interrupt? */
-  bool yield_on_return;     /* Should we yield on interrupt return? */
+
+  /* Should we yield when interrupts are reenabled?
+     In an interrupt context, this occurs upon return from the interrupt.
+     In a thread context, this occurs as soon as interrupts are reenabled. */
+  bool yield_on_return;
 
   /* Statistics. Owned by thread.c */
   uint64_t idle_ticks;

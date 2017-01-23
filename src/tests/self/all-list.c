@@ -12,11 +12,18 @@
 #include "lib/atomic-ops.h"
 
 static int exit_flag = 0;
+static char output[8192];
+static char *output_ptr;
 
+/* This function runs with the all thread list spinlock held.
+ * We can't do anything in here that may end up calling schedule
+ * because schedule () asserts that it's called with ncli == 1
+ */
 static void
 each_func (struct thread *t, void *aux UNUSED)
 {
-  printf ("Thread %s has TID %d, on CPU %d\n", t->name, t->tid, t->cpu->id);
+  output_ptr += snprintf (output_ptr, output + sizeof (output) - output_ptr,
+    "Thread %s has TID %d, on CPU %d\n", t->name, t->tid, t->cpu->id);
 }
 
 static void
@@ -38,12 +45,16 @@ test_all_list (void)
 
   //Sleep to give AP's initial threads time to exit
   timer_sleep (2);
+  output_ptr = output;
   thread_foreach (each_func, 0);
+  printf (output);
   printf ("==================================\n");
   atomic_store (&exit_flag, 1);
   //Hacky, but too lazy to make it better
   timer_sleep (5);
   /* Make sure exited threads are removed from all list */
+  output_ptr = output;
   thread_foreach (each_func, 0);
+  printf (output);
   pass ();
 }

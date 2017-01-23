@@ -482,3 +482,26 @@ set_yield_on_return (bool yield)
   ASSERT (intr_get_level () == INTR_OFF);
   get_cpu ()->yield_on_return = yield;
 }
+
+/* Check if a yield was requested on the current CPU and
+   yield if so.  This may trigger a context switch, as such it
+   is illegal to call it while holding any spinlock or
+   while having interrupts disabled.
+
+   This is only tangentially related to interrupt handling,
+   but (for now) it is in this file since the yield_on_return 
+   flag is owned by interrupt.c.
+ */
+void
+intr_yield_if_requested (void)
+{
+  if (intr_context ())
+    return;
+
+  intr_disable_push ();
+  bool should_yield = yield_on_return ();
+  set_yield_on_return (false);
+  intr_enable_pop ();
+  if (should_yield)
+    thread_yield ();
+}
