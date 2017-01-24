@@ -247,10 +247,11 @@ intr_context (void)
   return in_external_intr;
 }
 
-/* During processing of an external interrupt, directs the
-   interrupt handler to yield to a new process just before
-   returning from the interrupt.  May not be called at any other
-   time. */
+/* When called during processing of an external interrupt,
+   directs the interrupt handler to yield to a new process
+   just before returning from the interrupt.
+   When called from a process context, the subsequent call
+   to intr_yield_if_requested () will yield. */
 void
 intr_yield_on_return (void) 
 {
