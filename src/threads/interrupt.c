@@ -497,6 +497,12 @@ set_yield_on_return (bool yield)
 void
 intr_yield_if_requested (void)
 {
+  /* Ignore the request to yield while interrupts are disabled,
+     for instance, if intr_yield_if_requested() is called from
+     an interrupt handler via sema_up().
+
+     As a side effect, this check also prevents calling
+     thread_yield() while the CFS simulator is active. */
   if (intr_get_level () == INTR_OFF)
     return;
 

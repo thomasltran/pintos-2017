@@ -748,9 +748,19 @@ This includes functions that may call those function transitively.
 It may not be possible to call @func{printf}, except after it putting the
 console in EMERGENCY_MODE (where it forgos locking).
 
+In addition, since the simulator replaces most functions in @file{threads/thread.c}
+with its own while operating, changes you may make to functions in that file
+will not be used during simulation.  As a concrete example, you cannot
+update scheduler values such as @var{ideal_vruntime} in @func{thread_set_nice},
+@xref{Completely Fair Scheduler}.
+
+We hope to release these restrictions in future versions of Pintos.
+
 Note that your scheduler's @func{sched_init} function will be called for
 every ready queue on which it operates: that is, once for each (real) CPU
 found on the system, and once for the simulated CPU used during testing.
+Furthermore, to successfully run the tests, it needs to support real
+operation prior to @func{cfstest_set_up()} and post @func{cfstest_tear_down()}.
 
 @b{Real Workload Tests.}
 The alarm, cfs-run, and balance tests do not run the simulator, but rather schedule 
