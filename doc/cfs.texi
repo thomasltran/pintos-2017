@@ -213,7 +213,7 @@ these threads at the front of the ready queue.
 To avoid threads manipulating this system by intentionally sleeping,
 the previous value of @var{vruntime} from when the thread began sleeping 
 is included as a lower bound.  This ensures that a thread's @var{vruntime} 
-cannot decrease. thus threads will not be receiving more CPU time than if 
+cannot decrease, thus threads will not be receiving more CPU time than if 
 they had been continuously ready.
 
 Threads receiving a sleeper bonus may temporarily obtain a @var{vruntime} value
@@ -222,15 +222,18 @@ the @var{vruntime} of the thread receiving the bonus into account
 when updating the ready queue's @var{min_vruntime}.  You must maintain 
 the invariant that @var{min_vruntime} increases monotonically.
 
-Keep in mind that thread's are not necessarily unblocked onto the current CPU.
-To preserve cache affinity, threads are unblocked onto the CPU on which they
-last ran.
+Keep in mind that unblocked threads are not necessarily added to the current
+CPU's ready queue.  To preserve processor affinity, unblocked threads are
+added to the CPU on which they last ran.
 
 Since I/O bound threads require quick response times, your scheduler must arrange
 for the unblocked thread to preempt the running thread 
 if the idle thread is running, or if 
-the vruntime of the newly unblocked thread is lower than that of the currently
-running thread.
+the @var{vruntime} of the newly unblocked thread is lower than that of the currently
+running thread. To do so, it must return RETURN_YIELD from @func{sched_unblock}
+in this case.
+As a simplification for this project, you should treat all occasions in which
+an existing thread is unblocked as if they were related to I/O.
 
 @node CFS Scheduler Summary
 @section Summary
@@ -284,8 +287,7 @@ is CFS specific. Thus we recommend that
 you get CFS working before attempting to implement load balancing. 
 @c The only part your load balancer will not need working is sleeper threads.
 
-All CPUs should periodically check whether load balancing is required.
-If so, a CPU would move threads from another CPU's ready queue to its own.
+When load balancing, a CPU moves threads from another CPU's ready queue to its own.
 To decide whether to pull threads from another CPU's ready queue, @acronym{CFS}
 examines the load on each CPU, represented by a variable @var{cpu_load}.
 @var{cpu_load} is defined as the sum of the weights of all threads in the ready queue (notice that 
