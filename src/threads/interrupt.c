@@ -254,7 +254,6 @@ intr_context (void)
 void
 intr_yield_on_return (void) 
 {
-  ASSERT (intr_context ());
   set_yield_on_return (true);
 }
 
@@ -345,7 +344,6 @@ intr_handler (struct intr_frame *frame)
       ASSERT (!intr_context ());
 
       set_intr_context (true);
-      set_yield_on_return (false);
     }
 
   /* Invoke the interrupt's handler. */
@@ -370,8 +368,11 @@ intr_handler (struct intr_frame *frame)
       set_intr_context (false);
       lapic_ack ();
 
-      if (yield_on_return ()) 
-        thread_yield (); 
+      if (yield_on_return ())
+        {
+          set_yield_on_return (false);
+          thread_yield ();
+        }
     }
 }
 
@@ -495,7 +496,7 @@ set_yield_on_return (bool yield)
 void
 intr_yield_if_requested (void)
 {
-  if (intr_context ())
+  if (intr_get_level () == INTR_OFF)
     return;
 
   intr_disable_push ();
