@@ -10,6 +10,7 @@
 #include "devices/lapic.h"
 #include "string.h"
 #include <stdio.h>
+#include "threads/interrupt.h"
 
 /* The Task-State Segment (TSS).
 
@@ -76,8 +77,10 @@ tss_init (void)
 struct tss *
 tss_get (void) 
 {
+  intr_disable_push ();
   struct tss *tss = &get_cpu ()->ts;
   ASSERT (tss != NULL);
+  intr_enable_pop ();
   return tss;
 }
 
@@ -86,7 +89,9 @@ tss_get (void)
 void
 tss_update (void) 
 {
+  intr_disable_push ();
   struct tss *tss = &get_cpu ()->ts;
   ASSERT(tss != NULL);
   tss->esp0 = (uint8_t *) thread_current () + PGSIZE;
+  intr_enable_pop ();
 }
