@@ -678,7 +678,7 @@ it to the current CPU's ready queue.
 
 It is up to you how frequently you call @func{load_balance}; at the very least, 
 load balancing must be performed inside the idle loop to avoid missing
-when there are available threads in other CPU's ready queues.
+when there are available threads in other CPUs' ready queues.
 
 In the presence of load balancing, care must be taken whenever accessing the
 data structure representing the current CPU.  You must avoid a scenario where
