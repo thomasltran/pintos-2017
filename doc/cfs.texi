@@ -61,9 +61,9 @@ the other hand, a negative @var{nice}, to the minimum of @var{NICE_MIN}
 (-20), tends to take away CPU time from other threads. By default, each
 thread has a @var{nice} value of @var{NICE_DEFAULT} (0). 
 
-You must implement the functions described below, which are for
-use by test programs.  We have provided skeleton definitions for them in
-@file{threads/thread.c}.
+Pintos uses the functions described below to set and get nice values.
+They have already been implemented for you, and you should not have
+to change them.
 
 @deftypefun int thread_get_nice (void)
 Returns the current thread's @var{nice} value.

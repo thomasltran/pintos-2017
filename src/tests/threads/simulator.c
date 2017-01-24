@@ -217,14 +217,14 @@ driver_exit (void)
 void
 driver_set_nice (int nice)
 {
-  thread_set_nice (driver_current (), nice);
+  driver_current ()->nice = nice;
 }
 
 /* Returns the current thread's nice value. */
 int
 driver_get_nice (void)
 {
-  return thread_get_nice (driver_current ());
+  return driver_current ()->nice;
 }
 
 /* No changes */
