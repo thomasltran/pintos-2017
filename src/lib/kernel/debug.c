@@ -222,7 +222,7 @@ debug_save_callerinfo (struct callerinfo *info)
   ebp =  __builtin_frame_address (0);
   for (i = 0; i < PCS_MAX; i++)
     {
-      if (ebp == NULL || ebp < (uint32_t *)0x1000)
+      if (ebp == NULL || ebp < (uint32_t *)LOADER_PHYS_BASE)
     break;
       pcs[i] = ebp[1];     /* saved %eip */
       ebp = (uint32_t*) ebp[0];     /* saved %ebp */
