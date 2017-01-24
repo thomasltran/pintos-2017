@@ -1560,6 +1560,7 @@ Note that it is not ok to have interrupts disabled or to hold
 any spinlock when calling @func{intr_yield_if_requested} since the
 current thread may be descheduled and not scheduled until the
 scheduler will choose it again.
+
 @end deftypefun
 
 @node Memory Allocation

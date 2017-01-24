@@ -7,7 +7,6 @@ Here are some tools that you might find useful while developing code.
 * Tags::
 * cscope::
 * git::
-* CVS::
 @ifset recommendvnc
 * VNC::
 @end ifset 
@@ -62,31 +61,26 @@ page}.
 @node git
 @section git
 
-As of 2012, we recommend you use git. We will set up an upstream repository
-to distribute the provided code.   We will commit any needed updates to this
-master repository.  You should clone this repository.
+We require that you use git for this project.
+We have set up a repository at @uref{https://git.cs.vt.edu/gback/pintos-2017}
+which will serve as your 'upstream' repository.
 
-To share work among team members, use NFSv4 ACLs to allow each other access
-to your repositories.  
+One group member should fork this repository, which creates what
+we will refer to as the 'origin' repository on git.cs.vt.edu.
+Change this repository's visibility @b{private}, but do give all group members
+access.
 
-@node CVS
-@section CVS
+Each group member can then clone this repository to the space on
+rlogin where they are working.  These clones are called working repositories.
+To share updates, group members commit them to their working repositories,
+then push those updates to the shared origin, from which other group
+members pull.
 
-CVS is a version-control system.  That is, you can use it to keep
-track of multiple versions of files.  The idea is that you do some
-work on your code and test it, then check it into the version-control
-system.  If you decide that the work you've done since your last
-check-in is no good, you can easily revert to the last checked-in
-version.  Furthermore, you can retrieve any old version of your code
-as of some given day and time.  The version control logs tell you who
-made changes and when.
-
-CVS is not the best version control system out there, but it's
-free, it's fairly easy to use, and it's already installed in most
-Unix-like environments.
-
-For more information, visit the @uref{https://www.cvshome.org/, , CVS
-home page}.
+Should updates to the base code be necessary, we will push them
+to the upstream directory.  To merge those changes, a group member
+needs to fetch them from there and merge them into their working
+repository (resolving any conflicts in the process), then push the
+updated code.
 
 @c @include localcvsinstructions.texi
 

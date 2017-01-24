@@ -376,66 +376,15 @@ minutes.
 @node Design Document
 @subsubsection Design Document
 
-We provide a design document template for each project.  For each
-significant part of a project, the template asks questions in four
-areas: 
+We no longer provide a design document template for each project.  
 
-@table @strong
-@item Data Structures
+Instead, we ask for a brief write-up (between 500 and 800 words)
+describing how your project works, focusing on the essential
+rationales behind your design decisions.
 
-The instructions for this section are always the same:
-
-@quotation
-Copy here the declaration of each new or changed @code{struct} or
-@code{struct} member, global or static variable, @code{typedef}, or
-enumeration.  Identify the purpose of each in 25 words or less.
-@end quotation
-
-The first part is mechanical.  Just copy new or modified declarations
-into the design document, to highlight for us the actual changes to data
-structures.  Each declaration should include the comment that should
-accompany it in the source code (see below).
-
-We also ask for a very brief description of the purpose of each new or
-changed data structure.  The limit of 25 words or less is a guideline
-intended to save your time and avoid duplication with later areas.
-
-@item Algorithms
-
-This is where you tell us how your code works, through questions that
-probe your understanding of your code.  We might not be able to easily
-figure it out from the code, because many creative solutions exist for
-most OS problems.  Help us out a little.
-
-Your answers should be at a level below the high level description of
-requirements given in the assignment.  We have read the assignment too,
-so it is unnecessary to repeat or rephrase what is stated there.  On the
-other hand, your answers should be at a level above the low level of the
-code itself.  Don't give a line-by-line run-down of what your code does.
-Instead, use your answers to explain how your code works to implement
-the requirements.
-
-@item Synchronization
-
-An operating system kernel is a complex, multithreaded program, in which
-synchronizing multiple threads can be difficult.  This section asks
-about how you chose to synchronize this particular type of activity.
-
-@item Rationale
-
-Whereas the other sections primarily ask ``what'' and ``how,'' the
-rationale section concentrates on ``why.''  This is where we ask you to
-justify some design decisions, by explaining why the choices you made
-are better than alternatives.  You may be able to state these in terms
-of time and space complexity, which can be made as rough or informal
-arguments (formal language or proofs are unnecessary).
-@end table
-
-An incomplete, evasive, or non-responsive design document or one that
-strays from the template without good reason may be penalized.
-Incorrect capitalization, punctuation, spelling, or grammar can also
-cost points.  @xref{Project Documentation}, for a sample design document
-for a fictitious project.
+You may and should discuss this in your group, but we ask that
+each group member submits their own document, thus showing their
+ability to express the product of the project in their own words. 
 
 @node Source Code
 @subsubsection Source Code

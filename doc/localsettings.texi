@@ -7,7 +7,7 @@
 @set localpintosbindir  /home/courses/cs3204/bin
 
 @clear recommendsourceforge
-@set recommendvnc
+@clear recommendvnc
 @set recommendcygwin
 
 @macro localmachines{}

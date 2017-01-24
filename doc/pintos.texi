@@ -59,7 +59,6 @@
 * Reference Guide::
 * Completely Fair Scheduler::  
 * Coding Standards::            
-* Project Documentation::       
 * Debugging Tools::             
 * Development Tools::
 * Installing Pintos::
@@ -79,7 +78,7 @@
 @include reference.texi
 @include cfs.texi
 @include standards.texi
-@include doc.texi
+@c @include doc.texi
 @include debug.texi
 @include devel.texi
 @include installation.texi

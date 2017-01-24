@@ -476,7 +476,7 @@ kernel panic or assertion failure.
 @subsection Design Document
 
 Each group member should turn in a design description via the class website,
-based on instructions posted there.  
+@xref{Design Document}.
 
 @c Before you turn in your project, you must copy @uref{threads.tmpl, , the
 @c project 1 design document template} into your source tree under the name
