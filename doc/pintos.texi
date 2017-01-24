@@ -62,7 +62,7 @@
 * Debugging Tools::             
 * Development Tools::
 * Installing Pintos::
-* institutioninstructions::
+@c * institutioninstructions::
 * Bibliography::
 * License::
 @end menu
@@ -82,7 +82,7 @@
 @include debug.texi
 @include devel.texi
 @include installation.texi
-@include institutioninstructions.texi
+@c @include institutioninstructions.texi
 @include bibliography.texi
 @include license.texi
 
