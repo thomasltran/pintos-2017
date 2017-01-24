@@ -713,16 +713,16 @@ between threads.  Instead, it verifies that the correct thread is selected to ru
 at the correct time, based on the algorithm.
 As such, it is able to create a wide variety of scheduling scenarios and check 
 if your scheduler makes the correct decisions. 
-See @file{tests/threads/schedtest.c} and @file{tests/threads/simulator.c}.
+See @file{tests/threads/cfstest.c} and @file{tests/threads/simulator.c}.
 
 The tests are set up in functions
-@func{setUp} and @func{tearDown}, defined in @file{tests/threads/schedtest.c}.
+@func{cfstest_set_up} and @func{cfstest_tear_down}, defined in @file{tests/threads/cfstest.c}.
 The simulator sets up a ``fake CPU'' that does not represent an actual
 CPU on the hardware, but rather a virtual environment where the simulator 
 can create threads, execute timer interrupts, etc., without affecting the 
 system. During setup, @func{change_cpu} is called so that the CPU local
 variable @code{cpu} points to the fake CPU. After that, all OS events are 
-directed towards the fake CPU, causing your scheduler to be invoked
+directed towards the simulated CPU, causing your scheduler to be invoked
 in the process. The real CPU is restored at the end of the test. 
 
 During the simulated testing, interrupts are disabled, so no real timer interrupts
@@ -738,6 +738,19 @@ that arrive after a certain amount of time. Each OS event is a scheduling event
 that will invoke your scheduler. At the end of each event, the test checks that the
 thread that your scheduler would run at the end of the event is the correct one. The
 real time is restored at the end of the test.
+
+@i{Restrictions.}  While in simulated testing mode, your scheduler code is
+exercised very similar to how it is exercised during actual operation.
+However, you must be careful not to call functions that assume that the
+machine is operating on the real CPU.  These include most functions in
+@file{threads/thread.c}, including @func{thread_current()} and @func{thread_yield()}.
+This includes functions that may call those function transitively.
+It may not be possible to call @func{printf}, except after it putting the
+console in EMERGENCY_MODE (where it forgos locking).
+
+Note that your scheduler's @func{sched_init} function will be called for
+every ready queue on which it operates: that is, once for each (real) CPU
+found on the system, and once for the simulated CPU used during testing.
 
 @b{Real Workload Tests.}
 The alarm, cfs-run, and balance tests do not run the simulator, but rather schedule 
