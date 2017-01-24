@@ -745,8 +745,6 @@ However, you must be careful not to call functions that assume that the
 machine is operating on the real CPU.  These include most functions in
 @file{threads/thread.c}, including @func{thread_current()} and @func{thread_yield()}.
 This includes functions that may call those function transitively.
-It may not be possible to call @func{printf}, except after it putting the
-console in EMERGENCY_MODE (where it forgos locking).
 
 In addition, since the simulator replaces most functions in @file{threads/thread.c}
 with its own while operating, changes you may make to functions in that file
