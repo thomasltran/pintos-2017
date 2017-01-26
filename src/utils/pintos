@@ -108,7 +108,7 @@ sub parse_command_line {
 	  or exit 1;
     }
 
-    $sim = "bochs" if !defined $sim;
+    $sim = "qemu" if !defined $sim;
     $debug = "none" if !defined $debug;
     $vga = exists ($ENV{DISPLAY}) ? "window" : "none" if !defined $vga;
 
@@ -143,8 +143,8 @@ Usage: pintos [OPTION...] -- [ARGUMENT...]
 where each OPTION is one of the following options
   and each ARGUMENT is passed to Pintos kernel verbatim.
 Simulator selection:
-  --bochs                  (default) Use Bochs as simulator
-  --qemu                   Use QEMU as simulator
+  --bochs                  Use Bochs as simulator
+  --qemu                   (default) Use QEMU as simulator
   --player                 Use VMware Player as simulator
   --hardware               Don't run simulator; create images for real hardware
 Debugger selection:
