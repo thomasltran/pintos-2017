@@ -651,7 +651,6 @@ sub run_qemu {
       if defined $jitter;
     my (@cmd) = ('qemu');
     # not supported/needed in 1.0 push (@cmd, '-no-kqemu');
-    push (@cmd, '-L', '/home/courses/cs3204/share/pc-bios');
     if ($fake_usb) {
 	push (@cmd, '-hda', $disks[0]) if defined $disks[0];
 	push (@cmd, '-usb');
