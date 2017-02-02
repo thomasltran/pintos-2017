@@ -470,7 +470,7 @@ idle (void *idle_started_ UNUSED)
 
       /* Insert load balancing code here!
        * An CPU should not go idle if there are ready threads
-       * in other CPU's ready queues that are not running.
+       * in other CPUs' ready queues that are not running.
        *
        * The baseline implementation does not ensure this.
        */
