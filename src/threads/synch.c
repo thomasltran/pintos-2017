@@ -200,7 +200,7 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
 
   if (lock_held_by_current_thread (lock))
-    panic_on_non_acquired_lock (&lock->debuginfo);
+    panic_on_already_acquired_lock (&lock->debuginfo);
 
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
@@ -220,7 +220,7 @@ lock_try_acquire (struct lock *lock)
 
   ASSERT (lock != NULL);
   if (lock_held_by_current_thread (lock))
-    panic_on_non_acquired_lock (&lock->debuginfo);
+    panic_on_already_acquired_lock (&lock->debuginfo);
 
   success = sema_try_down (&lock->semaphore);
   if (success) 
@@ -241,7 +241,7 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   if (!lock_held_by_current_thread (lock))
-    panic_on_already_acquired_lock (&lock->debuginfo);
+    panic_on_non_acquired_lock (&lock->debuginfo);
 
   lock->holder = NULL;
   debug_save_callerinfo (&lock->debuginfo);
