@@ -571,13 +571,21 @@ This is the type of the function passed to @func{thread_create}, whose
 @end deftp
 @end deftypefun
 
-@deftypefun void thread_block (void)
+@deftypefun void thread_block (struct spinlock *@var{lk})
 Transitions the running thread from the running state to the blocked
 state (@pxref{Thread States}).  The thread will not run again until
 @func{thread_unblock} is
 called on it, so you'd better have some way arranged for that to happen.
 Because @func{thread_block} is so low-level, you should prefer to use
 one of the synchronization primitives instead (@pxref{Synchronization}).
+
+@var{lk} must refer to a spinlock which the caller
+must hold.  @func{thread_block} will atomically release this spinlock and
+put the thread in the blocked state.  It will reacquire this spinlock
+upon return.  This spinlock assures that lost wakeup problems are avoided
+in which a thread or interrupt handler would attempt to unblock an
+about-to-be-blocked thread before the threads has been properly recorded
+as being blocked.
 @end deftypefun
 
 @deftypefun void thread_unblock (struct thread *@var{thread})
