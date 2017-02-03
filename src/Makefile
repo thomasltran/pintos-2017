@@ -20,7 +20,7 @@ TAGS::
 	etags --members `$(TAGS_SOURCES)`
 
 tags::
-	ctags -T --no-warn `$(TAGS_SOURCES)`
+	ctags --c-kinds=+defgpstux -R `$(TAGS_SOURCES)`
 
 cscope.files::
 	$(TAGS_SOURCES) > cscope.files
