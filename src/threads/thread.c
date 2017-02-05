@@ -181,8 +181,8 @@ wake_up_new_thread (struct thread *t)
 }
 
 /* Creates a new kernel thread named NAME with the given initial
-   PRIORITY, which executes FUNCTION passing AUX as the argument,
-   Returns the thread identifier for the new thread, or TID_ERROR
+   PRIORITY, which executes FUNCTION passing AUX as the argument.
+   Returns a pointer to the new thread's struct thread, or NULL
    if creation fails. */
 static struct thread *
 do_thread_create (const char *name, int nice, thread_func *function, void *aux)
@@ -222,6 +222,9 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
 
 /* Creates a new thread and adds it to the ready queue.
 
+   Returns the thread identifier for the new thread, or TID_ERROR
+   if creation fails.
+
    Except during system startup, the new thread may be
    scheduled before thread_create() returns.  It could even exit
    before thread_create() returns.  Contrariwise, the original
@@ -231,16 +234,18 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
 
    The code provided sets the new thread's 'nice' member to
    nice, but it's not actually used. You will implement it as part of
-   Project 1 */
+   Project 1. */
 tid_t
 thread_create (const char *name, int nice, thread_func *function, void *aux)
 {
   struct thread *t;
 
   t = do_thread_create(name, nice, function, aux);
-  if (!t)
-    return 0;
+  if (t == NULL)
+    return TID_ERROR;
 
+  /* Must save tid here - 't' could already be freed when we return 
+     from wake_up_new_thread */ 
   tid_t tid = t->tid;
   /* Add to ready queue. */
   wake_up_new_thread (t);
