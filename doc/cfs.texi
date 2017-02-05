@@ -125,16 +125,18 @@ consumed CPU time @var{d} and its weight @var{w} as follows:
 @center @var{vruntime} = @var{vruntime_0} + @var{d} * @var{w0} / @var{w}
 
 @noindent where 
-@var{vruntime_0} is an initial value for the threads virtual runtime
+@var{vruntime_0} is an initial value for the thread's virtual runtime
 set when the thread is added to the ready queue, and where
 @var{w0} is the weight of a thread with a @var{nice} value of 0.
 (64-bit integer arithmetic must be used for all @acronym{CFS} calculations.)
 
 The very first thread's @var{vruntime_0} is initialized to 0, but consider
 what would happen if the @var{vruntime_0} values of threads created later
-were set to 0 as well: those threads would appear to have no CPU time
+were also set to 0 when those threads are added to the ready queue: 
+those threads would appear to have no CPU time
 consumed at all, and would be preferred by the scheduler until they
-caught up with the threads that were already running in the system.
+caught up with the threads that were already running in the system
+(which would then not receive any CPU time).
 
 Instead, CFS chooses as the initial value of @var{vruntime_0} for
 newly created threads the minimum value of @var{vruntime}
@@ -204,7 +206,7 @@ now started using the CPU extensively.
 To avoid this, @acronym{CFS} sets an unblocked thread's @var{vruntime}
 to a slightly smaller value than @var{min_vruntime}, specifically:
 
-@center @var{vruntime} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
+@center @var{vruntime_0} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
 
 where 20000000 represents the ``sleeper bonus'' given to I/O bound 
 processes when they wake up (unblock).  This adjustment tends to place
@@ -213,14 +215,15 @@ these threads at the front of the ready queue.
 To avoid threads manipulating this system by intentionally sleeping,
 the previous value of @var{vruntime} from when the thread began sleeping 
 is included as a lower bound.  This ensures that a thread's @var{vruntime} 
-cannot decrease, thus threads will not be receiving more CPU time than if 
-they had been continuously ready.
+value cannot decrease, thus threads will not be receiving more CPU time
+than if they had been continuously ready.
 
 Threads receiving a sleeper bonus may temporarily obtain a @var{vruntime} value
 that is less than @var{min_vruntime}.  In this case, do not take
-the @var{vruntime} of the thread receiving the bonus into account
+the @var{vruntime} value of the thread receiving the bonus into account
 when updating the ready queue's @var{min_vruntime}.  You must maintain 
-the invariant that @var{min_vruntime} increases monotonically.
+the invariant that a ready queue's @var{min_vruntime} value increases 
+monotonically.
 
 Keep in mind that unblocked threads are not necessarily added to the current
 CPU's ready queue.  To preserve processor affinity, unblocked threads are
@@ -313,14 +316,15 @@ the @var{vruntime} of threads in different CPUs' ready queues may
 be vastly different.  Therefore, the @var{vruntime} values of each of the migrated 
 threads must be adjusted upon migration as follows:
 
-@center @var{new_vruntime} = @var{old_vruntime} - @var{busiest_cpu_minvruntime} + @var{my_vruntime}
+@center @var{vruntime_0} = @var{vruntime} - @var{busiest_cpu_minvruntime} + @var{my_minvruntime}
 
-@noindent where @var{old_vruntime} is the thread's original @var{vruntime},
+@noindent where 
 @var{busiest_cpu_minvruntime} is the @var{min_vruntime} of the busiest CPU and
 @var{my_minvruntime} is the @var{min_vruntime} of the CPU that initiated
-the load balancing.  This adjustment will allow a thread to retain an
-sleeper bonus it may have had.  The @var{min_vruntime} of the receiving CPU
-is not updated.  Make sure that @var{vruntime} stays nonnegative.
+the load balancing.  This adjustment will allow a thread to retain any
+sleeper bonus it may have enjoyed at the time of the migration.  
+The @var{min_vruntime} of the receiving CPU is not updated.  
+Make sure that @var{vruntime_0} (and thus @var{vruntime}) stays nonnegative.
 
 @html
 </CENTER>
