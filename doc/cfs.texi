@@ -203,7 +203,7 @@ caught up with the others.  Although this meets the goal of minimizing
 latency, it is in general undesirable, particularly if the thread
 now started using the CPU extensively.
 
-To avoid this, @acronym{CFS} sets an unblocked thread's @var{vruntime}
+To avoid this, @acronym{CFS} sets an unblocked thread's @var{vruntime_0}
 to a slightly smaller value than @var{min_vruntime}, specifically:
 
 @center @var{vruntime_0} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
@@ -268,14 +268,14 @@ A summary of the @acronym{CFS} algorithm is provided below:
 @item
     When a thread is unblocked for the first time, set its @var{vruntime} to:
 
-    @center @var{initial_vruntime} = @var{min_vruntime}
+    @center @var{vruntime_0} = @var{min_vruntime}
 
 @item
     When a thread is unblocked subsequently, set its @var{vruntime} to:
 
-    @center @var{vruntime} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
+    @center @var{vruntime_0} = max(@var{vruntime}, @var{min_vruntime} - 20000000)
 
-    If the vruntime of the unblocked thread is lower than that of the current
+    If the @var{vruntime} value of the unblocked thread is lower than that of the current
     thread, or if the CPU is idle, arrange for the CPU to yield.
 
 @end itemize
