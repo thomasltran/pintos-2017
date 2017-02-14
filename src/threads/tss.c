@@ -73,14 +73,13 @@ tss_init (void)
   tss->esp0 = (uint8_t *) thread_current () + PGSIZE;
 }
 
-/* Returns the kernel TSS. */
+/* Returns the kernel TSS on the current CPU. */
 struct tss *
 tss_get (void) 
 {
-  intr_disable_push ();
+  ASSERT (intr_get_level () == INTR_OFF);
   struct tss *tss = &get_cpu ()->ts;
   ASSERT (tss != NULL);
-  intr_enable_pop ();
   return tss;
 }
 
