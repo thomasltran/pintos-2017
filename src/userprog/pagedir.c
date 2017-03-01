@@ -5,10 +5,15 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
+#include "threads/cpu.h"
+#include "devices/lapic.h"
 #include "lib/kernel/x86.h"
+#include "lib/atomic-ops.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
+static void invalidate_pagedir_others (uint32_t *pd);
 
 /* Creates a new page directory that has mappings for kernel
    virtual addresses, but none for user virtual addresses.
@@ -244,7 +249,7 @@ active_pd (void)
   return ptov (pd);
 }
 
-/* Seom page table changes can cause the CPU's translation
+/* Some page table changes can cause the CPU's translation
    lookaside buffer (TLB) to become out-of-sync with the page
    table.  When this happens, we have to "invalidate" the TLB by
    re-activating it.
@@ -261,4 +266,55 @@ invalidate_pagedir (uint32_t *pd)
          "Translation Lookaside Buffers (TLBs)". */
       pagedir_activate (pd);
     } 
+  else
+    {
+      /* The PD is not active on the current CPU, but it could be
+         active on other CPUs.  Inform the other CPUs that they
+         need to invalidate any TLB entries related to this PD.
+         If Pintos supported multi-threaded processes, this PD
+         could be active on both this and other CPUs.
+       */
+      invalidate_pagedir_others (pd);
+    }
+}
+
+static struct {
+  struct lock lock; /* only owner of this lock can initiate TLB flush. */
+  uint32_t *pd;     /* pagedir to be invalidated */
+  int remaining;    /* remaining number of CPUs that must acknowledge IPI_TLB */
+} tlb_flush_state;
+
+/* Initialize the lock used to protect the TLB flushing protocol. */
+void
+pagedir_init (void)
+{
+  lock_init (&tlb_flush_state.lock);
+}
+
+static void
+invalidate_pagedir_others (uint32_t *pd)
+{
+  lock_acquire (&tlb_flush_state.lock);
+  tlb_flush_state.remaining = ncpu - 1;
+  tlb_flush_state.pd = pd;
+  barrier ();
+  lapic_send_ipi_to_all_but_self (IPI_TLB);
+
+  /* We busy-wait here rather than blocking the calling thread
+     because we expect to be spinning for a short time only. */
+  while (atomic_load (&tlb_flush_state.remaining) > 0)
+    ;
+  lock_release (&tlb_flush_state.lock);
+}
+
+/* This method will be called from the IPI TLB_FLUSH interrupt
+   handler on CPUs to which a request to flush their TLB was sent.
+ */
+void
+pagedir_handle_tlbflush_request (void)
+{
+  if (active_pd () == tlb_flush_state.pd)
+    pagedir_activate (active_pd ());
+
+  atomic_deci (&tlb_flush_state.remaining);
 }

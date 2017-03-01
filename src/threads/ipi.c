@@ -9,6 +9,15 @@
 #include "threads/synch.h"
 #include "lib/atomic-ops.h"
 #include "threads/mp.h"
+#include "devices/shutdown.h"
+#ifdef USERPROG
+#include "userprog/pagedir.h"
+#endif
+
+static void ipi_debug (struct intr_frame *f UNUSED);
+static void ipi_schedule (struct intr_frame *f UNUSED);
+static void ipi_tlbflush (struct intr_frame *f UNUSED);
+static void ipi_shutdown (struct intr_frame *f UNUSED);
 
 /* Register interrupt handlers for the inter-processor
    interrupts that we support */
@@ -17,29 +26,32 @@ ipi_init ()
 {
   intr_register_ipi (T_IPI + IPI_SHUTDOWN, ipi_shutdown,
                      "#IPI SHUTDOWN");
+  intr_register_ipi (T_IPI + IPI_TLB, ipi_tlbflush,
+                     "#IPI TLB");
   intr_register_ipi (T_IPI + IPI_DEBUG, ipi_debug,
                      "#IPI DEBUG");
   intr_register_ipi (T_IPI + IPI_SCHEDULE, ipi_schedule,
                      "#IPI SCHEDULE");
 }
 
-/* Received a shutdown signal from another CPU
-   For now, it's just going to disable interrupts and spin so that
-   the CPU stats remain consistent for the CPU that called shutdown() */
-void
+/* Received a shutdown signal from another CPU. */
+static void
 ipi_shutdown (struct intr_frame *f UNUSED)
 {
-  ASSERT(cpu_started_others);
-  /* CPU0 needs to stay on in order to handle interrupts. Otherwise
-     if an AP calls shutdown, it may get stuck trying to print to console */
-  if (get_cpu ()->id == 0)
-    return;
-  while (1)
-    ;
+  shutdown_handle_ipi ();
+}
+
+/* Received a request to flush TLB. */
+static void
+ipi_tlbflush (struct intr_frame *f UNUSED)
+{
+#ifdef USERPROG
+  pagedir_handle_tlbflush_request ();
+#endif
 }
 
 /* Preempt the currently running thread */
-void
+static void
 ipi_schedule (struct intr_frame *f UNUSED)
 {
   ASSERT (cpu_started_others);
@@ -47,7 +59,7 @@ ipi_schedule (struct intr_frame *f UNUSED)
 }
 
 /* For debugging. Prints the backtrace of the thread running on the current CPU  */
-void
+static void
 ipi_debug (struct intr_frame *f UNUSED)
 {
   ASSERT (cpu_started_others);

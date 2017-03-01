@@ -15,5 +15,6 @@ void shutdown (void);
 void shutdown_configure (enum shutdown_type);
 void shutdown_reboot (void) NO_RETURN;
 void shutdown_power_off (void) NO_RETURN;
+void shutdown_handle_ipi (void);
 
 #endif /* devices/shutdown.h */

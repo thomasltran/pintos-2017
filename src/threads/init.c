@@ -139,6 +139,7 @@ main (void)
 #ifdef USERPROG
   exception_init ();
   syscall_init ();
+  pagedir_init ();
 #endif
 
   serial_init_queue ();

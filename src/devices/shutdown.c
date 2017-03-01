@@ -84,6 +84,21 @@ shutdown_reboot (void)
     }
 }
 
+/* Received a shutdown signal from another CPU
+   For now, it's just going to disable interrupts and spin so that
+   the CPU stats remain consistent for the CPU that called shutdown() */
+void
+shutdown_handle_ipi (void)
+{
+  ASSERT(cpu_started_others);
+  /* CPU0 needs to stay on in order to handle interrupts. Otherwise
+     if an AP calls shutdown, it may get stuck trying to print to console */
+  if (get_cpu ()->id == 0)
+    return;
+  while (1)
+    ;
+}
+
 /* Powers down the machine we're running on,
    as long as we're running on Bochs or QEMU. */
 void
