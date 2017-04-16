@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "devices/input.h"
+#include "devices/serial.h"
 #include "devices/shutdown.h"
 #include "threads/interrupt.h"
 #include "threads/io.h"
@@ -167,7 +168,9 @@ keyboard_interrupt (struct intr_frame *args UNUSED)
               key_cnt++;
               input_putc (c);
             }
+          bool could_receive_more = !input_full ();
           input_release();
+          serial_notify (could_receive_more);
         }
     }
   else

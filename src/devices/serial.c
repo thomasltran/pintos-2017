@@ -61,7 +61,7 @@ static struct intq txq;
 
 static void set_serial (int bps);
 static void putc_poll (uint8_t);
-static void write_ier (void);
+static void write_ier (bool could_send_more, bool could_receive_more);
 static intr_handler_func serial_interrupt;
 
 /* Initializes the serial port device for polling mode.
@@ -90,11 +90,7 @@ serial_init_queue (void)
     init_poll ();
   ASSERT (mode == POLL);
   mode = QUEUE;
-  serial_txq_acquire ();
-  input_acquire ();
-  write_ier ();
-  input_release ();
-  serial_txq_release ();
+  write_ier (false, true);
   intr_register_ext (0x20 + IRQ_SERIAL, serial_interrupt, "serial");
   ioapic_enable (IRQ_SERIAL, IRQ_CPU);
 }
@@ -155,10 +151,12 @@ serial_putc (uint8_t byte)
         }
 
       intq_putc (&txq, byte);
-      input_acquire ();
-      write_ier ();
-      input_release ();
       serial_txq_release ();
+
+      input_acquire ();
+      bool could_receive_more = !input_full ();
+      input_release ();
+      write_ier (true, could_receive_more);
     }
 }
 
@@ -173,19 +171,18 @@ serial_flush (void)
   serial_txq_release ();
 }
 
-/* The fullness of the input buffer may have changed.  Reassess
-   whether we should block receive interrupts.
+/* The fullness of the input buffer may have changed.
    Called by the input buffer routines when characters are added
    to or removed from the buffer. */
 void
-serial_notify (void) 
+serial_notify (bool could_receive_more)
 {
-  ASSERT (intr_get_level () == INTR_OFF);
   serial_txq_acquire ();
-  if (mode == QUEUE)
-    write_ier ();
-
+  bool could_send_more = !intq_empty (&txq);
   serial_txq_release ();
+
+  if (mode == QUEUE)
+    write_ier (could_send_more, could_receive_more);
 }
 
 /* Configures the serial port for BPS bits per second. */
@@ -208,24 +205,20 @@ set_serial (int bps)
   outb (LCR_REG, LCR_N81);
 }
 
-/* Update interrupt enable register. 
- * Since this function accesses both the txq and the input intq,
- * the caller must hold the spinlocks protecting both intq.
- */
+/* Update interrupt enable register.  */
 static void
-write_ier (void) 
+write_ier (bool could_send_more, bool could_receive_more)
 {
   uint8_t ier = 0;
 
-  ASSERT (intr_get_level () == INTR_OFF);
   /* Enable transmit interrupt if we have any characters to
      transmit. */
-  if (!intq_empty (&txq))
+  if (could_send_more)
     ier |= IER_XMIT;
 
   /* Enable receive interrupt if we have room to store any
      characters we receive. */
-  if (!input_full ())
+  if (could_receive_more)
     ier |= IER_RECV;
   
   outb (IER_REG, ier);
@@ -256,6 +249,8 @@ serial_interrupt (struct intr_frame *f UNUSED)
   input_acquire ();
   while (!input_full () && (inb (LSR_REG) & LSR_DR) != 0)
     input_putc (inb (RBR_REG));
+
+  bool could_receive_more = !input_full ();
   input_release ();
 
   serial_txq_acquire ();
@@ -264,10 +259,14 @@ serial_interrupt (struct intr_frame *f UNUSED)
   while (!intq_empty (&txq) && (inb (LSR_REG) & LSR_THRE) != 0) 
     outb (THR_REG, intq_getc (&txq));
 
-  /* Update interrupt enable register based on queue status. */
-  input_acquire ();
-  write_ier ();
-  input_release ();
-
+  bool could_send_more = !intq_empty (&txq);
   serial_txq_release ();
+
+  /* Update interrupt enable register based on queue status.
+   * This is not atomic with respect to the earlier call to input_full (),
+   * but that's ok: in the worst case, we may allow an additional
+   * interrupt but won't be able to put the received byte into the
+   * queue.
+   */
+  write_ier (could_send_more, could_receive_more);
 }

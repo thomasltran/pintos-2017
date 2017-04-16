@@ -24,7 +24,6 @@ input_putc (uint8_t key)
   ASSERT (intr_get_level () == INTR_OFF);
   ASSERT (!intq_full (&buffer));
   intq_putc (&buffer, key);
-  serial_notify ();
 }
 
 /* Retrieves a key from the input buffer.
@@ -36,8 +35,8 @@ input_getc (void)
 
   input_acquire ();
   key = intq_getc (&buffer);
-  serial_notify ();
   input_release ();
+  serial_notify (true);
   return key;
 }
 
