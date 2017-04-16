@@ -52,4 +52,12 @@ void cond_broadcast (struct condition *, struct lock *);
    reference guide for more information.*/
 #define barrier() asm volatile ("" : : : "memory")
 
+/* Memory barrier.
+
+   The hardware will not complete instructions out of 
+   order around a memory barrier. The compiler will 
+   similarly refrain from reordering operations across
+   a memory barrier */
+#define smp_barrier() asm volatile("mfence" : : : "memory")
+
 #endif /* threads/synch.h */

@@ -608,7 +608,7 @@ that no CPU is idle while threads are ready to run (but are not currently
 running). However, using a global queue has two main weaknesses.
 
 The first weakness is lack of
-scability. The global queue must be locked while choosing the next job to run.
+scalability. The global queue must be locked while choosing the next job to run.
 Locking greatly reduces performance as the number of CPUs grows. Each CPU will
 spend more and more time contenting for the global queue lock and less time
 actually running threads.

@@ -724,7 +724,7 @@ uhci_add_td_to_qh (struct queue_head *qh, struct tx_descriptor *td)
     {
       /* queue is empty */
       td->flp.terminate = 1;
-      barrier ();
+      smp_barrier ();
       td->flp.flp = 0;
       qh->qelp.flp = ptr_to_flp (vtop (td));
       qh->qelp.terminate = 0;
@@ -745,7 +745,7 @@ uhci_add_td_to_qh (struct queue_head *qh, struct tx_descriptor *td)
       fp->qh_select = 0;
       fp->depth_select = 0;
       fp->flp = ptr_to_flp (vtop (td));
-      barrier ();
+      smp_barrier ();
       fp->terminate = 0;
     }
 }
@@ -928,7 +928,7 @@ uhci_create_chan (host_info hi, int dev_addr, int ver)
   /* queue data */
   memset (ud->qh, 0, sizeof (*ud->qh));
   ud->qh->qelp.terminate = 1;
-  barrier ();
+  smp_barrier ();
   ud->qh->qelp.flp = 0;
   ud->qh->qelp.qh_select = 0;
   ud->qh->qhlp.qh_select = 1;

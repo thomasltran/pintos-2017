@@ -297,7 +297,7 @@ invalidate_pagedir_others (uint32_t *pd)
   lock_acquire (&tlb_flush_state.lock);
   tlb_flush_state.remaining = ncpu - 1;
   tlb_flush_state.pd = pd;
-  barrier ();
+  smp_barrier ();
   lapic_send_ipi_to_all_but_self (IPI_TLB);
 
   /* We busy-wait here rather than blocking the calling thread
