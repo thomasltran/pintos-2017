@@ -1,6 +1,8 @@
 #include <string.h>
 #include <debug.h>
 
+#pragma GCC diagnostic ignored "-Wnonnull-compare"
+
 /* Copies SIZE bytes from SRC to DST, which must not overlap.
    Returns DST. */
 void *

@@ -17,25 +17,25 @@
 #define make_usb_pid(x)         ((x) | ((~(x)) << 4))
 
 /* token packets... */
-#define USB_PID_OUT     make_usb_pid(1)
-#define USB_PID_IN      make_usb_pid(9)
-#define USB_PID_SOF     make_usb_pid(5)
-#define USB_PID_SETUP   make_usb_pid(13)
+#define USB_PID_OUT     make_usb_pid(1u)
+#define USB_PID_IN      make_usb_pid(9u)
+#define USB_PID_SOF     make_usb_pid(5u)
+#define USB_PID_SETUP   make_usb_pid(13u)
 /* data packets... */
-#define USB_PID_DATA0   make_usb_pid(3)
-#define USB_PID_DATA1   make_usb_pid(11)
-#define USB_PID_DATA2   make_usb_pid(7)
-#define USB_PID_MDATA   make_usb_pid(15)
+#define USB_PID_DATA0   make_usb_pid(3u)
+#define USB_PID_DATA1   make_usb_pid(11u)
+#define USB_PID_DATA2   make_usb_pid(7u)
+#define USB_PID_MDATA   make_usb_pid(15u)
 /* handshake packets.. */
-#define USB_PID_ACK     make_usb_pid(2)
-#define USB_PID_NAK     make_usb_pid(10)
-#define USB_PID_STALL   make_usb_pid(14)
-#define USB_PID_NYET    make_usb_pid(6)
+#define USB_PID_ACK     make_usb_pid(2u)
+#define USB_PID_NAK     make_usb_pid(10u)
+#define USB_PID_STALL   make_usb_pid(14u)
+#define USB_PID_NYET    make_usb_pid(6u)
 /* special */
-#define USB_PID_PRE     make_usb_pid(12)
-#define USB_PID_ERR     make_usb_pid(12)
-#define USB_PID_SPLIT   make_usb_pid(8)
-#define USB_PID_PING    make_usb_pid(4)
+#define USB_PID_PRE     make_usb_pid(12u)
+#define USB_PID_ERR     make_usb_pid(12u)
+#define USB_PID_SPLIT   make_usb_pid(8u)
+#define USB_PID_PING    make_usb_pid(4u)
 
 /* the standard setup requests */
 #define REQ_STD_GET_STATUS      0
