@@ -656,13 +656,14 @@ sub run_qemu {
 	push (@cmd, '-usb');
 	push (@cmd, '-usbdevice', "disk:$_") foreach @disks[1...$#disks];
     } else {
-	push (@cmd, '-hda', $disks[0]) if defined $disks[0];
-	push (@cmd, '-hdb', $disks[1]) if defined $disks[1];
-	push (@cmd, '-hdc', $disks[2]) if defined $disks[2];
-	push (@cmd, '-hdd', $disks[3]) if defined $disks[3];
+        for (my ($i) = 0; $i < 4; $i++) {
+            push (@cmd, '-drive', 'file=' . $disks[$i] . ',format=raw,index='.$i.',media=disk') if defined $disks[$i];
+        }
     }
     push (@cmd, '-m', $mem);
-    push (@cmd, '-smp', $smp);
+    # push (@cmd, '-smp', $smp);
+    # in qemu 6.2.0, we need the long form to properly populate the MP tables
+    push (@cmd, '-smp', 'cpus=' . $smp . ',cores=1,threads=1,sockets=' . $smp);
     push (@cmd, '-net', 'none');
     push (@cmd, '-nographic') if $vga eq 'none';
     push (@cmd, '-serial', 'stdio') if $serial && $vga ne 'none';
