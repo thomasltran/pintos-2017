@@ -35,6 +35,7 @@ use strict;
 #
 # Perl pragma to control optional warnings
 # use warnings;
+use lib qw(.);
 
 # Declarations
 use vars qw(
@@ -3443,7 +3444,7 @@ sub pass1
         #############################################################
         # value substitution before macro expansion, so that
         # it works in macro arguments
-        s/\@value{($VARRE)}/$value{$1}/eg;
+        s/\@value\{($VARRE)\}/$value{$1}/eg;
 
         #############################################################
         # macro substitution
@@ -3512,8 +3513,8 @@ sub pass1
                     $after = '';
                 }
                 $args =~ s|\\\\|\\|g;
-                $args =~ s|\\{|{|g;
-                                $args =~ s|\\}|}|g;
+                $args =~ s|\\\{|\{|g;
+                $args =~ s|\\\}|\}|g;
                 if (@{$macros->{$name}->{Args}} > 1)
                 {
                     $args =~ s/(^|[^\\]),/$1$;/g ;
@@ -4920,7 +4921,7 @@ sub pass2
         #
         # xref
         #
-        while (/\@(x|px|info|)ref{([^{}]+)(}?)/)
+        while (/\@(x|px|info|)ref\{([^{}]+)(\}?)/)
         {
             # note: Texinfo may accept other characters
             ($type, $nodes, $full) = ($1, $2, $3);
@@ -5644,10 +5645,10 @@ sub update_sec_num
     my $ret;
 
     $level--;                   # here we start at 0
-    if ($name =~ /^appendix/ || defined(@appendix_sec_num))
+    if ($name =~ /^appendix/ || @appendix_sec_num)
     {
         # appendix style
-        if (defined(@appendix_sec_num))
+        if (@appendix_sec_num)
         {
             &incr_sec_num($level, @appendix_sec_num);
         }
@@ -5660,7 +5661,7 @@ sub update_sec_num
     else
     {
         # normal style
-        if (defined(@normal_sec_num))
+        if (@normal_sec_num)
         {
             &incr_sec_num($level, @normal_sec_num);
         }
@@ -6163,7 +6164,7 @@ sub substitute_style
     {
         $changed = 0;
         $done = '';
-        while (/\@(\w+){([^\{\}]+)}/ || /\@(,){([^\{\}]+)}/)
+        while (/\@(\w+)\{([^\{\}]+)\}/ || /\@(,)\{([^\{\}]+)\}/)
         {
             $text = &apply_style($1, $2);
             if ($text)

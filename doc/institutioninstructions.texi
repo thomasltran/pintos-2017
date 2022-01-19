@@ -1,48 +1,26 @@
 @node institutioninstructions
 @appendix Instructions for Virginia Tech students
 
+@c ------------------ not currently included in documentation -------------------------
 These instructions pertains only to usage at Virginia Tech.
 
-As of Spring 2017, most of the files related to Pintos can be found at
-@file{/home/courses/cs3204/bin}. We recommend adding this to your PATH.
+As of Spring 2022, most of the files related to Pintos can be found at
+@file{/web/courses/cs4284/pintostools/bin}. We recommend adding this to your PATH.
 
-@file{/home/courses/cs3204/bin/pintos} is the script we use to run Pintos.
+@file{/web/courses/cs4284/pintostools/bin/pintos} is the script we use to run Pintos.
 
 RLogin supports KVM, therefore Pintos can also be run under qemu's KVM
 acceleration support. This can make Pintos run about 5x faster.
 This is particularly helpful if you are trying to reproduce a rare race condition.
 We will not use KVM during grading, and we do 
 not recommend using it for Project 1, where tests make assumptions on how fast
-programs are expected to run. To run Pintos with KVM, use 
-@file{/home/courses/cs3204/bin/pintos-kvm}. To see if your personal computer
+programs are expected to run. To see if your personal computer
 supports KVM, check if @file{/dev/kvm} exists. Note that VirtualBox does not
 provide guest operating systems with the KVM module. Finally, be aware that
 KVM can sometimes make GDB extremely frustrating to use.
 
 We encourage you to develop and test on a local machine. 
 There is an easy way to do this.
-
-@enumerate 1
-@item
-Install Centos 7. Centos 6 will probably work, but then you will
-want devtoolset-2, which provides an updated version of gcc.
-
-@item
-Create a user account called "courses". Inside the home directory,
-create a folder called "cs3204". This is because RLogin's 
-@file{/home/courses/cs3204/} is folder hardcoded as a path the Pintos script.
-
-@item
-Recursively copy the following folders: @file{/home/courses/cs3204/bin} and 
-@file{/home/courses/cs3204/share} into your local 
-@file{/home/courses/cs3204} folder. The @file{bin} folder contains a 
-QEMU executable and Pintos scripts. The @file{share} folder contains
-the PC BIOS that QEMU will use to start Pintos.
-
-@item
-You should now have an environment set up where you can run Pintos. @xref{Running Pintos}.
-
-@end enumerate
 
 For now, we DON'T encourage Bochs. It has not been tested under the new system
 at all. None of the tests will run the Bochs emulator.

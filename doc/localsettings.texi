@@ -22,7 +22,7 @@ ssh -Y yourlogin@@rlogin.cs.vt.edu
 @macro localpathsetup{}
 @command{bash} shell users should instead add
 @example
-export PATH=~cs3204/bin:$PATH
+export PATH=/web/courses/cs4284/pintostools/bin:$PATH
 @end example
 @noindent
 to their @file{.bash_profile} file.
