@@ -159,6 +159,7 @@ long long __divdi3 (long long n, long long d);
 long long __moddi3 (long long n, long long d);
 unsigned long long __udivdi3 (unsigned long long n, unsigned long long d);
 unsigned long long __umoddi3 (unsigned long long n, unsigned long long d);
+unsigned long long __udivmoddi4 (unsigned long long n, unsigned long long d, unsigned long long *r);
 
 /* Signed 64-bit division. */
 long long
@@ -186,4 +187,13 @@ unsigned long long
 __umoddi3 (unsigned long long n, unsigned long long d) 
 {
   return umod64 (n, d);
+}
+
+/* Unsigned 64-bit division and remainder, combined. */
+unsigned long long
+__udivmoddi4 (unsigned long long n, unsigned long long d, unsigned long long *r)
+{
+  unsigned long long q = udiv64 (n, d);
+  *r = n - d * q;
+  return q;
 }
