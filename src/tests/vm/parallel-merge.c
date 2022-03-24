@@ -44,7 +44,7 @@ sort_chunks (const char *subprocess, int exit_status)
   for (i = 0; i < CHUNK_CNT; i++) 
     {
       char fn[128];
-      char cmd[128];
+      char cmd[130];
       int handle;
 
       msg ("sort chunk %zu", i);
