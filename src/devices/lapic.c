@@ -88,6 +88,8 @@ static void microdelay (int);
 static void lapicw (int , int);
 static void sendipi (uint8_t , int);
 
+volatile uint32_t *lapic_base_addr;
+
 /* Initialize the local advanced interrupt controller. */
 void
 lapic_init (void)

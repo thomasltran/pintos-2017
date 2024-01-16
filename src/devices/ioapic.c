@@ -53,6 +53,8 @@
    set to the default. */
 static volatile struct ioapic *ioapic;
 
+uint8_t ioapic_id;
+
 /* IO APIC MMIO structure: write reg, then read or write data. */
 struct ioapic
 {

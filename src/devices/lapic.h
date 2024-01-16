@@ -10,7 +10,7 @@
    lapic_base_addr stores the base address for the 
    local APIC. 
    This is initialized in mp.c, by parsing the MP Configuration Table */
-volatile uint32_t *lapic_base_addr;
+extern volatile uint32_t *lapic_base_addr;
 
 #define T_IPI 0xFB
 #define NUM_IPI 5

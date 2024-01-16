@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-uint8_t ioapic_id;
+extern uint8_t ioapic_id;
 
 void ioapic_init (void);
 void ioapic_enable (int irq, int cpu);
