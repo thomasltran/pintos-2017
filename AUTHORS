@@ -6,6 +6,8 @@ src							-*- text -*-
 * Support for PCI, USB, GRUB, partitions, UHCI, and other features
   contributed by Anthony Romano <chz@vt.edu>.
 
+* Support for SMP contributed by Lance Chao.
+
 * The original structure and form of this operating system is inspired
   by the Nachos system from the University of California, Berkeley.  A
   few of the source files are more-or-less literal translations of the
