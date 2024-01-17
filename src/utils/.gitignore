@@ -1,0 +1,7 @@
+.gitignore
+/squish-pty
+/squish-pty.o
+/squish-unix
+/squish-unix.o
+/setitimer-helper
+/setitimer-helper.o
