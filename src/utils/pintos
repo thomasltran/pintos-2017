@@ -32,6 +32,7 @@ our (@disks);			# Extra disk images to pass to simulator.
 our ($loader_fn);		# Bootstrap loader.
 our (%geometry);		# IDE disk geometry.
 our ($align);			# Partition alignment.
+our ($gdb_port) = $ENV{"GDB_PORT"} || "1234"; # Port to listen on for GDB
 our ($fake_usb) = 0;		# Use fake USB disks instead of IDE?
 our ($smp) = 2;		# Number of cpus
 our ($kvm) = 0;		# Enable KVM Virtualization (qemu)
@@ -589,9 +590,12 @@ cpu: count=$smp, ips=1000000
 megs: $mem
 log: bochsout.txt
 panic: action=fatal
-user_shortcut: keys=ctrlaltdel
+# For older bochs:
+#user_shortcut: keys=ctrlaltdel
+# For more recent bochs:
+keyboard: user_shortcut=ctrl-alt-del
 EOF
-    print BOCHSRC "gdbstub: enabled=1\n" if $debug eq 'gdb';
+    print BOCHSRC "gdbstub: enabled=1, port=$gdb_port\n" if $debug eq 'gdb';
     if ($realtime) {
 	print BOCHSRC "clock: sync=realtime\n";
     } else {
