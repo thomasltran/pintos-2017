@@ -208,7 +208,8 @@ lapic_start_ap (uint8_t apicid, uint32_t addr)
      when it is in the halted state due to an INIT.  So the second
      should be ignored, but it is part of the official Intel algorithm.
      Bochs complains about the second one.  Too bad for Bochs. */
-  for (i = 0; i < 2; i++)
+  /* In Bochs 2.7, 3 startup IPIs appear to be necessary. - gback */
+  for (i = 0; i < 3; i++)
     {
       lapicw (ICRHI, apicid << 24);
       lapicw (ICRLO, STARTUP | (addr >> 12));

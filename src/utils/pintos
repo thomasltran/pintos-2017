@@ -571,7 +571,10 @@ sub run_vm {
 # Runs Bochs.
 sub run_bochs {
     # Select Bochs binary based on the chosen debugger.
-    my ($bin) = $debug eq 'monitor' ? 'bochs-dbg' : 'bochs';
+    # We assume that bochs-smp was built with smp support
+    # and bochs was built with GDB stub support
+    # As of Bochs 2.7, both cannot be enabled simultaneously
+    my ($bin) = $debug eq 'monitor' ? 'bochs-dbg' : $smp > 1 ? 'bochs-smp' : 'bochs';
 
     my ($squish_pty);
     if ($serial) {
@@ -581,45 +584,47 @@ sub run_bochs {
     }
 
     # Write bochsrc.txt configuration file.
-    open (BOCHSRC, ">", "bochsrc.txt") or die "bochsrc.txt: create: $!\n";
-    print BOCHSRC <<EOF;
+    my ($bochsrc, $bochsrc_name) = tempfile (UNLINK => 0, SUFFIX => '.txt');
+    my ($bochsout_handle, $bochsout) = tempfile (UNLINK => 0, SUFFIX => '.out');
+    open ($bochsrc, ">", $bochsrc_name) or die "bochsrc.txt: create: $!\n";
+    print $bochsrc <<EOF;
 romimage: file=\$BXSHARE/BIOS-bochs-latest
 vgaromimage: file=\$BXSHARE/VGABIOS-lgpl-latest
 boot: disk
 cpu: count=$smp, ips=1000000
 megs: $mem
-log: bochsout.txt
+log: $bochsout
 panic: action=fatal
 # For older bochs:
 #user_shortcut: keys=ctrlaltdel
 # For more recent bochs:
 keyboard: user_shortcut=ctrl-alt-del
 EOF
-    print BOCHSRC "gdbstub: enabled=1, port=$gdb_port\n" if $debug eq 'gdb';
+    print $bochsrc "gdbstub: enabled=1, port=$gdb_port\n" if $debug eq 'gdb';
     if ($realtime) {
-	print BOCHSRC "clock: sync=realtime\n";
+	print $bochsrc "clock: sync=realtime\n";
     } else {
-	print BOCHSRC "clock: sync=none, time0=0\n";
+	print $bochsrc "clock: sync=none, time0=0\n";
     }
-    print BOCHSRC "ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15\n"
+    print $bochsrc "ata1: enabled=1, ioaddr1=0x170, ioaddr2=0x370, irq=15\n"
       if @disks > 2;
-    print_bochs_disk_line ("ata0-master", $disks[0]);
-    print_bochs_disk_line ("ata0-slave", $disks[1]);
-    print_bochs_disk_line ("ata1-master", $disks[2]);
-    print_bochs_disk_line ("ata1-slave", $disks[3]);
+    print_bochs_disk_line ($bochsrc, "ata0-master", $disks[0]);
+    print_bochs_disk_line ($bochsrc, "ata0-slave", $disks[1]);
+    print_bochs_disk_line ($bochsrc, "ata1-master", $disks[2]);
+    print_bochs_disk_line ($bochsrc, "ata1-slave", $disks[3]);
     if ($vga ne 'terminal') {
 	if ($serial) {
 	    my $mode = defined ($squish_pty) ? "term" : "file";
-	    print BOCHSRC "com1: enabled=1, mode=$mode, dev=/dev/stdout\n";
+	    print $bochsrc "com1: enabled=1, mode=$mode, dev=/dev/stdout\n";
 	}
-	print BOCHSRC "display_library: nogui\n" if $vga eq 'none';
+	print $bochsrc "display_library: nogui\n" if $vga eq 'none';
     } else {
-	print BOCHSRC "display_library: term\n";
+	print $bochsrc "display_library: term\n";
     }
-    close (BOCHSRC);
+    close ($bochsrc);
 
     # Compose Bochs command line.
-    my (@cmd) = ($bin, '-q');
+    my (@cmd) = ($bin, '-q', '-f', $bochsrc_name);
     unshift (@cmd, $squish_pty) if defined $squish_pty;
     push (@cmd, '-j', $jitter) if defined $jitter;
 
@@ -638,12 +643,12 @@ EOF
 }
 
 sub print_bochs_disk_line {
-    my ($device, $disk) = @_;
+    my ($bochsrc, $device, $disk) = @_;
     if (defined $disk) {
 	my (%geom) = disk_geometry ($disk);
-	print BOCHSRC "$device: type=disk, path=$disk, mode=flat, ";
-	print BOCHSRC "cylinders=$geom{C}, heads=$geom{H}, spt=$geom{S}, ";
-	print BOCHSRC "translation=none\n";
+	print $bochsrc "$device: type=disk, path=$disk, mode=flat, ";
+	print $bochsrc "cylinders=$geom{C}, heads=$geom{H}, spt=$geom{S}, ";
+	print $bochsrc "translation=none\n";
     }
 }
 
