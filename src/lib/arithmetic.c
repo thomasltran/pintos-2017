@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdlib.h>
 
 /* On x86, division of one 64-bit integer by another cannot be
    done with a single instruction or a short sequence.  Thus, GCC
@@ -151,6 +152,12 @@ static int32_t
 smod64 (int64_t n, int64_t d)
 {
   return n - d * sdiv64 (n, d);
+}
+
+long long
+llabs(long long j)
+{
+    return j >= 0 ? j : -j;
 }
 
 /* These are the routines that GCC calls. */
