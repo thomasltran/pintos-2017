@@ -11,6 +11,9 @@ test_main (void)
   int handle;
 
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
   read (handle, (char *) &handle - 4096, 1);
+#pragma GCC diagnostic pop
   fail ("survived reading data into bad address");
 }
