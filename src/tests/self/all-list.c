@@ -30,8 +30,8 @@ static void
 threads_func (void *aux UNUSED)
 {
   /* Spin so that thread_foreach is sure to see the thread */
-  while (!exit_flag)
-    ;
+  while (atomic_load(&exit_flag) == 0)
+    continue;
 }
 
 void
