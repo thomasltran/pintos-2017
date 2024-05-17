@@ -45,7 +45,10 @@ GETCMD += run 'tar fs.tar /'
 GETCMD += < /dev/null
 GETCMD += 2> $(TEST)-persistence.errors $(if $(VERBOSE),|tee,>) $(TEST)-persistence.output
 
-tests/filesys/extended/%.output: kernel.bin
+EXTENDED_OUTPUTS = $(addsuffix .output, $(addprefix tests/filesys/extended/,$(raw_tests)))
+
+# a custom rule for the extended tests that also test persistence
+$(EXTENDED_OUTPUTS): kernel.bin loader.bin
 	$(eval TMPDSK := tmp-$(subst /,-,$(subst .output,,$@)).dsk)
 	rm -f $(TMPDSK)
 	pintos-mkdisk $(TMPDSK) --filesys-size=2

@@ -6,7 +6,7 @@ PROGS = $(foreach subdir,$(TEST_SUBDIRS),$($(subdir)_PROGS))
 TESTS = $(foreach subdir,$(TEST_SUBDIRS),$($(subdir)_TESTS))
 EXTRA_GRADES = $(foreach subdir,$(TEST_SUBDIRS),$($(subdir)_EXTRA_GRADES))
 
-OUTPUTS = $(addsuffix .output,$(TESTS) $(EXTRA_GRADES))
+OUTPUTS = $(addsuffix .output,$(TESTS))
 ERRORS = $(addsuffix .errors,$(TESTS) $(EXTRA_GRADES))
 RESULTS = $(addsuffix .result,$(TESTS) $(EXTRA_GRADES))
 
@@ -47,7 +47,8 @@ outputs:: $(OUTPUTS)
 
 $(foreach prog,$(PROGS),$(eval $(prog).output: $(prog)))
 $(foreach test,$(TESTS),$(eval $(test).output: $($(test)_PUTFILES)))
-$(foreach test,$(TESTS),$(eval $(test).output: TEST = $(test)))
+$(foreach test,$(TESTS),$(eval $(test).output: TEST := $(test)))
+$(foreach test,$(TESTS),$(eval $(test).output: TEST_BASENAME := $(notdir $(test))))
 
 # Prevent an environment variable VERBOSE from surprising us.
 VERBOSE =
@@ -67,11 +68,14 @@ TESTCMD += $(KERNELFLAGS)
 ifeq ($(filter userprog, $(KERNEL_SUBDIRS)), userprog)
 TESTCMD += -f
 endif
-TESTCMD += $(if $($(TEST)_ARGS),run '$(*F) $($(TEST)_ARGS)',run $(*F))
+TESTCMD += $(if $($(TEST)_ARGS),run '$(TEST_BASENAME) $($(TEST)_ARGS)',run $(TEST_BASENAME))
 TESTCMD += < /dev/null
 TESTCMD += 2> $(TEST).errors $(if $(VERBOSE),|tee,>) $(TEST).output
 %.output: kernel.bin loader.bin
-	$(TESTCMD)
+	@# do not apply this rule to the persistence tests
+	@if [[ ! "$@" =~ .*persistence.* ]]; then\
+		$(TESTCMD);\
+	fi
 
 %.result: %.ck %.output
 	perl -I$(SRCDIR) $< $* $@
