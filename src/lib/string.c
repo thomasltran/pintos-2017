@@ -89,6 +89,27 @@ strcmp (const char *a_, const char *b_)
   return *a < *b ? -1 : *a > *b;
 }
 
+/* Works like strcmp except compares only the first at most n
+ * characters. */
+int
+strncmp (const char *a_, const char *b_, size_t n)
+{
+  const unsigned char *a = (const unsigned char *) a_;
+  const unsigned char *b = (const unsigned char *) b_;
+
+  ASSERT (a != NULL);
+  ASSERT (b != NULL);
+
+  while (n > 0 && *a != '\0' && *a == *b)
+    {
+      a++;
+      b++;
+      n--;
+    }
+
+  return n == 0 ? 0 : *a < *b ? -1 : *a > *b;
+}
+
 /* Returns a pointer to the first occurrence of CH in the first
    SIZE bytes starting at BLOCK.  Returns a null pointer if CH
    does not occur in BLOCK. */

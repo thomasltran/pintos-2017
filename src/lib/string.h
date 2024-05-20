@@ -9,6 +9,7 @@ void *memmove (void *, const void *, size_t);
 char *strncat (char *, const char *, size_t);
 int memcmp (const void *, const void *, size_t);
 int strcmp (const char *, const char *);
+int strncmp (const char *, const char *, size_t);
 void *memchr (const void *, int, size_t);
 char *strchr (const char *, int);
 size_t strcspn (const char *, const char *);
