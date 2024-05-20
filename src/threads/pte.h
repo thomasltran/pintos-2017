@@ -29,10 +29,10 @@
 #define PDMASK  BITMASK(PDSHIFT, PDBITS)   /* Page directory bits (22:31). */
 
 /* memory dedicated to PCI - make sure this is 4MB aligned */
-#define PCI_ADDR_ZONE_BEGIN     0xe0000000
-#define PCI_ADDR_ZONE_END       0xe0800000
-#define PCI_ADDR_ZONE_PDES      2
+#define PCI_ADDR_ZONE_BEGIN     0xfc800000
+#define PCI_ADDR_ZONE_END       0xfe000000
 #define PCI_ADDR_ZONE_PAGES     (PCI_ADDR_ZONE_END-PCI_ADDR_ZONE_BEGIN)/PGSIZE
+#define PCI_ADDR_ZONE_PDES      ((PCI_ADDR_ZONE_PAGES)/1024)
 #define APIC_ZONE_PDES          8192
 #define APIC_ZONE_BEGIN         0xfe000000
 
@@ -93,7 +93,7 @@ static inline uint32_t pde_create_kernel (uint32_t *pt) {
 }
 
 /* Returns a pointer to the page table that page directory entry
-   PDE, which must "present", points to. */
+   PDE points to.  The page table must be allocated + present. */
 static inline uint32_t *pde_get_pt (uint32_t pde) {
   ASSERT (pde & PTE_P);
   return ptov (pde & PTE_ADDR);

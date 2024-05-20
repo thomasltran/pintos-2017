@@ -8,6 +8,8 @@ src							-*- text -*-
 
 * Support for SMP contributed by Lance Chao.
 
+* Support for >64MB of memory by Jamie Whiting.
+
 * The original structure and form of this operating system is inspired
   by the Nachos system from the University of California, Berkeley.  A
   few of the source files are more-or-less literal translations of the

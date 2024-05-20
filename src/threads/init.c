@@ -71,11 +71,16 @@ static const char *swap_bdev_name;
 /* -ul: Maximum number of pages to put into palloc's user pool. */
 static size_t user_page_limit = SIZE_MAX;
 
+/* -up: Default split of user/kernel pool is 50%:50% (see: palloc.c) */
+static size_t user_percent = 50;
+
 static void bss_init (void);
 static void paging_init (void);
 static void pci_zone_init (void);
 static void lapic_zone_init (void);
-static char ** read_command_line (void);
+static char ** read_command_line (int *argc);
+static void print_command_line (char **argv, int argc);
+static void scan_early_options (char **argv);
 static char ** parse_options (char **argv);
 static void run_actions (char **argv);
 static void usage (void);
@@ -93,12 +98,17 @@ int
 main (void)
 {
   char **argv;
+  int argc;
 
   /* Clear BSS. */
   bss_init ();
 
+  /* Break command line into arguments and parse early options. */
+  argv = read_command_line (&argc);
+  scan_early_options (argv);
+
   /* Initialize memory system. */
-  palloc_init (user_page_limit);
+  palloc_init (user_page_limit, user_percent);
   malloc_init ();
   paging_init ();
 
@@ -120,8 +130,8 @@ main (void)
   
   console_init ();
 
-  /* Break command line into arguments and parse options. */
-  argv = read_command_line ();
+  /* Print command line and parse options. */
+  print_command_line (argv, argc);
   argv = parse_options (argv);
 
   /* Greet user. */
@@ -226,8 +236,7 @@ paging_init (void)
 static void
 pci_zone_init (void)
 {
-  int i;
-  for (i = 0; i < PCI_ADDR_ZONE_PDES; i++)
+  for (unsigned i = 0; i < PCI_ADDR_ZONE_PDES; i++)
     {
       size_t pde_idx = pd_no ((void *) PCI_ADDR_ZONE_BEGIN) + i;
       uint32_t pde;
@@ -255,10 +264,10 @@ lapic_zone_init (void)
       size_t pde_idx = pd_no (vaddr);
       size_t pte_idx = pt_no (vaddr);
       if (pd[pde_idx] == 0)
-    {
-      pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
-      pd[pde_idx] = pde_create_kernel (pt);
-    }
+        {
+          pt = palloc_get_page (PAL_ASSERT | PAL_ZERO);
+          pd[pde_idx] = pde_create_kernel (pt);
+        }
       uint32_t mapping = pte_create_kernel_identity (vaddr, true);
       pt[pte_idx] = mapping;
     }
@@ -372,17 +381,16 @@ start_other_cpus (void)
 /* Breaks the kernel command line into words and returns them as
    an argv-like array. */
 static char **
-read_command_line (void) 
+read_command_line (int *_argc)
 {
   static char *argv[LOADER_ARGS_LEN / 2 + 1];
   char *p, *end;
   int argc;
-  int i;
 
   argc = *(uint32_t *) ptov (LOADER_ARG_CNT);
   p = ptov (LOADER_ARGS);
   end = p + LOADER_ARGS_LEN;
-  for (i = 0; i < argc; i++) 
+  for (int i = 0; i < argc; i++)
     {
       if (p >= end)
         PANIC ("command line arguments overflow");
@@ -390,18 +398,37 @@ read_command_line (void)
       argv[i] = p;
       p += strnlen (p, end - p) + 1;
     }
-  argv[argc] = NULL;
+  argv[*_argc = argc] = NULL;
+  return argv;
+}
 
+static void
+print_command_line (char **argv, int argc)
+{
   /* Print kernel command line. */
   printf ("Kernel command line:");
-  for (i = 0; i < argc; i++)
+  for (int i = 0; i < argc; i++)
     if (strchr (argv[i], ' ') == NULL)
       printf (" %s", argv[i]);
     else
       printf (" '%s'", argv[i]);
   printf ("\n");
+}
 
-  return argv;
+/* Parses some options in ARGV[].
+ * This is called very early before printf etc. are functional.
+ */
+static void
+scan_early_options (char **argv)
+{
+  for (; *argv != NULL && **argv == '-'; argv++)
+    {
+      char *name = *argv;
+      if (!strncmp (name, "-ul=", 4))
+        user_page_limit = atoi (name + 4);
+      if (!strncmp (name, "-up=", 4))
+        user_percent = atoi (name + 4);
+    }
 }
 
 /* Parses options in ARGV[]
@@ -409,6 +436,7 @@ read_command_line (void)
 static char **
 parse_options (char **argv) 
 {
+  bool rs_given = false;
   for (; *argv != NULL && **argv == '-'; argv++)
     {
       char *save_ptr;
@@ -434,11 +462,16 @@ parse_options (char **argv)
 #endif
 #endif
       else if (!strcmp (name, "-rs"))
-        random_init (atoi (value));
-#ifdef USERPROG
+        {
+          rs_given = true;
+          random_init (atoi (value));
+        }
       else if (!strcmp (name, "-ul"))
-        user_page_limit = atoi (value);
-#endif
+        /* already parsed. */
+        printf ("user page limit was set to %d pages\n", user_page_limit);
+      else if (!strcmp (name, "-up"))
+        /* already parsed. */
+        printf ("user memory percentage was set to %d%%\n", user_percent);
       else
         PANIC ("unknown option `%s' (use -h for help)", name);
     }
@@ -451,7 +484,8 @@ parse_options (char **argv)
      initial time to a predictable value, not to the local time,
      for reproducibility.  To fix this, give the "-r" option to
      the pintos script to request real-time execution. */
-  random_init (rtc_get_time ());
+  if (!rs_given)
+    random_init (rtc_get_time ());
   
   return argv;
 }
@@ -559,9 +593,8 @@ usage (void)
 #endif
 #endif
           "  -rs=SEED           Set random number seed to SEED.\n"
-#ifdef USERPROG
           "  -ul=COUNT          Limit user memory to COUNT pages.\n"
-#endif
+          "  -up=PERCENTAGE     Use PERCENTAGE percent of memory for user.\n"
           );
   shutdown_power_off ();
 }

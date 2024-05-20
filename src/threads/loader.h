@@ -36,6 +36,8 @@
 
 /* Amount of physical memory, in 4 kB pages. */
 extern uint32_t init_ram_pages;
+/* Start address of physical memory. */
+extern uint32_t free_ram_start;
 #endif
 
 #endif /* threads/loader.h */

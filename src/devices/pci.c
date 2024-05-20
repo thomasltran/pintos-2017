@@ -777,7 +777,7 @@ pci_alloc_mem (void *phys_ptr, int pages)
   phys_ptr = (void *) ((uintptr_t) phys_ptr & ~PGMASK);
 
   /* not enough space to allocate? */
-  if ((unsigned) (num_pci_pages + pages) >= (unsigned) PCI_ADDR_ZONE_PAGES)
+  if ((unsigned) (num_pci_pages + pages) > (unsigned) PCI_ADDR_ZONE_PAGES)
     {
       return NULL;
     }

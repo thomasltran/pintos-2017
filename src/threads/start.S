@@ -32,20 +32,31 @@ start:
 # Set string instructions to go upward.
 	cld
 
-#### Get memory size, via interrupt 15h function 88h (see [IntrList]),
-#### which returns AX = (kB of physical memory) - 1024.  This only
-#### works for memory sizes <= 65 MB, which should be fine for our
-#### purposes.  We cap memory at 64 MB because that's all we prepare
-#### page tables for, below.
+#### Get memory size, via interrupt 15h function E801h (see [IntrList]),
+#### which returns AX = (kB of physical memory) between 1 MB and 16 MB and
+#### BX = (64kB blocks of memory after 16 MB). We cap memory at 984 MB
+#### due to the limitations of real mode x86 addressing and kernel size.
 
-	movb $0x88, %ah
+	xor %cx, %cx
+	xor %dx, %dx
+	mov $0xE801, %ax
 	int $0x15
-	addl $1024, %eax	# Total kB memory
-	cmp $0x10000, %eax	# Cap at 64 MB
+	jcxz 1f
+#### Some BIOSs may return the answer in (%cx, %dx), if so, move it into
+#### (%ax, %bx)
+	mov %cx, %ax
+	mov %dx, %bx
+1:
+	shll $6, %ebx
+	addl %ebx, %eax    # add range after 16MB
+	addl $0x400, %eax  # add 1024 for 0 to 1 MB range
+    # Cap at 984 MB due to identity map limits
+    .equ memory_cap, 984*1024
+	cmp $memory_cap, %eax
 	jbe 1f
-	mov $0x10000, %eax
-1:	shrl $2, %eax		# Total 4 kB pages
-	addr32 movl %eax, init_ram_pages - LOADER_PHYS_BASE - 0x20000
+	mov $memory_cap, %eax
+1:	shrl $2, %eax
+	addr32 movl %eax, init_ram_pages - LOADER_PHYS_BASE - LOADER_KERN_BASE
 
 #### Enable A20.  Address line 20 is tied low when the machine boots,
 #### which prevents addressing memory about 1 MB.  This code fixes it.
@@ -93,8 +104,11 @@ start:
 # Also add identical PDEs starting at LOADER_PHYS_BASE.
 # See [IA32-v3a] section 3.7.6 "Page-Directory and Page-Table Entries"
 # for a description of the bits in %eax.
+# They are 0x1 - present
+#          0x2 - R/W
+#         ~0x4 - Supervisor mode only
 
-	movl $0x10007, %eax
+	movl $0x10003, %eax
 	movl $0x11, %ecx
 	subl %edi, %edi
 1:	movl %eax, %es:(%di)
@@ -103,7 +117,29 @@ start:
 	addl $0x1000, %eax
 	loop 1b
 
-# Set up page tables for one-to-map linear to physical map for the
+# If we have more than 64 MB of RAM, build the rest of the PDEs that
+# will point at second-level page tables starting at 1 MB (without
+# actually writing the tables yet because we can't address that high).
+
+	addr32 movl $(1*1024*1024), free_ram_start - LOADER_PHYS_BASE - LOADER_KERN_BASE
+	addr32 movl init_ram_pages - LOADER_PHYS_BASE - LOADER_KERN_BASE, %ecx
+	cmp $0x4000, %ecx
+	jbe 1f
+
+	addr32 movl $(2*1024*1024), free_ram_start - LOADER_PHYS_BASE - LOADER_KERN_BASE
+	movl $0x100003, %eax
+	subl $0x4000, %ecx
+	shrl $10, %ecx
+	addl $1, %ecx
+	mov $0x40, %di
+2:	movl %eax, %es:(%di)
+	movl %eax, %es:LOADER_PHYS_BASE >> 20(%di)
+	addw $4, %di
+	addl $0x1000, %eax
+	loop 2b
+1:
+
+# Set up page tables for one-to-one linear to physical map for the
 # first 64 MB of RAM.
 # See [IA32-v3a] section 3.7.6 "Page-Directory and Page-Table Entries"
 # for a description of the bits in %eax.
@@ -175,6 +211,23 @@ start:
 	addl $LOADER_PHYS_BASE, %esp
 	movl $0, %ebp			# Null-terminate main()'s backtrace
 
+# Set up rest of page table identity map if we have more than 64 MB.
+# We can also use init_ram_pages directly because we've mapped the
+# first 64 MB after 0xC0000000, very convenient!
+
+	movl (init_ram_pages), %ecx
+	cmp $0x4000, %ecx
+	jbe 1f
+
+	movl $0x4000007, %eax
+	subl $0x4000, %ecx
+	movl $0x100000, %edi
+2:	movl %eax, (%edi)
+	addl $4, %edi
+	addl $0x1000, %eax
+	loop 2b
+1:
+
 #### Call main().
 
 	call main
@@ -202,3 +255,7 @@ gdtdesc:
 init_ram_pages:
 	.long 0
 
+#### Physical start address of range of physical memory
+.globl free_ram_start
+free_ram_start:
+	.long 0
