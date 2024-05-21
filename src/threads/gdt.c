@@ -3,8 +3,8 @@
 #include "threads/tss.h"
 #include "threads/palloc.h"
 #include "threads/vaddr.h"
+#include "threads/cpu.h"
 #include "x86.h"
-#include "threads/mp.h"
 #include "devices/lapic.h"
 #include <string.h>
 #include "threads/thread.h"

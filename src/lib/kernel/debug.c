@@ -43,7 +43,6 @@
 #include "devices/lapic.h"
 #include "lib/kernel/x86.h"
 #include <stdint.h>
-#include "threads/mp.h"
 #include "lib/atomic-ops.h"
 
 static struct spinlock debug_backtrace_lock;

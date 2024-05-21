@@ -30,8 +30,8 @@
 #include "threads/thread.h"
 #include "threads/gdt.h"
 #include "threads/tss.h"
-#include "threads/mp.h"
 #include "threads/ipi.h"
+#include "threads/acpi.h"
 #include "threads/cpu.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -112,8 +112,8 @@ main (void)
   malloc_init ();
   paging_init ();
 
-  /* Initialize multiprocessor-related information. */
-  mp_init ();
+  /* Initialize multiprocessor-related and ACPI information. */
+  acpi_init ();
 
   /* Initialize bootstrap CPU's LAPIC. */
   lapic_init ();

@@ -6,7 +6,7 @@
 #include <debug.h>
 #include "devices/lapic.h"
 #include "tests.h"
-#include "threads/mp.h"
+#include "threads/cpu.h"
 #include "devices/timer.h"
 #include "lib/kernel/console.h"
 #include <stdio.h>

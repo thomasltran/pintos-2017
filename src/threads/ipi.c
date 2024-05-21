@@ -8,7 +8,6 @@
 #include "lib/kernel/x86.h"
 #include "threads/synch.h"
 #include "lib/atomic-ops.h"
-#include "threads/mp.h"
 #include "devices/shutdown.h"
 #ifdef USERPROG
 #include "userprog/pagedir.h"

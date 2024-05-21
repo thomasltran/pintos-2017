@@ -10,6 +10,8 @@ src							-*- text -*-
 
 * Support for >64MB of memory by Jamie Whiting.
 
+* Support for ACPI by Godmar Back.
+
 * The original structure and form of this operating system is inspired
   by the Nachos system from the University of California, Berkeley.  A
   few of the source files are more-or-less literal translations of the

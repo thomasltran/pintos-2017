@@ -29,7 +29,6 @@
    http://www.intel.com/design/chipsets/datashts/29056601.pdf */
 #include "ioapic.h"
 #include "trap.h"
-#include "threads/mp.h"
 #include <stdio.h>
 
 #define IOAPIC          0xFEC00000      /* Default physical address of IO APIC */
@@ -49,11 +48,21 @@
 #define INT_LOGICAL    0x00000800       /* Destination is CPU id (vs APIC ID) */
 
 /* The I/O Advanced Programmable Interrupt Controller is a 
-   memory mapped device. It's base address is stored here, and is
-   set to the default. */
+   memory mapped device. Its base address is stored here. */
 static volatile struct ioapic *ioapic;
 
-uint8_t ioapic_id;
+/* Set base address. */
+void ioapic_set_base_address (void *vaddr)
+{
+  ioapic = vaddr;
+}
+
+static uint8_t ioapic_id;
+/* Set IO APIC id. */
+void ioapic_set_id (uint8_t id)
+{
+  ioapic_id = id;
+}
 
 /* IO APIC MMIO structure: write reg, then read or write data. */
 struct ioapic
@@ -74,10 +83,8 @@ ioapic_init (void)
 {
   int i, id, maxintr;
 
-  if (!cpu_ismp)
-    return;
-
-  ioapic = (volatile struct ioapic*) IOAPIC;
+  if (ioapic == NULL)
+    ioapic = (volatile struct ioapic*) IOAPIC;
   maxintr = (ioapicread (REG_VER) >> 16) & 0xFF;
   id = ioapicread (REG_ID) >> 24;
   if (id != ioapic_id)
@@ -96,9 +103,6 @@ ioapic_init (void)
 void
 ioapic_enable (int irq, int cpunum)
 {
-  if (!cpu_ismp)
-    return;
-
   /* Mark interrupt edge-triggered, active high,
      enabled, and routed to the given cpunum,
      which happens to be that cpu's APIC ID. */

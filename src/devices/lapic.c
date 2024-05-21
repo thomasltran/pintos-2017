@@ -43,7 +43,6 @@
 #include "threads/cpu.h"
 #include "lib/kernel/bitmap.h"
 #include <stdint.h>
-#include "threads/mp.h"
 #include <stdbool.h>
 #include "devices/timer.h"
 
@@ -94,8 +93,7 @@ volatile uint32_t *lapic_base_addr;
 void
 lapic_init (void)
 {
-  if (!lapic_base_addr)
-    return;
+  ASSERT (lapic_base_addr != NULL);
 
   /* Enable local APIC; set spurious interrupt vector. */
   lapicw (SVR, ENABLE | (T_IRQ0 + IRQ_SPURIOUS));
@@ -208,8 +206,8 @@ lapic_start_ap (uint8_t apicid, uint32_t addr)
      when it is in the halted state due to an INIT.  So the second
      should be ignored, but it is part of the official Intel algorithm.
      Bochs complains about the second one.  Too bad for Bochs. */
-  /* In Bochs 2.7, 3 startup IPIs appear to be necessary. - gback */
-  for (i = 0; i < 3; i++)
+  /* In Bochs 2.8, up to 4 startup IPIs appear to be necessary. - gback */
+  for (i = 0; i < 4; i++)
     {
       lapicw (ICRHI, apicid << 24);
       lapicw (ICRLO, STARTUP | (addr >> 12));

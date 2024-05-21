@@ -12,7 +12,7 @@
 /* Per-CPU state */
 struct cpu
 {
-  uint8_t id;               /* Local APIC ID; index into cpus[] below */
+  uint8_t id;               /* Local APIC ID */
   struct tss ts;            /* Per-process TSS */
   uint64_t gdt[SEL_CNT];    /* Per-process GDT */
   int started;              /* Has this CPU been started? */
@@ -48,7 +48,6 @@ struct cpu
 extern int cpu_can_acquire_spinlock;      
 extern struct cpu *bcpu;               /* Pointer to the BSP */
 extern struct cpu cpus[NCPU_MAX];      /* Array holding per-CPU states */
-extern int cpu_ismp;            /* 1 if hardware supports SMP. */
 extern unsigned int ncpu;       /* Number of cpus on this machine. */
 extern int cpu_started_others;  /* 1 if the application processors have been started. */
 

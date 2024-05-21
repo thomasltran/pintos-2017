@@ -18,7 +18,6 @@
 #include "userprog/process.h"
 #endif
 #include "threads/cpu.h"
-#include "threads/mp.h"
 #include "devices/lapic.h"
 #include "lib/kernel/x86.h"
 #include <atomic-ops.h>
