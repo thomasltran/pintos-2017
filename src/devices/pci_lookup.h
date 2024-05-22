@@ -32,7 +32,8 @@ struct pci_device pci_device_table[] = {
   {0x8086, 0x7000, "82371SB_ISA"},
   {0x8086, 0x7010, "82371SB_IDE"},
   {0x8086, 0x7020, "82371SB_USB"},
-  {0x8086, 0x7113, "82371AB/EB/MB_ACPI"}
+  {0x8086, 0x7113, "82371AB/EB/MB_ACPI"},
+  {0x8086, 0x100e, "82544EM Gigabit Ethernet Controller"}
 };
 
 

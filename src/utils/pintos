@@ -17,6 +17,8 @@ our ($debug) = "none";		# Debugger: none, monitor, or gdb.
 our ($mem) = 4;			# Physical RAM in MB.
 our ($serial) = 1;		# Use serial port for input and output?
 our ($vga);			# VGA output: window, terminal, or none.
+our ($net) = 0;		        # Include support for networking via E1000
+our ($pcapfile);		# Name of file for packet dump, if any.
 our ($jitter);			# Seed for random timer interrupts, if set.
 our ($realtime);		# Synchronize timer interrupts with real time?
 our ($timeout);			# Maximum runtime in seconds, if set.
@@ -76,6 +78,8 @@ sub parse_command_line {
 		    "v|no-vga" => sub { set_vga ('none'); },
 		    "s|no-serial" => sub { $serial = 0; },
 		    "t|terminal" => sub { set_vga ('terminal'); },
+		    "net" => sub { $net = 1; },
+		    "pcap=s" => sub { $pcapfile = $_[1]; },
 
 		    "p|put-file=s" => sub { add_file (\@puts, $_[1]); },
 		    "g|get-file=s" => sub { add_file (\@gets, $_[1]); },
@@ -156,6 +160,11 @@ Display options: (default is both VGA and serial)
   -v, --no-vga             No VGA display or keyboard
   -s, --no-serial          No serial input or output
   -t, --terminal           Display VGA in terminal (Bochs only)
+  --net                    Enable support for networking via E1000 card (Qemu only)
+                           Network address is 10.0.0.0/24, guest IP address will
+                           be 10.0.0.15; host gw 10.0.0.2; ports forwarding
+                           enabled for 9080 (host) -> 80 (guest) and 9022 -> 22.
+  --pcap=FILENAME          Create a packet dump of network traffic (Qemu only)
 Timing options: (Bochs only)
   -j SEED                  Randomize timer interrupts
   -r, --realtime           Use realistic, not reproducible, timings
@@ -670,10 +679,19 @@ sub run_qemu {
         }
     }
     push (@cmd, '-m', $mem);
-    # push (@cmd, '-smp', $smp);
-    # in qemu 6.2.0, we need the long form to properly populate the MP tables
-    push (@cmd, '-smp', 'cpus=' . $smp . ',cores=1,threads=1,sockets=' . $smp);
-    push (@cmd, '-net', 'none');
+    push (@cmd, '-smp', $smp);
+    # Long form of the -smp switch is below - (this was necessary for
+    # qemu 6.2.0 and later when MP tables instead of ACPI were used.)
+    # push (@cmd, '-smp', 'cpus=' . $smp . ',cores=1,threads=1,sockets=' . $smp);
+    if ($net)  {
+        push (@cmd, '-netdev', 'user,id=vmnet,net=10.0.0.0/24,hostfwd=tcp::9080-:80,hostfwd=tcp::9022-:22');
+        push (@cmd, '-device', 'e1000,netdev=vmnet');
+        if (!($pcapfile eq '')) {
+            push (@cmd, '-object', 'filter-dump,id=vmnet,netdev=vmnet,file=' . $pcapfile);
+        }
+    } else {
+        push (@cmd, '-net', 'none');
+    }
     push (@cmd, '-nographic') if $vga eq 'none';
     push (@cmd, '-serial', 'stdio') if $serial && $vga ne 'none';
     push (@cmd, '-S') if $debug eq 'monitor';
