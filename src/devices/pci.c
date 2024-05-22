@@ -801,3 +801,12 @@ pci_alloc_mem (void *phys_ptr, int pages)
 
   return vaddr;
 }
+
+/* Enable PCI device to be DMA bus master and allow memory + I/O input */
+void
+pci_enable_bus_master (struct pci_dev *pd)
+{
+  // 0x4 = Bus Master, 0x2 = Memory Space, 0x1 = I/O Space
+  // see Figure 6-2 PCI-2.2 spec
+  pci_write_config (pd->bus, pd->dev, pd->func, offsetof (struct pci_config_header, pci_command), 4, 0x7);
+}

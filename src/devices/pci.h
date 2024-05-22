@@ -88,6 +88,7 @@ struct pci_io *pci_io_enum (struct pci_dev *, struct pci_io *last);
 void pci_register_irq (struct pci_dev *, pci_handler_func *, void *AUX);
 void pci_unregister_irq (struct pci_dev *);
 size_t pci_io_size (struct pci_io *);
+void pci_enable_bus_master (struct pci_dev *pd);
 
 void pci_write_config8 (struct pci_dev *, int reg, uint8_t);
 void pci_write_config16 (struct pci_dev *, int reg, uint16_t);
