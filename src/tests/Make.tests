@@ -74,6 +74,7 @@ TESTCMD += 2> $(TEST).errors $(if $(VERBOSE),|tee,>) $(TEST).output
 %.output: kernel.bin loader.bin
 	@# do not apply this rule to the persistence tests
 	@if [[ ! "$@" =~ .*persistence.* ]]; then\
+		echo "$(TESTCMD)";\
 		$(TESTCMD);\
 	fi
 
