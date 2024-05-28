@@ -2,41 +2,35 @@
 README for pintos-2017
 ======================
 
-This repository contains the Virginia Tech version of Pintos, which spawned off Stanford's
-in 2009.  Added features include support for PCI, USB, and as of 2017, multiple processors.
+This repository contains the Virginia Tech version of Pintos, which
+spawned off Stanford's in 2009.  Added features include support for PCI,
+USB, and as of 2017, multiple processors. More recently, some support
+for ACPI and up to 1GB of physical memory was added.
 
-Additional Notes
-================
+Compared to Stanford's version, p1 has been replaced in its entirety.
 
-This version by default uses the Qemu emulator (`--qemu`), but also be used
-with KVM (`--kvm`).
+This version has been in yearly or biyearly use and is actively maintained.
 
-Changes for Bochs 2.7.  
-This version should work with Bochs, with the following caveats.
-Bochs does not support the GDB stub and SMP mode simultaneously.
-Therefore, I built two versions of bochs:
+See [AUTHORS](AUTHORS) for individual credits and notes.
 
-```
-./configure \
-    --with-x --with-x11 --with-term --with-nogui \
-    --enable-smp \
-    --enable-x86-64 \
-    --enable-e1000 \
-    --enable-cpu-level=6 \
-    --prefix=/web/courses/cs4284/pintostools
-```
-The version is renamed `bochs-smp`
+This source code is distributed under various respective licenses
+as noted.
 
-```
-./configure \
-    --with-x --with-x11 --with-term --with-nogui \
-    --enable-gdb-stub \
-    --enable-x86-64 \
-    --enable-e1000 \
-    --enable-cpu-level=6 \
-    --prefix=/web/courses/cs4284/pintostools
-```
-The version is named `bochs`
+We do not distribute a "golden" solution for Pintos, but rather
+recommend that instructors achieve 100% on the projects themselves
+before integrating it into their courses.
 
-I also changed `pintos` to use different names for Bochs's configuration file.
-This allows the use of the `-j` flag when running make grade.
+Contact Godmar Back (godmar@gmail.com) with any questions.
+
+This version by default uses the Qemu emulator (`--qemu`), but can also 
+be used with KVM (`--kvm`).
+
+The most recent version of the GNU toolchain with which it is tested
+is 
+- gcc version 11.4.1 20231218 (Red Hat 11.4.1-3) (GCC) 
+- GNU ld version 2.35.2-43.el9
+
+It is known to work with 
+- QEMU emulator version 6.2.0
+- QEMU emulator version 9.0.0
+- Bochs 2.7 + 2.8 (limited support for debugging)
