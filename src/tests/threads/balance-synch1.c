@@ -12,8 +12,8 @@
 #include "threads/thread.h"
 #include <debug.h>
 #include "threads/synch.h"
+#include "threads/cpu.h"
 #include <stdio.h>
-#include "threads/mp.h"
 #include "devices/timer.h"
 #include "threads/malloc.h"
 

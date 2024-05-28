@@ -7,7 +7,6 @@
 #include <debug.h>
 #include "threads/synch.h"
 #include <stdio.h>
-#include "threads/mp.h"
 #include "lib/atomic-ops.h"
 
 #define N 30
