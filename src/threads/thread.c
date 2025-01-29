@@ -161,12 +161,16 @@ thread_print_stats (void)
 }
 
 /* The default policy for choosing to which CPU to assign a
- * new thread is a round-robin policy.
+ * new thread is a round-robin policy.  If the other CPUs haven't
+ * been started, we must choose CPU #0.
  */
 static struct cpu *
 choose_cpu_for_new_thread (struct thread *t)
 {
-  return &cpus[t->tid % ncpu];
+  if (atomic_load (&cpu_started_others))
+    return &cpus[t->tid % ncpu];
+  else
+    return &cpus[0];
 }
 
 static void
