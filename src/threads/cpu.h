@@ -9,6 +9,18 @@
 
 #define NCPU_MAX 8      /* Max number of cpus */
 
+/* List of sleeping threads per CPU */
+struct sleep_queue
+{
+   struct spinlock lock;   /* Protects all fields in this struct.
+                            * Also protects internal fields in struct thread
+                            * such as status in all threads pointing
+                            * to this ready_queue via their cpu->rq.
+                            */
+   struct list sleep_list; /* List of BLOCKED threads. */
+};
+
+
 /* Per-CPU state */
 struct cpu
 {
@@ -35,6 +47,9 @@ struct cpu
   
   /* Ready queue. Owned by scheduler.c */
   struct ready_queue rq;
+
+  /* Sorted sleeping threads list */
+  struct sleep_queue sq;
   
   /* Cpu-local storage variable; see below */
   struct cpu *cpu;

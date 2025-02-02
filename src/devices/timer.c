@@ -33,6 +33,23 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static bool list_less_func_sleep(const struct list_elem *a,
+                                 const struct list_elem *b,
+                                 void *aux);
+
+static bool list_less_func_sleep(const struct list_elem *a,
+                                 const struct list_elem *b,
+                                 void *aux)
+{
+  (void)aux;
+  struct thread *thread_a = list_entry(a, struct thread, sleepelem);
+  struct thread *thread_b = list_entry(b, struct thread, sleepelem);
+  int64_t wakeup_a = thread_a->wakeup;
+  int64_t wakeup_b = thread_b->wakeup;
+
+  ASSERT(thread_b->tid != thread_a->tid); // check for duplicate entries
+  return wakeup_b >= wakeup_a;            // ascending time order
+}
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -90,11 +107,29 @@ timer_elapsed (int64_t then)
 void
 timer_sleep (int64_t ticks) 
 {
-  ASSERT (intr_get_level () == INTR_ON);
-  
-  int64_t start = timer_ticks ();
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  ASSERT(intr_get_level() == INTR_ON);
+
+  struct thread *thread_curr = thread_current();
+  struct cpu *cpu_curr = thread_curr->cpu;
+
+  spinlock_acquire(&cpu_curr->sq.lock);
+
+  int64_t wakeup = timer_ticks() + ticks;
+  thread_curr->wakeup = wakeup;
+
+  struct list *sleep_list = &cpu_curr->sq.sleep_list;
+  list_insert_ordered(sleep_list, &thread_curr->sleepelem, list_less_func_sleep, NULL);
+
+  thread_block(&cpu_curr->sq.lock);
+
+  spinlock_release(&cpu_curr->sq.lock);
+
+  ASSERT(intr_get_level() == INTR_ON);
+
+  // int64_t start = timer_ticks();
+  // while (timer_elapsed(start) < ticks)
+  //   thread_yield();
+  // ASSERT(thread_curr->cpu == cpu_curr);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -177,8 +212,32 @@ timer_interrupt (struct intr_frame *args UNUSED)
       ticks++;
       timer_settime (timer_ticks () * NSEC_PER_SEC / TIMER_FREQ);
     }
-    
-  thread_tick ();
+
+    struct thread *thread_curr = thread_current();
+    struct cpu *cpu_curr = thread_curr->cpu;
+    struct list *sleep_list = &cpu_curr->sq.sleep_list;
+
+    spinlock_acquire(&cpu_curr->sq.lock);
+
+    for (struct list_elem *e = list_begin(sleep_list);
+         e != list_end(sleep_list);)
+    {
+      struct thread *thread = list_entry(e, struct thread, sleepelem);
+      int64_t wakeup = thread->wakeup;
+      if (wakeup <= timer_ticks())
+      {
+        e = list_remove(e);
+        thread_unblock(thread);
+      }
+      else if (wakeup > timer_ticks()) // sorted list
+      {
+        break;
+      }
+    }
+
+    spinlock_release(&cpu_curr->sq.lock);
+
+    thread_tick();
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
