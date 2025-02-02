@@ -79,7 +79,9 @@ thread_init (void)
   spinlock_init (&all_lock);
   ASSERT (intr_get_level () == INTR_OFF);
   sched_init (&bcpu->rq);
+  list_init(&bcpu->sq.sleep_list);
   spinlock_init (&bcpu->rq.lock);
+  spinlock_init(&bcpu->sq.lock);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_boot_thread (initial_thread, bcpu);
@@ -96,7 +98,9 @@ thread_init_on_ap (void)
   struct cpu *cpu = &cpus[lapic_get_cpuid ()];
   ASSERT(cpu != NULL);
   sched_init (&cpu->rq);
+  list_init(&cpu->sq.sleep_list);
   spinlock_init (&cpu->rq.lock);
+  spinlock_init(&cpu->sq.lock);
   struct thread *cur_thread = running_thread ();
   init_boot_thread (cur_thread, cpu);
 }
