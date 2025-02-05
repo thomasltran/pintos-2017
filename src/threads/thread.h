@@ -104,6 +104,9 @@ struct thread
   struct list_elem elem; /* List element. */
   struct list_elem sleepelem; /* List element for sleeping list */
 
+  uint64_t vruntime;
+  uint64_t last_cpu_time;
+
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
