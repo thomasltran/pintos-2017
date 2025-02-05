@@ -29,6 +29,8 @@ void
 sched_init (struct ready_queue *curr_rq)
 {
   list_init (&curr_rq->ready_list);
+  curr_rq->min_vruntime = 0;
+  curr_rq->total_weight = 0;
 }
 
 static const uint32_t prio_to_weight[40] =
@@ -150,6 +152,8 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
 void
 sched_yield (struct ready_queue *curr_rq, struct thread *current)
 {
+  uint64_t cpu_time = calculate_cpu_time(current);
+  current->vruntime += cpu_time;  
   list_insert_ordered(&curr_rq->ready_list, &current->elem, vruntime_less, NULL);
   curr_rq->nr_ready ++;
 }
@@ -178,19 +182,18 @@ sched_pick_next (struct ready_queue *curr_rq)
 void calculate_min_vruntime(struct ready_queue * rq, struct thread* current){
   struct list* curr_rl = &rq->ready_list;
   uint64_t min_vruntime;
+  bool valid_min_vruntime = false;
   uint64_t curr_vruntime;
-  if(list_empty(curr_rl)){
-    min_vruntime = 0;
-  }
-  else{
+  if(!list_empty(curr_rl)){
     struct list_elem * e = list_front(curr_rl);
     min_vruntime = list_entry(e, struct thread, elem)->vruntime;
     e = e->next;
     while(e != list_end(curr_rl)){
       struct list_elem* next_e = e->next;
       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
-      if(min_vruntime > curr_vruntime){
+      if(!valid_min_vruntime || min_vruntime > curr_vruntime){
         min_vruntime = curr_vruntime;
+        valid_min_vruntime= true;
       }
       e = next_e;
     }
@@ -198,12 +201,15 @@ void calculate_min_vruntime(struct ready_queue * rq, struct thread* current){
 
   if(current){
     curr_vruntime = current->vruntime;
-    if(min_vruntime > curr_vruntime){
+    if(!valid_min_vruntime || min_vruntime > curr_vruntime){
       min_vruntime = curr_vruntime;
+      valid_min_vruntime= true;
+
     }
   }
-
-  rq->min_vruntime = min_vruntime;
+  if(valid_min_vruntime && rq->min_vruntime < min_vruntime){
+    rq->min_vruntime = min_vruntime;
+  }
 }
 
 bool vruntime_less(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED){
@@ -257,11 +263,10 @@ enum sched_return_action
 sched_tick (struct ready_queue *curr_rq, struct thread *current)
 {
   /* Enforce preemption. */
-  
+  curr_rq->thread_ticks++;
   uint64_t ideal_time = calculate_ideal_time(curr_rq, current);
   uint64_t cpu_time = calculate_cpu_time(current);
   if(cpu_time >= ideal_time){
-    current->vruntime += cpu_time;  
     return RETURN_YIELD;
   }
   return RETURN_NONE;
@@ -283,7 +288,7 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
    'cur' is the current thread, about to block.
  */
 void
-sched_block (struct ready_queue *rq UNUSED, struct thread *current UNUSED)
+sched_block (struct ready_queue *rq, struct thread *current)
 {
-  
+  list_remove(&current->elem);
 }
