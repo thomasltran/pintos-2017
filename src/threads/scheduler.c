@@ -195,13 +195,13 @@ void calculate_min_vruntime(struct ready_queue * rq, struct thread* current){
   if(!list_empty(curr_rl)){
     struct list_elem * e = list_front(curr_rl);
     min_vruntime = list_entry(e, struct thread, elem)->vruntime;
+    valid_min_vruntime= true;
     e = e->next;
     while(e != list_end(curr_rl)){
       struct list_elem* next_e = e->next;
       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
       if(!valid_min_vruntime || min_vruntime > curr_vruntime){
         min_vruntime = curr_vruntime;
-        valid_min_vruntime= true;
       }
       e = next_e;
     }
@@ -290,7 +290,6 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
   curr_rq->thread_ticks++;
   uint64_t curr_time = timer_gettime();
   uint64_t ideal_time = calculate_ideal_time(curr_rq, current);
-  uint64_t cpu_time = calculate_cpu_time(current);
   if((curr_time - current->last_cpu_time) >= ideal_time){
     return RETURN_YIELD;
   }
