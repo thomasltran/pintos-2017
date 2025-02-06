@@ -239,7 +239,15 @@ void calculate_total_weight(struct ready_queue *curr_rq, struct thread *current)
 uint64_t calculate_ideal_time(struct ready_queue *curr_rq, struct thread *current)
 {
   calculate_total_weight(curr_rq, current);
-  uint64_t ideal_time = (4000000 * curr_rq->nr_ready * prio_to_weight[current->nice + 20]) / curr_rq->total_weight;
+  uint64_t four_mil = 4000000;
+  uint64_t number_of_threads = curr_rq->nr_ready + 1;
+  uint64_t weight_of_current = prio_to_weight[current->nice + 20];
+  uint64_t total_weight = curr_rq->total_weight;
+  uint64_t ideal_time = (four_mil);
+  ideal_time *= number_of_threads;
+  ideal_time *=weight_of_current;
+  ideal_time /= total_weight;
+  // uint64_t ideal_time = (4000000 * ((curr_rq->nr_ready)+1) * prio_to_weight[current->nice + 20]) / curr_rq->total_weight;
   return ideal_time;
 }
 
@@ -290,5 +298,14 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
 void
 sched_block (struct ready_queue *rq, struct thread *current)
 {
-  list_remove(&current->elem);
+  struct list_elem* e = list_begin(&rq->ready_list);
+  while(e != list_end(&rq->ready_list)){
+    struct list_elem* next_e = e->next;
+    if(e == &current->elem){
+      list_remove(&current->elem);
+      rq->nr_ready--;
+      break;
+    }
+    e = next_e;
+  }
 }
