@@ -125,6 +125,7 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
       //preempting running thread and putting unblocked I/O thread to front of ready_list
       list_push_front(&rq_to_add->ready_list, &t->elem);
       rq_to_add->nr_ready++;
+      rq_to_add->curr->vruntime -= running_cpu_time;
       return RETURN_YIELD;
     }
   }
