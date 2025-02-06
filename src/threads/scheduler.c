@@ -28,9 +28,7 @@
 void
 sched_init (struct ready_queue *curr_rq)
 {
-  list_init (&curr_rq->ready_list);
-  curr_rq->min_vruntime = 0;
-  curr_rq->total_weight = 0;
+  list_init (&curr_rq->ready_list);  
 }
 
 static const uint32_t prio_to_weight[40] =
@@ -90,63 +88,49 @@ static const uint32_t prio_to_weight[40] =
    RETURN_NONE */
 enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct thread *t, int initial)
 {
-  // uint64_t blocked_cpu_time = calculate_cpu_time(t);
-
-  //obtaining cpu_time of current thread and updating its vruntime
-  uint64_t running_cpu_time = rq_to_add->curr ? calculate_cpu_time(rq_to_add->curr): (uint64_t)0;
+  uint64_t running_vruntime = rq_to_add->curr ? additional_vruntime(rq_to_add->curr): (uint64_t)0;
   if(rq_to_add->curr){
-    rq_to_add->curr->vruntime += running_cpu_time;
+    rq_to_add->curr->vruntime += running_vruntime;
   }
 
-  //obtaining min_vruntime
-  calculate_min_vruntime(rq_to_add, rq_to_add->curr);
+  update_min_vruntime(rq_to_add, rq_to_add->curr);
   uint64_t min_vruntime = rq_to_add->min_vruntime;
-  
-  if(initial){
-    //setting vruntime_0 for newly created thread
+
+  if (initial)
+  {
     t->vruntime = min_vruntime;
   }
   else{
-    //implementing sleeper bonus
-    uint64_t higher_vruntime = 0;
-    if(min_vruntime > ((uint64_t)20000000)){
-      higher_vruntime = min_vruntime-((uint64_t)20000000);
+    if (min_vruntime > (uint64_t)20000000 && t->vruntime < min_vruntime - (uint64_t)20000000)
+    {
+      t->vruntime = min_vruntime - (uint64_t)20000000;
+    }
 
-    }
-    //finding max between vruntime of thread and min_vruntime with sleeper bonus
-    if(t->vruntime > higher_vruntime){
-      higher_vruntime = t->vruntime;
-    }
-    //setting vruntime_0 of existing unblocked thread
-    t->vruntime = higher_vruntime;
-    
-    //comparing vruntime of unblocked and running thread
-    if(rq_to_add->curr &&  t->vruntime < rq_to_add->curr->vruntime){
-      //preempting running thread and putting unblocked I/O thread to front of ready_list
+    if (rq_to_add->curr && t->vruntime < rq_to_add->curr->vruntime)
+    {
       list_push_front(&rq_to_add->ready_list, &t->elem);
       rq_to_add->nr_ready++;
-      rq_to_add->curr->vruntime -= running_cpu_time;
+      rq_to_add->curr->vruntime -= running_vruntime;
       return RETURN_YIELD;
     }
   }
 
   /* CPU is idle */
   if (!rq_to_add->curr)
-    {
-      //putting unblocked I/O thread to front of ready_list
-      list_push_front(&rq_to_add->ready_list, &t->elem);
-      rq_to_add->nr_ready++;
-      return RETURN_YIELD;
-    }
-  else{
-    //inserting unblocked thread into ready queue
-    list_insert_ordered (&rq_to_add->ready_list, &t->elem, vruntime_less, NULL);
+  {
+    list_push_front(&rq_to_add->ready_list, &t->elem);
+    rq_to_add->nr_ready++;
+    return RETURN_YIELD;
+  }
+  else
+  {
+    list_insert_ordered(&rq_to_add->ready_list, &t->elem, vruntime_less, NULL);
     rq_to_add->nr_ready++;
   }
 
   if (rq_to_add->curr)
   {
-    rq_to_add->curr->vruntime -= running_cpu_time;
+    rq_to_add->curr->vruntime -= running_vruntime;
   }
 
   return RETURN_NONE;
@@ -160,8 +144,8 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
 void
 sched_yield (struct ready_queue *curr_rq, struct thread *current)
 {
-  uint64_t cpu_time = calculate_cpu_time(current);
-  current->vruntime += cpu_time;  
+  uint64_t running_vruntime = additional_vruntime(current);
+  current->vruntime += running_vruntime;  
   list_insert_ordered(&curr_rq->ready_list, &current->elem, vruntime_less, NULL);
   curr_rq->nr_ready ++;
 }
@@ -187,91 +171,71 @@ sched_pick_next (struct ready_queue *curr_rq)
   return ret;
 }
 
-void calculate_min_vruntime(struct ready_queue * rq, struct thread* current){
-  struct list* curr_rl = &rq->ready_list;
-  uint64_t min_vruntime;
+void update_min_vruntime(struct ready_queue * rq, struct thread* current){
+  uint64_t min_vruntime = UINT64_MAX;
   bool valid_min_vruntime = false;
   uint64_t curr_vruntime;
-  if(!list_empty(curr_rl)){
-    struct list_elem * e = list_front(curr_rl);
-    min_vruntime = list_entry(e, struct thread, elem)->vruntime;
-    valid_min_vruntime= true;
-    e = e->next;
-    while(e != list_end(curr_rl)){
-      struct list_elem* next_e = e->next;
+
+  if (!list_empty(&rq->ready_list))
+  {
+    for (struct list_elem *e = list_front(&rq->ready_list); e != list_end(&rq->ready_list); e = e->next)
+    {
       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
-      if(!valid_min_vruntime || min_vruntime > curr_vruntime){
+      if ((min_vruntime > curr_vruntime))
+      {
         min_vruntime = curr_vruntime;
+        valid_min_vruntime = true;
       }
-      e = next_e;
     }
   }
 
   if(current){
     curr_vruntime = current->vruntime;
-    if(!valid_min_vruntime || min_vruntime > curr_vruntime){
+    if ((min_vruntime > curr_vruntime))
+    {
       min_vruntime = curr_vruntime;
-      valid_min_vruntime= true;
-
+      valid_min_vruntime = true;
     }
   }
+
   if(valid_min_vruntime && rq->min_vruntime < min_vruntime){
     rq->min_vruntime = min_vruntime;
   }
 }
 
-bool vruntime_less(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED){
-
+bool vruntime_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
   struct thread* thread_a = list_entry(a, struct thread, elem);
-  struct thread* thread_b = list_entry(b, struct thread, elem);
-  bool less;
-
+  struct thread *thread_b = list_entry(b, struct thread, elem);
   if(thread_a->vruntime == thread_b->vruntime){
-    less = thread_a->tid < thread_b->tid;
+    return thread_a->tid < thread_b->tid;
   }
-  else{
-    less = thread_a->vruntime < thread_b->vruntime;
-  }
-  return less;
+  return thread_a->vruntime < thread_b->vruntime;
 }
 
-void calculate_total_weight(struct ready_queue *curr_rq, struct thread *current)
+void update_total_weight(struct ready_queue *curr_rq, struct thread *current)
 {
-  uint64_t total_weight = 0;
-  struct list_elem *e = list_begin(&curr_rq->ready_list);
-  while (e != list_end(&curr_rq->ready_list))
-  {
-    struct list_elem* nextE = e->next;
-    total_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
-    e = nextE;
-  }
+  uint64_t total_weight = current ? prio_to_weight[current->nice + 20] : 0;
 
-  if(current){
-    total_weight += prio_to_weight[current->nice + 20];
+  for (struct list_elem *e = list_begin(&curr_rq->ready_list); e != list_end(&curr_rq->ready_list); e = e->next)
+  {
+    total_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
   }
   curr_rq->total_weight = total_weight;
 }
 
-uint64_t calculate_ideal_time(struct ready_queue *curr_rq, struct thread *current)
+uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current)
 {
-  calculate_total_weight(curr_rq, current);
-  uint64_t four_mil = 4000000;
-  uint64_t number_of_threads = curr_rq->nr_ready + 1;
-  uint64_t weight_of_current = prio_to_weight[current->nice + 20];
-  uint64_t total_weight = curr_rq->total_weight;
-  uint64_t ideal_time = (four_mil);
-  ideal_time *= number_of_threads;
-  ideal_time *=weight_of_current;
-  ideal_time /= total_weight;
-  // uint64_t ideal_time = (4000000 * ((curr_rq->nr_ready)+1) * prio_to_weight[current->nice + 20]) / curr_rq->total_weight;
-  return ideal_time;
+  update_total_weight(curr_rq, current);
+  uint64_t curr_ideal_time = ((uint64_t)4000000 * (uint64_t)(curr_rq->nr_ready + 1) * (uint64_t)prio_to_weight[current->nice + 20]) / (uint64_t)curr_rq->total_weight;
+  return curr_ideal_time;
 }
 
-uint64_t calculate_cpu_time(struct thread* current){
+uint64_t additional_vruntime(struct thread* current){
   uint64_t curr_time = timer_gettime();
   uint64_t delta = curr_time - current->last_cpu_time;
-  uint64_t cpu_time = (delta * prio_to_weight[20])/prio_to_weight[current->nice+20];
-  return cpu_time;
+  uint64_t curr_running_vruntime = (delta * prio_to_weight[20])/prio_to_weight[current->nice+20];
+  return curr_running_vruntime;
 }
 
 /* Called from thread_tick ().
@@ -287,23 +251,12 @@ enum sched_return_action
 sched_tick (struct ready_queue *curr_rq, struct thread *current)
 {
   /* Enforce preemption. */
-  curr_rq->thread_ticks++;
   uint64_t curr_time = timer_gettime();
-  uint64_t ideal_time = calculate_ideal_time(curr_rq, current);
-  if((curr_time - current->last_cpu_time) >= ideal_time){
+  uint64_t curr_ideal_time = ideal_time(curr_rq, current);
+  if((curr_time - current->last_cpu_time) >= curr_ideal_time){
     return RETURN_YIELD;
   }
   return RETURN_NONE;
-  
-
-  // if (++curr_rq->thread_ticks >= TIME_SLICE)
-  //   {
-  //     /* Start a new time slice. */
-  //     curr_rq->thread_ticks = 0;
-
-  //     return RETURN_YIELD;
-  //   }
-  // return RETURN_NONE;
 }
 
 /* Called from thread_block (). The base scheduler does
@@ -311,32 +264,8 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
 
    'cur' is the current thread, about to block.
  */
-void
-sched_block (struct ready_queue *rq, struct thread *current)
+void sched_block(struct ready_queue *rq UNUSED, struct thread *current)
 {
-  struct list_elem* e = list_begin(&rq->ready_list);
-  while(e != list_end(&rq->ready_list)){
-    struct list_elem* next_e = e->next;
-    if(e == &current->elem){
-      list_remove(&current->elem);
-      rq->nr_ready--;
-      break;
-    }
-    e = next_e;
-  }
-
-  if (current != rq->idle_thread)
-  {
-    if (!current->last_cpu_time)
-    {
-      current->last_cpu_time = 0;
-    }
-    uint64_t cpu_time = calculate_cpu_time(current);
-    current->vruntime += cpu_time;
-  }
-
-  // if(current->last_cpu_time){
-  //   uint64_t cpu_time = calculate_cpu_time(current);
-  //   current->vruntime += cpu_time;
-  // }
+  uint64_t running_vruntime = additional_vruntime(current);
+  current->vruntime += running_vruntime;
 }
