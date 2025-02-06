@@ -51,26 +51,28 @@ static uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current);
 static uint64_t additional_vruntime(struct thread *current);
 
 /* Called from thread.c:wake_up_new_thread () and
-   thread_unblock () with the CPU's ready queue locked.
+   thread_unblock () with the current CPU's ready queue
+   locked (and preemption disabled).
    rq is the ready queue that t should be added to when
    it is awoken. It is not necessarily the current CPU.
 
    If called from wake_up_new_thread (), initial will be 1.
    If called from thread_unblock (), initial will be 0.
 
+   If called from the idle thread, curr will be NULL.
+
    Returns RETURN_YIELD if the CPU containing rq should
    be rescheduled when this function returns, else returns
    RETURN_NONE */
-enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thread *t, int initial)
+enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thread *t, int initial, struct thread *curr)
 {
   uint64_t curr_thread_vruntime = UINT64_MAX;
 
-  struct thread *curr_thread = rq_to_add->curr ? rq_to_add->curr : NULL;
-  if (curr_thread != NULL)
+  if (curr != NULL)
   {
-    curr_thread_vruntime = curr_thread->vruntime;
+    curr_thread_vruntime = curr->vruntime;
 
-    curr_thread_vruntime += additional_vruntime(rq_to_add->curr);
+    curr_thread_vruntime += additional_vruntime(curr);
     rq_to_add->min_vruntime = update_min_vruntime(rq_to_add, curr_thread_vruntime);
   }
 
@@ -94,7 +96,7 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
   rq_to_add->nr_ready++;
 
   /* CPU is idle */
-  if (!rq_to_add->curr || t->vruntime < curr_thread_vruntime)
+  if (!curr || t->vruntime < curr_thread_vruntime)
   {
     return RETURN_YIELD;
   }

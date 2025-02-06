@@ -177,14 +177,45 @@ choose_cpu_for_new_thread (struct thread *t)
     return &cpus[0];
 }
 
+/* Wake a new thread for the first time. Assign a CPU for it.
+ * Add it to the new CPU's ready queue.
+ *
+ * `sched_unblock` requires that the current CPU's ready queue
+ * be locked as well as the ready queue of the CPU onto which
+ * the thread will be placed.  To avoid deadlock, we lock both
+ * in increasing address order.
+ */
 static void
 wake_up_new_thread (struct thread *t)
 {
+  intr_disable_push ();
+  struct thread *curr = thread_current ();
+  struct ready_queue *this_rq = &get_cpu ()->rq;
+  ASSERT (this_rq->curr != NULL);
+
   t->status = THREAD_READY;
   t->cpu = choose_cpu_for_new_thread (t);
-  spinlock_acquire (&t->cpu->rq.lock);
-  sched_unblock (&t->cpu->rq, t, 1);
-  spinlock_release (&t->cpu->rq.lock);
+  struct ready_queue *other_rq = &t->cpu->rq;
+  struct spinlock *lock1 = NULL;
+  struct spinlock *lock2 = NULL;
+  if (this_rq != other_rq)
+    {
+      lock1 = &this_rq->lock < &other_rq->lock ? &this_rq->lock : &other_rq->lock;
+      lock2 = &this_rq->lock < &other_rq->lock ? &other_rq->lock : &this_rq->lock;
+      spinlock_acquire (lock1);
+      spinlock_acquire (lock2);
+    }
+  else
+    {
+      lock1 = &other_rq->lock;
+      spinlock_acquire (lock1);
+    }
+  intr_enable_pop ();
+
+  sched_unblock (&t->cpu->rq, t, 1, curr);
+  spinlock_release (lock1);
+  if (lock2 != NULL)
+    spinlock_release (lock2);
 }
 
 /* Creates a new kernel thread named NAME with the given initial
@@ -299,16 +330,41 @@ thread_block (struct spinlock *lk)
    This function does not preempt the running thread.  This can
    be important: if the caller had disabled interrupts itself,
    it may expect that it can atomically unblock a thread and
-   update other data. */
+   update other data.
+
+   This function will lock the ready of the CPU to which the
+   unblocked thread is assigned, as well as the ready queue of the
+   current CPU, which may be different.  To avoid deadlock, we
+   acquire these locks in address order. */
 void
 thread_unblock (struct thread *t)
 {
   ASSERT (is_thread (t));
   ASSERT (t->cpu != NULL);
-  spinlock_acquire (&t->cpu->rq.lock);
+  struct spinlock *lock1 = NULL;
+  struct spinlock *lock2 = NULL;
+  intr_disable_push ();
+  struct thread *curr = thread_current ();
+  struct ready_queue *this_rq = &curr->cpu->rq;
+  struct ready_queue *other_rq = &t->cpu->rq;
+  if (this_rq != other_rq)
+    {
+      lock1 = &this_rq->lock < &other_rq->lock ? &this_rq->lock : &other_rq->lock;
+      lock2 = &this_rq->lock < &other_rq->lock ? &other_rq->lock : &this_rq->lock;
+      spinlock_acquire (lock1);
+      spinlock_acquire (lock2);
+    }
+  else
+    {
+      lock1 = &other_rq->lock;
+      spinlock_acquire (lock1);
+    }
+  intr_enable_pop ();
+
   ASSERT (t->status == THREAD_BLOCKED);
   t->status = THREAD_READY;
-  enum sched_return_action ret_action = sched_unblock (&t->cpu->rq, t, 0);
+  enum sched_return_action ret_action;
+  ret_action = sched_unblock (&t->cpu->rq, t, 0, curr->cpu->rq.curr);
 
   if (ret_action == RETURN_YIELD)
     {
@@ -321,7 +377,9 @@ thread_unblock (struct thread *t)
            responsible for running thread t to preempt. */
         lapic_send_ipi_to(IPI_SCHEDULE, t->cpu->id);
     }
-  spinlock_release (&t->cpu->rq.lock);
+  spinlock_release (lock1);
+  if (lock2 != NULL)
+    spinlock_release (lock2);
 }
 
 /* Returns the name of the running thread. */
