@@ -93,7 +93,7 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
   // uint64_t blocked_cpu_time = calculate_cpu_time(t);
 
   //obtaining cpu_time of current thread and updating its vruntime
-  uint64_t running_cpu_time = rq_to_add->curr ? calculate_cpu_time(rq_to_add->curr): 0;
+  uint64_t running_cpu_time = rq_to_add->curr ? calculate_cpu_time(rq_to_add->curr): (uint64_t)0;
   if(rq_to_add->curr){
     rq_to_add->curr->vruntime += running_cpu_time;
   }
@@ -108,7 +108,7 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
   }
   else{
     //implementing sleeper bonus
-    uint64_t higher_vruntime = min_vruntime-20000000;
+    uint64_t higher_vruntime = min_vruntime-((uint64_t)20000000);
     //finding max between vruntime of thread and min_vruntime with sleeper bonus
     if(t->vruntime > higher_vruntime){
       higher_vruntime = t->vruntime;
@@ -216,7 +216,15 @@ bool vruntime_less(const struct list_elem* a, const struct list_elem* b, void* a
 
   struct thread* thread_a = list_entry(a, struct thread, elem);
   struct thread* thread_b = list_entry(b, struct thread, elem);
-  return thread_a->vruntime < thread_b->vruntime;
+  bool less;
+
+  if(thread_a->vruntime == thread_b->vruntime){
+    less = thread_a->tid < thread_b->tid;
+  }
+  else{
+    less = thread_a->vruntime < thread_b->vruntime;
+  }
+  return less;
 }
 
 void calculate_total_weight(struct ready_queue *curr_rq, struct thread *current)
