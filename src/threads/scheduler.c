@@ -288,9 +288,10 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
 {
   /* Enforce preemption. */
   curr_rq->thread_ticks++;
+  uint64_t curr_time = timer_gettime();
   uint64_t ideal_time = calculate_ideal_time(curr_rq, current);
   uint64_t cpu_time = calculate_cpu_time(current);
-  if(cpu_time >= ideal_time){
+  if((curr_time - current->last_cpu_time) >= ideal_time){
     return RETURN_YIELD;
   }
   return RETURN_NONE;
