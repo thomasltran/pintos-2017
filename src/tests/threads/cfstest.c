@@ -68,7 +68,8 @@ cfstest_check_current (struct thread *expect)
   if (actual != expect)
     {
       cfstest_tear_down ();
-      fail ("Current thread should be %p, actually %p", expect, actual);
+      fail ("Current thread should be %p (%s), actually %p (%s)",
+            expect, expect->name, actual, actual->name);
     }
 }
 

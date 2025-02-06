@@ -41,7 +41,7 @@ struct ready_queue
 };
 
 void sched_init (struct ready_queue *);
-enum sched_return_action sched_unblock (struct ready_queue *, struct thread *, int );
+enum sched_return_action sched_unblock (struct ready_queue *, struct thread *, int, struct thread *);
 void sched_yield (struct ready_queue *, struct thread *);
 struct thread *sched_pick_next (struct ready_queue *);
 enum sched_return_action sched_tick (struct ready_queue *, struct thread *);

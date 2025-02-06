@@ -135,9 +135,9 @@ wake_up_new_thread (struct thread *t)
   t->cpu = get_cpu ();
   spinlock_acquire (&t->cpu->rq.lock);
   t->status = THREAD_READY;
-  sched_unblock (&t->cpu->rq, t, 1);
+  struct thread *curr = t->cpu->rq.curr;
+  sched_unblock (&t->cpu->rq, t, 1, curr);
   spinlock_release (&t->cpu->rq.lock);
-
 }
 
 /* Simulates do_thread_create in thread.c.
@@ -182,7 +182,8 @@ driver_unblock (struct thread *t)
   bool yield_on_return = false;
   spinlock_acquire (&t->cpu->rq.lock);
   t->status = THREAD_READY;
-  enum sched_return_action ret_action = sched_unblock (&t->cpu->rq, t, 0);
+  struct thread *curr = get_cpu ()->rq.curr;    // is NULL when idle
+  enum sched_return_action ret_action = sched_unblock (&t->cpu->rq, t, 0, curr);
 
   if (ret_action == RETURN_YIELD)
     {
