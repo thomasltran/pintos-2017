@@ -108,7 +108,11 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
   }
   else{
     //implementing sleeper bonus
-    uint64_t higher_vruntime = min_vruntime-((uint64_t)20000000);
+    uint64_t higher_vruntime = 0;
+    if(min_vruntime > ((uint64_t)20000000)){
+      higher_vruntime = min_vruntime-((uint64_t)20000000);
+
+    }
     //finding max between vruntime of thread and min_vruntime with sleeper bonus
     if(t->vruntime > higher_vruntime){
       higher_vruntime = t->vruntime;
@@ -139,7 +143,10 @@ enum sched_return_action sched_unblock(struct ready_queue * rq_to_add, struct th
     rq_to_add->nr_ready++;
   }
 
-  rq_to_add->curr->vruntime -= running_cpu_time;
+  if (rq_to_add->curr)
+  {
+    rq_to_add->curr->vruntime -= running_cpu_time;
+  }
 
   return RETURN_NONE;
 }
@@ -316,4 +323,19 @@ sched_block (struct ready_queue *rq, struct thread *current)
     }
     e = next_e;
   }
+
+  if (current != rq->idle_thread)
+  {
+    if (!current->last_cpu_time)
+    {
+      current->last_cpu_time = 0;
+    }
+    uint64_t cpu_time = calculate_cpu_time(current);
+    current->vruntime += cpu_time;
+  }
+
+  // if(current->last_cpu_time){
+  //   uint64_t cpu_time = calculate_cpu_time(current);
+  //   current->vruntime += cpu_time;
+  // }
 }
