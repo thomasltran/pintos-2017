@@ -171,6 +171,9 @@ sched_pick_next (struct ready_queue *curr_rq)
   return ret;
 }
 
+/* Iterates through the ready list and the current thread to find the minimum vruntime. 
+   This is important for maintaining the fairness of the scheduler.
+ */
 void update_min_vruntime(struct ready_queue * rq, struct thread* current){
   uint64_t min_vruntime = UINT64_MAX;
   bool valid_min_vruntime = false;
@@ -203,6 +206,13 @@ void update_min_vruntime(struct ready_queue * rq, struct thread* current){
   }
 }
 
+/* Compares two threads based on their vruntime.
+
+  If the vruntime is the same, the thread with the lower tid is chosen.
+  Returns true if thread a has a lower vruntime than thread b.
+
+  Used to order the threads in the ready list.
+ */
 bool vruntime_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread* thread_a = list_entry(a, struct thread, elem);
@@ -213,6 +223,9 @@ bool vruntime_less(const struct list_elem *a, const struct list_elem *b, void *a
   return thread_a->vruntime < thread_b->vruntime;
 }
 
+/* Updates the total weight of the ready queue plus the current thread's weight.
+   This is important for calculating the ideal time for a thread to run.
+ */
 void update_total_weight(struct ready_queue *curr_rq, struct thread *current)
 {
   uint64_t total_weight = current ? prio_to_weight[current->nice + 20] : 0;
@@ -224,6 +237,9 @@ void update_total_weight(struct ready_queue *curr_rq, struct thread *current)
   curr_rq->total_weight = total_weight;
 }
 
+/* Calculates the ideal time for a thread to run.
+   This is important for calculating the ideal time for a thread to run.
+ */
 uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current)
 {
   update_total_weight(curr_rq, current);
@@ -231,6 +247,7 @@ uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current)
   return curr_ideal_time;
 }
 
+/* Calculates the additional vruntime for a thread. */
 uint64_t additional_vruntime(struct thread* current){
   uint64_t curr_time = timer_gettime();
   uint64_t delta = curr_time - current->last_cpu_time;
@@ -262,7 +279,7 @@ sched_tick (struct ready_queue *curr_rq, struct thread *current)
 /* Called from thread_block (). The base scheduler does
    not need to do anything here, but your scheduler may. 
 
-   'cur' is the current thread, about to block.
+   'current' is the current thread, about to block.
  */
 void sched_block(struct ready_queue *rq UNUSED, struct thread *current)
 {
