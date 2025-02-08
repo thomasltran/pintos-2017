@@ -49,9 +49,9 @@ struct thread *sched_pick_next (struct ready_queue *);
 enum sched_return_action sched_tick (struct ready_queue *, struct thread *);
 void sched_block (struct ready_queue *, struct thread *);
 bool vruntime_less(const struct list_elem* a, const struct list_elem* b, void* aux UNUSED);
-void calculate_total_weight(struct ready_queue *curr_rq, struct thread *current);
-uint64_t calculate_ideal_time(struct ready_queue *curr_rq, struct thread *current);
-uint64_t calculate_cpu_time(struct thread* current);
-void calculate_min_vruntime(struct ready_queue * rq, struct thread* current);
+void update_total_weight(struct ready_queue *curr_rq, struct thread *current);
+uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current);
+uint64_t additional_vruntime(struct thread* current);
+void update_min_vruntime(struct ready_queue * rq, struct thread* current);
 
 #endif /* THREADS_SCHEDULER_H_ */
