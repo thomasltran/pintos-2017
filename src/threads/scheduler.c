@@ -49,7 +49,7 @@ static bool vruntime_less(const struct list_elem *a, const struct list_elem *b, 
 static void update_total_weight(struct ready_queue *curr_rq, struct thread *current);
 static uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current);
 static uint64_t additional_vruntime(struct thread *current);
-
+void sched_load_balance(void);
 /* Called from thread.c:wake_up_new_thread () and
    thread_unblock () with the current CPU's ready queue
    locked (and preemption disabled).
@@ -134,7 +134,8 @@ sched_pick_next (struct ready_queue *curr_rq)
 
   struct thread *ret = list_entry(list_pop_front (&curr_rq->ready_list), struct thread, elem);
   curr_rq->nr_ready--;
-  ret->last_cpu_time = timer_gettime(); 
+  ret->last_cpu_time = timer_gettime();
+  update_total_weight(curr_rq, NULL); 
   return ret;
 }
 
@@ -149,7 +150,7 @@ static uint64_t update_min_vruntime(struct ready_queue *rq, uint64_t current)
 
   if (!list_empty(&rq->ready_list))
   {
-    for (struct list_elem *e = list_front(&rq->ready_list); e != list_end(&rq->ready_list); e = e->next)
+    for (struct list_elem *e = list_begin(&rq->ready_list); e != list_end(&rq->ready_list); e = e->next)
     {
       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
       if ((min_vruntime > curr_vruntime))
@@ -198,13 +199,19 @@ static bool vruntime_less(const struct list_elem *a, const struct list_elem *b, 
  */
 static void update_total_weight(struct ready_queue *curr_rq, struct thread *current)
 {
-  uint64_t total_weight = current ? prio_to_weight[current->nice + 20] : 0;
-
-  for (struct list_elem *e = list_begin(&curr_rq->ready_list); e != list_end(&curr_rq->ready_list); e = e->next)
-  {
-    total_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
+  // uint64_t total_weight = current ? prio_to_weight[current->nice + 20] : 0;
+  uint64_t total_ready_weight = 0;
+  if(!list_empty(&curr_rq->ready_list)){
+    for (struct list_elem *e = list_begin(&curr_rq->ready_list); e != list_end(&curr_rq->ready_list); e = e->next)
+    {
+      total_ready_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
+    }
   }
-  curr_rq->total_weight = total_weight;
+
+  curr_rq->cpu_load = total_ready_weight;
+  if(current){
+    curr_rq->total_weight = total_ready_weight + prio_to_weight[current->nice+20];
+  }
 }
 
 /* Calculates the ideal time for a thread to run.
@@ -257,3 +264,94 @@ void sched_block(struct ready_queue *rq UNUSED, struct thread *current)
   uint64_t running_vruntime = additional_vruntime(current);
   current->vruntime += running_vruntime;
 }
+
+void sched_load_balance(){
+  if(cpu_started_others){
+    uint64_t busiest_cpu_load = 0;
+    uint64_t busiest_cpu_index = NCPU_MAX +1;
+    for(unsigned int i = 0; i <ncpu; i++){
+      if(cpus[i].started){
+        spinlock_acquire(&cpus[i].rq.lock);
+  
+        if(busiest_cpu_load < cpus[i].rq.cpu_load){
+          busiest_cpu_load = cpus[i].rq.cpu_load;
+          busiest_cpu_index = i;
+        }
+        spinlock_release(&cpus[i].rq.lock);
+      }
+    }
+    
+    struct cpu * curr_cpu = get_cpu();
+    uint64_t curr_cpu_index = curr_cpu->id;
+    if(curr_cpu_index==busiest_cpu_index || busiest_cpu_index == NCPU_MAX+1){
+      return;
+    }
+    uint64_t curr_load = curr_cpu->rq.cpu_load;
+  
+    uint64_t imbalance = (busiest_cpu_load - curr_load)/2;
+  
+    uint64_t total_weight_migrated = 0;
+    spinlock_acquire (&cpus[busiest_cpu_index].rq.lock);
+    update_min_vruntime(&cpus[busiest_cpu_index].rq, NULL);
+    uint64_t busiest_cpu_minvruntime = cpus[busiest_cpu_index].rq.min_vruntime;
+  
+    spinlock_acquire (&curr_cpu->rq.lock);
+    update_min_vruntime(&cpus[busiest_cpu_index].rq, NULL);
+    uint64_t curr_minvruntime = curr_cpu->rq.min_vruntime;
+  
+    if(busiest_cpu_load != 0 && imbalance*4 > busiest_cpu_load){
+      while(total_weight_migrated < imbalance && !(list_empty(&cpus[busiest_cpu_index].rq.ready_list))){
+        // intr_disable_push();
+        struct list_elem* e = (list_back(&cpus[busiest_cpu_index].rq.ready_list));
+        if(e == list_end(&cpus[busiest_cpu_index].rq.ready_list)){
+          break;
+        }
+        list_remove(e);
+        struct thread* t = list_entry(e, struct thread, elem);
+        t->cpu = curr_cpu;
+        t->vruntime = t->vruntime - busiest_cpu_minvruntime + curr_minvruntime;
+  
+        total_weight_migrated += prio_to_weight[t->nice + 20];
+        list_insert_ordered(&curr_cpu->rq.ready_list, e, vruntime_less, NULL);
+        // intr_enable_pop();
+
+      }    
+    }
+    spinlock_release (&cpus[busiest_cpu_index].rq.lock);
+    spinlock_release (&curr_cpu->rq.lock);
+  
+  }
+}
+
+// void update_min_vruntime2(struct ready_queue * rq, struct thread* current){
+//   uint64_t min_vruntime = UINT64_MAX;
+//   bool valid_min_vruntime = false;
+//   uint64_t curr_vruntime;
+  
+//   if (!list_empty(&rq->ready_list))
+//   {
+//     for (struct list_elem *e = list_begin(&rq->ready_list); e != list_end(&rq->ready_list); e = e->next)
+//     {
+//       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
+//       if ((min_vruntime > curr_vruntime))
+//       {
+//         min_vruntime = curr_vruntime;
+//         valid_min_vruntime = true;
+//       }
+//     }
+//   }
+
+//   if(current && current != rq->idle_thread){
+//     curr_vruntime = current->vruntime;
+//     if ((min_vruntime > curr_vruntime))
+//     {
+//       min_vruntime = curr_vruntime;
+//       valid_min_vruntime = true;
+//     }
+//   }
+
+//   if(valid_min_vruntime && rq->min_vruntime < min_vruntime){
+//     rq->min_vruntime = min_vruntime;
+//   }
+// }
+
