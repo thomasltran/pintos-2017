@@ -49,4 +49,5 @@ void sched_yield (struct ready_queue *, struct thread *);
 struct thread *sched_pick_next (struct ready_queue *);
 enum sched_return_action sched_tick (struct ready_queue *, struct thread *);
 void sched_block (struct ready_queue *, struct thread *);
+void sched_load_balance(void);
 #endif /* THREADS_SCHEDULER_H_ */

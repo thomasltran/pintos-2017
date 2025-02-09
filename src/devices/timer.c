@@ -125,11 +125,6 @@ timer_sleep (int64_t ticks)
   spinlock_release(&cpu_curr->sq.lock);
 
   ASSERT(intr_get_level() == INTR_ON);
-
-  // int64_t start = timer_ticks();
-  // while (timer_elapsed(start) < ticks)
-  //   thread_yield();
-  // ASSERT(thread_curr->cpu == cpu_curr);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -224,10 +219,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
     struct list_elem *e = list_begin(sleep_list);
     while(e != list_end(sleep_list)){
-    // for (struct list_elem *e = list_begin(sleep_list);
-    //      e != list_end(sleep_list);)
-    // {
-      // intr_disable_push ();
       struct list_elem* next_e = e->next;
       struct thread *thread = list_entry(e, struct thread, sleepelem);
       int64_t wakeup = thread->wakeup;
