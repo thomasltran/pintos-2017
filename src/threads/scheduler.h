@@ -40,6 +40,7 @@ struct ready_queue
                                  Allows O(1) access. */
   uint64_t min_vruntime;
   uint64_t total_weight;
+  uint64_t cpu_load;
 };
 
 void sched_init (struct ready_queue *);
@@ -48,5 +49,4 @@ void sched_yield (struct ready_queue *, struct thread *);
 struct thread *sched_pick_next (struct ready_queue *);
 enum sched_return_action sched_tick (struct ready_queue *, struct thread *);
 void sched_block (struct ready_queue *, struct thread *);
-
 #endif /* THREADS_SCHEDULER_H_ */

@@ -544,7 +544,12 @@ idle (void *idle_started_ UNUSED)
        *
        * The baseline implementation does not ensure this.
        */
-      thread_block (NULL);
+
+      sched_load_balance();
+      // spinlock_acquire(&get_cpu()->rq.lock);
+      // lock_own_ready_queue();
+      // schedule();
+      thread_block(NULL);
 
       /* Re-enable interrupts and wait for the next one.
 
