@@ -38,8 +38,17 @@ struct ready_queue
   struct list ready_list;     /* List of ready threads. */
   unsigned long nr_ready;     /* number of elements in ready_list.
                                  Allows O(1) access. */
+                                 
+  /* Minimum vruntime among all threads in ready queue.
+  Used to maintain fairness when migrating threads. */                               
   uint64_t min_vruntime;
+  
+  /* Sum of weights of all runnable threads (ready + running).
+  Used to calculate ideal runtime for preemption. */    
   uint64_t total_weight;
+
+  /* Sum of weights of threads in ready queue only.
+  Used for load balancing between CPUs. */
   uint64_t cpu_load;
 };
 
