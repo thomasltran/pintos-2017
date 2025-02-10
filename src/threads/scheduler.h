@@ -42,14 +42,6 @@ struct ready_queue
   /* Minimum vruntime among all threads in ready queue.
   Used to maintain fairness when migrating threads. */                               
   uint64_t min_vruntime;
-  
-  /* Sum of weights of all runnable threads (ready + running).
-  Used to calculate ideal runtime for preemption. */    
-  uint64_t total_weight;
-
-  /* Sum of weights of threads in ready queue only.
-  Used for load balancing between CPUs. */
-  uint64_t cpu_load;
 };
 
 void sched_init (struct ready_queue *);

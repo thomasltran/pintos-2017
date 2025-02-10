@@ -59,10 +59,9 @@ static const uint32_t prio_to_weight[40] =
 /* Function declarations for CFS scheduler operations */
 static uint64_t update_min_vruntime(struct ready_queue *rq, uint64_t current);
 static bool vruntime_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-static void update_total_weight(struct ready_queue *curr_rq, struct thread *current);
+static uint64_t update_total_weight(struct ready_queue *curr_rq, struct thread *current);
 static uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current);
 static uint64_t additional_vruntime(struct thread *current);
-void sched_load_balance(void);
 
 /* Called from thread.c:wake_up_new_thread () and
    thread_unblock () with the current CPU's ready queue
@@ -161,7 +160,6 @@ sched_pick_next (struct ready_queue *curr_rq)
   struct thread *ret = list_entry(list_pop_front (&curr_rq->ready_list), struct thread, elem);
   curr_rq->nr_ready--;
   ret->last_cpu_time = timer_gettime();
-  update_total_weight(curr_rq, NULL); 
   return ret;
 }
 
@@ -176,7 +174,7 @@ static uint64_t update_min_vruntime(struct ready_queue *rq, uint64_t current)
 
   if (!list_empty(&rq->ready_list))
   {
-    for (struct list_elem *e = list_begin(&rq->ready_list); e != list_end(&rq->ready_list); e = e->next)
+    for (struct list_elem *e = list_begin(&rq->ready_list); e != list_end(&rq->ready_list); e = list_next(e))
     {
       curr_vruntime = list_entry(e, struct thread, elem)->vruntime;
       if ((min_vruntime > curr_vruntime))
@@ -221,30 +219,28 @@ static bool vruntime_less(const struct list_elem *a, const struct list_elem *b, 
 }
 
 /* Updates the total weight of the ready queue plus the current thread's weight. */
-static void update_total_weight(struct ready_queue *curr_rq, struct thread *current)
+static uint64_t update_total_weight(struct ready_queue *curr_rq, struct thread *current)
 {
   uint64_t total_ready_weight = 0;
   /* Sum the weights of all threads in the ready queue */
-  if(!list_empty(&curr_rq->ready_list)){
-    for (struct list_elem *e = list_begin(&curr_rq->ready_list); 
-        e != list_end(&curr_rq->ready_list); e = e->next)
-    {
-      total_ready_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
-    }
+  for (struct list_elem *e = list_begin(&curr_rq->ready_list);
+       e != list_end(&curr_rq->ready_list); e = list_next(e))
+  {
+    total_ready_weight += prio_to_weight[list_entry(e, struct thread, elem)->nice + 20];
   }
-  /* Update the cpu_load of the ready queue */
-  curr_rq->cpu_load = total_ready_weight;
+
   /* If the current thread is not NULL, add its weight to the total weight of the ready queue */
   if(current){
-    curr_rq->total_weight = total_ready_weight + prio_to_weight[current->nice+20];
+    total_ready_weight += prio_to_weight[current->nice + 20];
   }
+  return total_ready_weight;
 }
 
 /* Calculates the ideal time for a thread to run. */
 static uint64_t ideal_time(struct ready_queue *curr_rq, struct thread *current)
 {
-  update_total_weight(curr_rq, current);
-  uint64_t curr_ideal_time = ((uint64_t)4000000 * (uint64_t)(curr_rq->nr_ready + 1) * (uint64_t)prio_to_weight[current->nice + 20]) / (uint64_t)curr_rq->total_weight;
+  uint64_t total_weight = update_total_weight(curr_rq, current);
+  uint64_t curr_ideal_time = (4000000 * (curr_rq->nr_ready + 1) * (uint64_t)prio_to_weight[current->nice + 20]) / total_weight;
   return curr_ideal_time;
 }
 
@@ -302,101 +298,79 @@ void sched_block(struct ready_queue *rq UNUSED, struct thread *current)
  * 4. Adjust migrated threads' vruntime relative to min_vruntime of both queues 
  */
 void sched_load_balance(){
-  if(cpu_started_others){
+  if (!cpu_started_others) // check for cpus array valid
+  {
+    return;
+  }
 
-    /* Release locks held by current CPU */
-    if(spinlock_held_by_current_cpu(&cpus[0].rq.lock)){
-      spinlock_release(&cpus[0].rq.lock);
-    }
-    if(spinlock_held_by_current_cpu(&cpus[1].rq.lock)){
-      spinlock_release(&cpus[1].rq.lock);
-    }
+  struct cpu *my_cpu = get_cpu();
+  int busiest_cpu_index = -1;
+  uint64_t busiest_cpu_load = UINT64_MAX;
+  uint64_t my_load = UINT64_MAX;
 
-    /* 1. Identify the busiest CPU */
-    uint64_t busiest_cpu_load = 0;
-    uint64_t busiest_cpu_index = NCPU_MAX +1;
-    for(unsigned int i = 0; i <ncpu; i++){
-      if(cpus[i].started){
-        /* Safely acquire lock before accessing the ith CPU's cpu_load */
-        spinlock_acquire(&cpus[i].rq.lock); 
-        update_total_weight(&cpus[i].rq, NULL);
-        /* Update busiest CPU if current CPU has higher load */
-        if(busiest_cpu_load < cpus[i].rq.cpu_load){
-          busiest_cpu_load = cpus[i].rq.cpu_load;
-          busiest_cpu_index = i;
-        }
-        /* Release lock after accessing cpu_load */
-        spinlock_release(&cpus[i].rq.lock);
-      }
+  for (unsigned int i = 0; i < ncpu; i++)
+  {
+    /* Safely acquire lock before accessing the ith CPU's cpu_load */
+    spinlock_acquire(&cpus[i].rq.lock);
+    uint64_t steal_weight = update_total_weight(&cpus[i].rq, NULL);
+    /* Update busiest CPU if current CPU has higher load */
+    if (busiest_cpu_load == UINT64_MAX || busiest_cpu_load < steal_weight)
+    {
+      busiest_cpu_load = steal_weight;
+      busiest_cpu_index = i;
     }
 
-    /* 2. Calculate imbalance */
-
-    /* Initial checks before calculating imbalance */
-    struct cpu * curr_cpu = get_cpu();
-    uint64_t curr_cpu_index = curr_cpu->id;
-    if(curr_cpu_index == busiest_cpu_index || busiest_cpu_index == NCPU_MAX+1){
-      return; /* No imbalance or invalid CPU index */
+    if (cpus[i].id == my_cpu->id) // update curr cpu weight
+    {
+      my_load = steal_weight;
     }
-    uint64_t curr_load = curr_cpu->rq.cpu_load;
-    if(curr_load > busiest_cpu_load){
-      return; /* Current CPU has higher load than busiest CPU */
+
+    /* Release lock after accessing cpu_load */
+    spinlock_release(&cpus[i].rq.lock);
+  }
+
+  if (busiest_cpu_load <= my_load)
+  { // negative check, or load equals (imbalance would be 0)
+    return;
+  }
+
+  uint64_t imbalance = (busiest_cpu_load - my_load) / 2;
+
+  if (imbalance * 4 < busiest_cpu_load) // small imbalance
+  {
+    return;
+  }
+
+  uint64_t agg_weight = 0;
+  struct ready_queue *my_rq = &my_cpu->rq;
+  struct ready_queue *steal_rq = &cpus[busiest_cpu_index].rq;
+  ASSERT(my_rq != steal_rq)
+
+  while (agg_weight < imbalance) // keep migrating from busiest CPU to CPU that initiated the load balancing until agg_weight equals or exeeds imbalance
+  {
+    // Dr. Back's Formula
+    // acquire locks in consistent order to solve the AB BA deadlock problem
+    struct spinlock *lock1 = &my_rq->lock < &steal_rq->lock ? &my_rq->lock : &steal_rq->lock;
+    struct spinlock *lock2 = &my_rq->lock < &steal_rq->lock ? &steal_rq->lock : &my_rq->lock;
+
+    spinlock_acquire(lock1);
+    spinlock_acquire(lock2);
+
+    if (list_empty(&steal_rq->ready_list)) // nothing to migrate
+    {
+      spinlock_release(lock1);
+      spinlock_release(lock2);
+      return;
     }
-    uint64_t imbalance = (busiest_cpu_load - curr_load)/2;
-  
-    /* 3. Migrate threads if imbalance * 4 > busiest_load */
-    uint64_t total_weight_migrated = 0;
-    /* Safely acquire lock before accessing busiest CPU's ready queue */
-    if(!spinlock_held_by_current_cpu(&cpus[busiest_cpu_index].rq.lock)){
-      spinlock_acquire (&cpus[busiest_cpu_index].rq.lock);
-    }
-    update_min_vruntime(&cpus[busiest_cpu_index].rq, UINT64_MAX);
-    uint64_t busiest_cpu_minvruntime = cpus[busiest_cpu_index].rq.min_vruntime;
-    spinlock_release (&cpus[busiest_cpu_index].rq.lock);
 
-    /* Safely acquire lock before accessing current CPU's ready queue */
-    if(!spinlock_held_by_current_cpu(&curr_cpu->rq.lock)){
-      spinlock_acquire (&curr_cpu->rq.lock);
-    }
-    spinlock_release (&curr_cpu->rq.lock);
-    
-    update_min_vruntime(&cpus[busiest_cpu_index].rq, UINT64_MAX);
-    uint64_t curr_minvruntime = curr_cpu->rq.min_vruntime;
+    struct list_elem *steal_elem = list_pop_back(&steal_rq->ready_list);
+    struct thread *steal_thread = list_entry(steal_elem, struct thread, elem);
+    agg_weight += prio_to_weight[steal_thread->nice + 20];
+    ASSERT(steal_thread->vruntime + my_rq->min_vruntime >= cpus[busiest_cpu_index].rq.min_vruntime); // negative check
+    steal_thread->vruntime = steal_thread->vruntime + my_rq->min_vruntime - cpus[busiest_cpu_index].rq.min_vruntime; // adjust vruntime
+    list_insert_ordered(&my_rq->ready_list, steal_elem, vruntime_less, NULL);
 
-    if(busiest_cpu_load != 0 && imbalance*4 > busiest_cpu_load){
-      while(total_weight_migrated < imbalance){
-        /* Safely acquire lock before accessing busiest CPU's ready queue */
-        spinlock_acquire (&cpus[busiest_cpu_index].rq.lock);
-        if(!(list_empty(&cpus[busiest_cpu_index].rq.ready_list))){
-          /* Extract thread from back of busiest CPU's ready queue */
-          struct list_elem* e = (list_back(&cpus[busiest_cpu_index].rq.ready_list));
-          if(e == list_end(&cpus[busiest_cpu_index].rq.ready_list)){
-            break; /* No more threads to migrate */
-          }
-          list_remove(e);
-          spinlock_release (&cpus[busiest_cpu_index].rq.lock);
-
-          /* 4. Adjust migrated threads' vruntime relative to min_vruntime of both queues */
-
-          /* Safely acquire lock before accessing current CPU's ready queue */
-          spinlock_acquire (&curr_cpu->rq.lock);
-
-          /* Get thread from extracted element */
-          struct thread* t = list_entry(e, struct thread, elem);
-          t->cpu = curr_cpu;
-          t->vruntime = t->vruntime - busiest_cpu_minvruntime + curr_minvruntime;
-          total_weight_migrated += prio_to_weight[t->nice + 20];
-          /* Insert thread into current CPU's ready queue */
-          list_insert_ordered(&curr_cpu->rq.ready_list, e, vruntime_less, NULL);
-
-          spinlock_release (&curr_cpu->rq.lock);
-
-        }
-        else{ 
-          spinlock_release (&cpus[busiest_cpu_index].rq.lock);
-          return; /* No threads to migrate */
-        }
-      }  
-    }
+    spinlock_release(lock1);
+    spinlock_release(lock2);
   }
 }
