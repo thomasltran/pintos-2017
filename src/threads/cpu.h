@@ -12,11 +12,7 @@
 /* List of sleeping threads per CPU */
 struct sleep_queue
 {
-   struct spinlock lock;   /* Protects all fields in this struct.
-                            * Also protects internal fields in struct thread
-                            * such as status in all threads pointing
-                            * to this ready_queue via their cpu->rq.
-                            */
+   struct spinlock lock;   /* Protects all fields in this struct. */
    struct list sleep_list; /* List of BLOCKED threads. */
 };
 
