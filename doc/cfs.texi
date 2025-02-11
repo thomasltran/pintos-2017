@@ -156,7 +156,7 @@ and whenever a thread is unblocked.
 
 At each timer interrupt the scheduler needs to decide whether to
 preempt the currently running thread or not.  A thread is preempted
-if it has run for more than its ``ideal runtime,'' which represents
+if it has run for at least its ``ideal runtime,'' which represents
 the length of this thread's time slice.  In @acronym{CFS}, the
 length of a thread's time slice depends on its niceness:  higher 
 priority threads receive longer time slices than lower priority
