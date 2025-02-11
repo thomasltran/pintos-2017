@@ -94,12 +94,6 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
     rq_to_add->min_vruntime = update_min_vruntime(rq_to_add, curr_thread_vruntime);
   }
 
-  /* If no current thread, set minimum vruntime to 0 */
-  if (rq_to_add->min_vruntime == UINT64_MAX)
-  {
-    rq_to_add->min_vruntime = 0;
-  }
-
   /* If initial thread, set its vruntime to minimum vruntime */
   if (initial)
   {
