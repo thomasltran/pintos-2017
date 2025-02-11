@@ -94,7 +94,7 @@ threads/kernel.lds.s: threads/kernel.lds.S threads/loader.h
 
 threads/startother: threads/startother.S
 	$(CC) -c $< -o $@.o $(ASFLAGS) $(CPPFLAGS) $(DEFINES) $(DEPS)
-	$(LD) -N -e startother -Ttext 0x7000 -o ./threads/bootblockother.o $@.o
+	$(LD) -e startother -Ttext 0x7000 -o ./threads/bootblockother.o $@.o
 	$(OBJCOPY) -S -O binary -j .text ./threads/bootblockother.o $@
 	
 kernel.o: threads/kernel.lds.s $(OBJECTS) threads/startother 
