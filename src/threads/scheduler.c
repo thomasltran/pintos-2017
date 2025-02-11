@@ -368,6 +368,7 @@ void sched_load_balance(){
     ASSERT(steal_thread->vruntime + my_rq->min_vruntime >= cpus[busiest_cpu_index].rq.min_vruntime); // negative check
     steal_thread->vruntime = steal_thread->vruntime + my_rq->min_vruntime - cpus[busiest_cpu_index].rq.min_vruntime; // adjust vruntime
     list_insert_ordered(&my_rq->ready_list, steal_elem, vruntime_less, NULL);
+    steal_thread->cpu = my_cpu;
 
     spinlock_release(lock1);
     spinlock_release(lock2);
