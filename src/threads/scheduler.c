@@ -84,7 +84,7 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
    * Will be updated with actual vruntime if current thread exists. */
   uint64_t curr_thread_vruntime = UINT64_MAX;
 
-  if (curr != NULL && curr != rq_to_add->idle_thread)
+  if (curr != NULL)
   {
     /* Get current thread's vruntime */
     curr_thread_vruntime = curr->vruntime;
@@ -110,7 +110,7 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
   /* Insert thread into ready queue, following vruntime order policy */
 
   /* CPU is idle or thread has lower vruntime than current thread */
-  if (!curr || curr == rq_to_add->idle_thread || (t->vruntime < curr_thread_vruntime && !initial))
+  if (!curr || (t->vruntime < curr_thread_vruntime && !initial))
   {
     list_push_front(&rq_to_add->ready_list, &t->elem);
     rq_to_add->nr_ready++;
