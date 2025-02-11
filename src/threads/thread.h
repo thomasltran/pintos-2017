@@ -104,8 +104,8 @@ struct thread
   struct list_elem elem; /* List element. */
   struct list_elem sleepelem; /* List element for sleeping list */
 
-  uint64_t vruntime;
-  uint64_t last_cpu_time;
+  uint64_t vruntime; // vruntime of the thread
+  uint64_t last_cpu_time;  // track start (running) time
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */

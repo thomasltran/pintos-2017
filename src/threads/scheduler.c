@@ -91,12 +91,8 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
     /* Add additional vruntime to current thread's vruntime */
     curr_thread_vruntime += additional_vruntime(curr);
     /* Update minimum vruntime for the ready queue */
-    rq_to_add->min_vruntime = update_min_vruntime(rq_to_add, curr_thread_vruntime);
   }
-  else
-  {
-    rq_to_add->min_vruntime = update_min_vruntime(rq_to_add, UINT64_MAX);
-  }
+  rq_to_add->min_vruntime = update_min_vruntime(rq_to_add, curr_thread_vruntime);
 
   /* If initial thread, set its vruntime to minimum vruntime */
   if (initial)
@@ -112,14 +108,19 @@ enum sched_return_action sched_unblock(struct ready_queue *rq_to_add, struct thr
     }
   }
   /* Insert thread into ready queue, following vruntime order policy */
+
+  /* CPU is idle or thread has lower vruntime than current thread */
+  if (!curr || (t->vruntime < curr_thread_vruntime && !initial))
+  {
+    list_push_front(&rq_to_add->ready_list, &t->elem);
+    rq_to_add->nr_ready++;
+  
+    return RETURN_YIELD;
+  }
   list_insert_ordered(&rq_to_add->ready_list, &t->elem, vruntime_less, NULL);
   rq_to_add->nr_ready++;
 
-  /* CPU is idle or thread has lower vruntime than current thread */
-  if (!curr || t->vruntime < curr_thread_vruntime)
-  {
-    return RETURN_YIELD;
-  }
+
   /* No need to yield */
   return RETURN_NONE;
 }
