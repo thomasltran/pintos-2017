@@ -16,6 +16,7 @@
 #include "threads/scheduler.h"
 #ifdef USERPROG
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #endif
 #include "threads/cpu.h"
 #include "devices/lapic.h"
@@ -35,6 +36,9 @@ static struct list all_list;
 static struct spinlock all_lock;
 /* Initial thread, the thread running init.c:main(). */
 static struct thread *initial_thread;
+
+// global lock for fs
+struct lock fs_lock;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
@@ -82,6 +86,7 @@ thread_init (void)
   list_init(&bcpu->sq.sleep_list);
   spinlock_init (&bcpu->rq.lock);
   spinlock_init(&bcpu->sq.lock);
+  lock_init(&fs_lock);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_boot_thread (initial_thread, bcpu);

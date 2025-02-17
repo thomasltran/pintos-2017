@@ -7,6 +7,7 @@
 #include <string.h>
 #include "threads/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "threads/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -17,6 +18,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/synch.h"
+#include "lib/stdio.h"
+#include "lib/string.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -29,6 +33,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char *fn_parse;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,10 +43,36 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  fn_parse = palloc_get_page(0);
+  if (fn_parse == NULL)
+    return TID_ERROR;
+  strlcpy(fn_parse, file_name, PGSIZE);
+
+  printf("filename %s\n", file_name);
+  char *argv[64];
+  char *token, *save_ptr;
+  int i = 0;
+
+  for (token = strtok_r(fn_parse, " ", &save_ptr); token != NULL;)
+  {
+    while (*token == ' ') // space check
+      token++;
+    argv[i++] = token;
+    token = strtok_r(NULL, " ", &save_ptr);
+  }
+
+  // for (int k = 0; k < i; k++)
+  // {
+  //   printf("%s\n", argv[k]);
+  // }
+  
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, NICE_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file_name, NICE_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  {
+    palloc_free_page(fn_copy);
+    palloc_free_page(fn_parse);
+  }
   return tid;
 }
 
@@ -66,14 +97,17 @@ start_process (void *file_name_)
   if (!success) 
     thread_exit ();
 
+  // void hex_dump (uintptr_t ofs, const void *, size_t size, bool ascii);
+  hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
+
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
      arguments on the stack in the form of a `struct intr_frame',
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
-  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
-  NOT_REACHED ();
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  NOT_REACHED();
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
@@ -85,9 +119,10 @@ start_process (void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int
-process_wait (tid_t child_tid UNUSED) 
+int process_wait(tid_t child_tid UNUSED)
 {
+  while (true)
+    ;
   return -1;
 }
 
@@ -208,6 +243,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 bool
 load (const char *file_name, void (**eip) (void), void **esp) 
 {
+  lock_acquire(&fs_lock);
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -313,6 +349,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
  done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  lock_release(&fs_lock);
+
   return success;
 }
 
@@ -437,7 +475,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE;
+        *esp = PHYS_BASE - 12;
       else
         palloc_free_page (kpage);
     }
