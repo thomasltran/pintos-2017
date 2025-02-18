@@ -23,7 +23,7 @@
 #include "lib/string.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load(const char *cmdline, char **argv, int argc, void (**eip)(void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -33,7 +33,6 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
-  char *fn_parse;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -42,36 +41,11 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-
-  fn_parse = palloc_get_page(0);
-  if (fn_parse == NULL)
-    return TID_ERROR;
-  strlcpy(fn_parse, file_name, PGSIZE);
-
-  printf("filename %s\n", file_name);
-  char *argv[64];
-  char *token, *save_ptr;
-  int i = 0;
-
-  for (token = strtok_r(fn_parse, " ", &save_ptr); token != NULL;)
-  {
-    while (*token == ' ') // space check
-      token++;
-    argv[i++] = token;
-    token = strtok_r(NULL, " ", &save_ptr);
-  }
-
-  // for (int k = 0; k < i; k++)
-  // {
-  //   printf("%s\n", argv[k]);
-  // }
-  
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, NICE_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
   {
     palloc_free_page(fn_copy);
-    palloc_free_page(fn_parse);
   }
   return tid;
 }
@@ -79,26 +53,40 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process(void *file_name_)
 {
-  char *file_name = file_name_;
+  char *file_name = (char *)file_name_;
+
+  char *argv[64]; // find better limit
+  char *token, *save_ptr;
+  int i = 0;
+
+  for (token = strtok_r(file_name, " ", &save_ptr); token != NULL;)
+  {
+    while (*token == ' ') // space check
+      token++;
+    argv[i++] = token;
+    token = strtok_r(NULL, " ", &save_ptr);
+  }
+  argv[i + 1] = NULL;
+  file_name = argv[0];
+
   struct intr_frame if_;
   bool success;
 
   /* Initialize interrupt frame and load executable. */
-  memset (&if_, 0, sizeof if_);
+  memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load(file_name, argv, i, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
 
-  // void hex_dump (uintptr_t ofs, const void *, size_t size, bool ascii);
-  hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
+  //hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -240,8 +228,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
-bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void **esp)
 {
   lock_acquire(&fs_lock);
   struct thread *t = thread_current ();
@@ -250,6 +237,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
+  char *addr[argc];
+  int addr_i = 0;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
@@ -340,6 +329,48 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
+
+  int name_length = 0;
+  for (i = argc - 1; i >= 0; i--) // push words onto stack, reversed
+  {
+    int length = strnlen(argv[i], 1024) + 1; // for \0
+    *esp -= length;
+    addr[addr_i++] = (char *)(*esp);
+    
+    for (int k = 0; k < length; k++)
+    {
+      *((char *)(*esp) + k) = argv[i][k];
+      if(i == 0){
+        name_length++; // track for name of program
+      }
+    }
+  }
+
+  // save name of program for exit syscall
+  t->user_prog_name = palloc_get_page (0);
+  if (t->user_prog_name == NULL)
+    return TID_ERROR;
+  strlcpy(t->user_prog_name, argv[0], name_length);
+  
+  // word-align later
+
+  *esp -= sizeof(char *); // null sentinel
+  *((char **)(*esp)) = NULL;
+
+  for(i = 0; i < addr_i; i++){ // push adress of each string
+    *esp -= sizeof(char *);
+    *((char **)(*esp)) = addr[i];
+  }
+
+  char ** curr_esp = (char **)(*esp); // argv
+  *esp -= sizeof(char **);
+  *((char ***)(*esp)) = curr_esp;
+
+  *esp -= sizeof(int); // argc
+  *((int*)(*esp)) = argc;
+
+  *esp -= sizeof(void *); // ret addr
+  *((void **)*esp) = NULL;
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -475,7 +506,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE - 12; // when can we revert this?
       else
         palloc_free_page (kpage);
     }

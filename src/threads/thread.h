@@ -110,6 +110,7 @@ struct thread
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
+  char * user_prog_name; // for exit
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
