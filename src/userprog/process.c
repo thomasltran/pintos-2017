@@ -34,6 +34,8 @@ static bool load(const char *cmdline, char **argv, int argc, void (**eip)(void),
 tid_t
 process_execute (const char *file_name) 
 {
+  lock_acquire(&fs_lock);
+
   char *fn_copy;
   tid_t tid;
 
@@ -52,11 +54,19 @@ process_execute (const char *file_name)
   ps->user_prog_name = fn_copy;
   // child of the calling process
   /* Create a new thread to execute FILE_NAME. */
+
+  lock_release(&fs_lock);
+
   tid = thread_create(file_name, NICE_DEFAULT, start_process, ps);
   if (tid == TID_ERROR)
   {
+    lock_acquire(&fs_lock);
+
     palloc_free_page(fn_copy);
     free(ps);
+
+    lock_release(&fs_lock);
+    return TID_ERROR;
   }
 
   // even if the child thread gets load balanced, i don't think it matters
@@ -77,6 +87,8 @@ process_execute (const char *file_name)
 static void
 start_process(void *p)
 {
+  lock_acquire(&fs_lock);
+
   struct process *ps = (struct process *)p;
   char *file_name = ps->user_prog_name;
 
@@ -112,21 +124,32 @@ start_process(void *p)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  lock_release(&fs_lock);
+
   success = load(file_name, argv, i, &if_.eip, &if_.esp);
 
+  lock_acquire(&fs_lock);
+
   /* If load failed, quit. */
+
   palloc_free_page (file_name);
+
+  lock_release(&fs_lock);
+
   if (!success)
   {
-    thread_exit();
     free(hold);
+    thread_exit();
   }
+  else
+  {
+    struct thread *child_thread = thread_current();
+    child_thread->ps = ps;
 
-  struct thread *child_thread = thread_current();
-  child_thread->ps = ps;
-
-  // save name of program for exit syscall
-  child_thread->ps->user_prog_name = hold;
+    // save name of program for exit syscall
+    child_thread->ps->user_prog_name = hold;
+  }
 
   // account for \0
 
@@ -153,6 +176,7 @@ start_process(void *p)
    does nothing. */
 int process_wait(tid_t child_tid)
 {
+  while(true);
   struct thread *parent_thread = thread_current();
   int exit_status = -1;
 
@@ -589,7 +613,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12; // when can we revert this?
+        *esp = PHYS_BASE; // when can we revert this?
       else
         palloc_free_page (kpage);
     }
