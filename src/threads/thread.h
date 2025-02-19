@@ -110,13 +110,27 @@ struct thread
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
-  char * user_prog_name; // for exit
+  struct process * ps;
+  struct list ps_list;
+  struct lock ps_lock;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
 };
 
-void thread_init (void);
+#ifdef USERPROG
+struct process
+{
+   struct list_elem elem; // list of processes
+   int exit_status;
+   int ref_count;
+   tid_t child_tid;
+   struct semaphore user_prog_exit;
+   char * user_prog_name; // for exit
+};
+#endif
+
+void thread_init(void);
 void thread_init_on_ap (void);
 void thread_start_idle_thread (void);
 void thread_tick (void);

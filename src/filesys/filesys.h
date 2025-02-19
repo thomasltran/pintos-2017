@@ -18,3 +18,11 @@ struct file *filesys_open (const char *name);
 bool filesys_remove (const char *name);
 
 #endif /* filesys/filesys.h */
+
+/*
+filesys_open
+fd layer glue between usr ps and filesys open directory
+keep track of everything that it has open in ds and use 
+kepp track of ps fd
+array of ptrs to kepe track - dynamically allocate array
+*/

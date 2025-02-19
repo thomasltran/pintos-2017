@@ -6,6 +6,7 @@
 #include "threads/vaddr.h"
 #include "threads/cpu.h"
 #include "threads/palloc.h"
+#include "threads/malloc.h"
 
 static void syscall_handler (struct intr_frame *);
 static void write(int fd, const void * buffer, unsigned size);
@@ -57,10 +58,14 @@ Whenever a user process terminates, because it called exit or for any other reas
 
 static void exit(int status){
   struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack?? 
+  struct process * ps = thread_curr->ps;
   struct cpu *cpu_curr = thread_curr->cpu;
   spinlock_acquire(&cpu_curr->rq.lock);
-  printf("%s: exit(%d)\n", thread_curr->user_prog_name, status);
-  palloc_free_page(thread_curr->user_prog_name);
+  // not sure if we need the locking/disable intr
+  
+  printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
+  ps->exit_status = status;
+  free(thread_curr->ps->user_prog_name);
   spinlock_release(&cpu_curr->rq.lock);
   thread_exit();
 }
