@@ -19,6 +19,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "threads/malloc.h"
+#include "threads/thread.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
 
@@ -32,8 +34,16 @@ static bool load(const char *cmdline, char **argv, int argc, void (**eip)(void),
 tid_t
 process_execute (const char *file_name) 
 {
+  lock_acquire(&fs_lock);
+
   char *fn_copy;
   tid_t tid;
+
+  struct process *ps = malloc(sizeof(struct process));
+  ps->exit_status = -1;
+  ps->ref_count = 2;
+  ps->child_tid = -1;
+  sema_init(&ps->user_prog_exit, 0);
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -41,21 +51,47 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  ps->user_prog_name = fn_copy;
+
+  lock_release(&fs_lock);
+  // child of the calling process
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, NICE_DEFAULT, start_process, fn_copy);
+  tid = thread_create(file_name, NICE_DEFAULT, start_process, ps);
   if (tid == TID_ERROR)
   {
+    lock_acquire(&fs_lock);
+
     palloc_free_page(fn_copy);
+    free(ps);
+
+    lock_release(&fs_lock);
+    return TID_ERROR;
   }
+
+  // even if the child thread gets load balanced, i don't think it matters
+  // based off of reference count so everything gets freed anyways?
+
+  struct thread *parent_thread = thread_current();
+  lock_acquire(&parent_thread->ps_lock);
+
+  ps->child_tid = tid;
+  parent_thread->ps = NULL; // for process_exit
+  ASSERT(ps->user_prog_name != NULL);
+  list_push_back(&parent_thread->ps_list, &ps->elem);
+
+  lock_release(&parent_thread->ps_lock);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process(void *file_name_)
+start_process(void *p)
 {
-  char *file_name = (char *)file_name_;
+  lock_acquire(&fs_lock);
+
+  struct process *ps = (struct process *)p;
+  char *file_name = ps->user_prog_name;
 
   char *argv[64]; // find better limit
   char *token, *save_ptr;
@@ -71,6 +107,14 @@ start_process(void *file_name_)
   argv[i + 1] = NULL;
   file_name = argv[0];
 
+  char *hold = malloc(sizeof(char *));
+  int name_length = 0;
+  while (argv[0][name_length] != '\0')
+  {
+    name_length++;
+  }
+  strlcpy(hold, argv[0], name_length + 1);
+
   struct intr_frame if_;
   bool success;
 
@@ -79,12 +123,32 @@ start_process(void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  lock_release(&fs_lock);
+
   success = load(file_name, argv, i, &if_.eip, &if_.esp);
 
+  lock_acquire(&fs_lock);
+
   /* If load failed, quit. */
+
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+
+  lock_release(&fs_lock);
+
+  if (!success)
+  {
+    free(hold);
+    thread_exit();
+  }
+  else
+  {
+    struct thread *child_thread = thread_current();
+    child_thread->ps = ps;
+
+    // save name of program for exit syscall
+    child_thread->ps->user_prog_name = hold;
+  }
 
   //hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
 
@@ -107,36 +171,102 @@ start_process(void *file_name_)
 
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
-int process_wait(tid_t child_tid UNUSED)
+int process_wait(tid_t child_tid)
 {
-  while (true)
-    ;
+  struct thread *parent_thread = thread_current();
+  int exit_status = -1;
+
+  lock_acquire(&parent_thread->ps_lock);
+  
+  for (struct list_elem *e = list_begin(&parent_thread->ps_list);
+       e != list_end(&parent_thread->ps_list);)
+  {
+    struct process *ps = list_entry(e, struct process, elem);
+ 
+    if (child_tid == ps->child_tid)
+    {
+      e = list_remove(e);
+      exit_status = ps->exit_status;
+      sema_down(&ps->user_prog_exit);
+      ps->ref_count--;
+
+      if (ps->ref_count == 0)
+      {
+        free(ps);
+      }
+      lock_release(&parent_thread->ps_lock);
+
+      return exit_status;
+    }
+    e = list_next(e);
+  }
+  lock_release(&parent_thread->ps_lock);
+
   return -1;
 }
 
 /* Free the current process's resources. */
 void
-process_exit (void)
+
+process_exit(void)
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current();
+
   uint32_t *pd;
 
-  /* Destroy the current process's page directory and switch back
+  lock_acquire(&cur->ps_lock);
+  for (struct list_elem *e = list_begin(&cur->ps_list);
+       e != list_end(&cur->ps_list);)
+  {
+    struct process *ps = list_entry(e, struct process, elem);
+
+    sema_up(&ps->user_prog_exit);
+    ps->ref_count--;
+
+    if (ps->ref_count == 0)
+    {
+      e = list_remove(e);
+      free(ps);
+    }
+    else
+    {
+      e = list_next(e);
+    }
+  }
+  lock_release(&cur->ps_lock);
+
+
+  struct process *ps = cur->ps;
+  if (ps != NULL)
+  { // is not a parent (is not a child for anything); nothing in list above
+    // apart of another list
+    sema_up(&ps->user_prog_exit);
+    ps->ref_count--;
+
+    if (ps->ref_count == 0)
+    {
+      list_remove(&ps->elem); // we should be using the parent lock here
+      free(ps);
+    }
+  }
+
+
+  /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  if (pd != NULL) 
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
-    }
+  if (pd != NULL)
+  {
+    /* Correct ordering here is crucial.  We must set
+       cur->pagedir to NULL before switching page directories,
+       so that a timer interrupt can't switch back to the
+       process page directory.  We must activate the base page
+       directory before destroying the process's page
+       directory, or our active page directory will be one
+       that's been freed (and cleared). */
+    cur->pagedir = NULL;
+    pagedir_activate(NULL);
+    pagedir_destroy(pd);
+  }
 }
 
 /* Sets up the CPU for running user code in the current
@@ -330,7 +460,6 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   if (!setup_stack (esp))
     goto done;
 
-  int name_length = 0;
   for (i = argc - 1; i >= 0; i--) // push words onto stack, reversed
   {
     int length = strnlen(argv[i], 1024) + 1; // for \0
@@ -340,18 +469,9 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
     for (int k = 0; k < length; k++)
     {
       *((char *)(*esp) + k) = argv[i][k];
-      if(i == 0){
-        name_length++; // track for name of program
-      }
     }
   }
 
-  // save name of program for exit syscall
-  t->user_prog_name = palloc_get_page (0);
-  if (t->user_prog_name == NULL)
-    return TID_ERROR;
-  strlcpy(t->user_prog_name, argv[0], name_length);
-  
   // word-align later
 
   *esp -= sizeof(char *); // null sentinel
@@ -370,7 +490,7 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   *((int*)(*esp)) = argc;
 
   *esp -= sizeof(void *); // ret addr
-  *((void **)*esp) = NULL;
+  *((void **)*esp) = 0;
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -506,7 +626,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12; // when can we revert this?
+        *esp = PHYS_BASE; // when can we revert this?
       else
         palloc_free_page (kpage);
     }

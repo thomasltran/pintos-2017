@@ -649,6 +649,10 @@ init_thread (struct thread *t, const char *name, int nice)
   list_push_back (&all_list, &t->allelem);
   if (cpu_can_acquire_spinlock)
     spinlock_release (&all_lock);
+#ifdef USERPROG
+  list_init(&t->ps_list);
+  lock_init(&t->ps_lock);
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
