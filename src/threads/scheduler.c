@@ -32,18 +32,21 @@ sched_init (struct ready_queue *curr_rq)
 }
 
 /* Called from thread.c:wake_up_new_thread () and
-   thread_unblock () with the CPU's ready queue locked.
+   thread_unblock () with the current CPU's ready queue
+   locked (and preemption disabled).
    rq is the ready queue that t should be added to when
    it is awoken. It is not necessarily the current CPU.
 
    If called from wake_up_new_thread (), initial will be 1.
    If called from thread_unblock (), initial will be 0.
 
+   If called from the idle thread, curr will be NULL.
+
    Returns RETURN_YIELD if the CPU containing rq should
    be rescheduled when this function returns, else returns
    RETURN_NONE */
 enum sched_return_action
-sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial UNUSED)
+sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial, struct thread *curr UNUSED)
 {
   list_push_back (&rq_to_add->ready_list, &t->elem);
   rq_to_add->nr_ready++;

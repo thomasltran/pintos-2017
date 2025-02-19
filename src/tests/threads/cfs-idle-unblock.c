@@ -22,20 +22,20 @@ test_idle_unblock ()
   struct thread *t1 = driver_create ("t1", 0);
   cfstest_check_current (initial);
   cfstest_advance_time (0);
-  driver_block ();
+  driver_block ();              // initial thread blocked, scheduler should pick t1
   cfstest_check_current (t1);
   cfstest_advance_time (0);
-  driver_block ();
+  driver_block ();              // t1 blocked, scheduler should pick idle thread
   cfstest_check_current (idle);
   cfstest_advance_time (4000000);
-  driver_unblock (t1);
-  cfstest_check_current (t1);
+  driver_unblock (t1);          // t1 unblocks; the idle thread should not be charged
+  cfstest_check_current (t1);   // t1 is scheduled as it's the only non-idle thread
   cfstest_advance_time (0);
   struct thread *t2 = driver_create ("t2", 0);
   cfstest_check_current (t1);
-  cfstest_advance_time (4000000);
+  cfstest_advance_time (4000000);   // t1 runs for 4ms, past its ideal runtime
   driver_interrupt_tick ();
-  cfstest_check_current (t2);
+  cfstest_check_current (t2);       // t2 preempts t1
   pass ();
   cfstest_tear_down ();
 }
