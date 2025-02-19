@@ -46,7 +46,7 @@ sched_init (struct ready_queue *curr_rq)
    be rescheduled when this function returns, else returns
    RETURN_NONE */
 enum sched_return_action
-sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial, struct thread *curr UNUSED)
+sched_unblock (struct ready_queue *rq_to_add, struct thread *t, int initial UNUSED, struct thread *curr UNUSED)
 {
   list_push_back (&rq_to_add->ready_list, &t->elem);
   rq_to_add->nr_ready++;
