@@ -53,7 +53,7 @@ static void write(int fd, const void * buffer, unsigned size){
 }
 
 /*
-Whenever a user process terminates, because it called exit or for any other reason, print the process's name and exit code, formatted as if printed by printf ("%s: exit(%d)\n", ...);. The name printed should be the full name passed to process_execute(), omitting command-line arguments. Do not print these messages when a kernel thread that is not a user process terminates, or when the halt system call is invoked. The message is optional when a process fails to load.
+Whenever a user process terminates, because it called exit or for any other reason, print the process's name and exit code, formatted as if printed by printf ("%s: exit(%d)\n", ...);. The name printed should be the full name passed to (), omitting command-line arguments. Do not print these messages when a kernel thread that is not a user process terminates, or when the halt system call is invoked. The message is optional when a process fails to load.
 */
 
 static void exit(int status){

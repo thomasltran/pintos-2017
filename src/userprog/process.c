@@ -52,11 +52,10 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   ps->user_prog_name = fn_copy;
-  // child of the calling process
-  /* Create a new thread to execute FILE_NAME. */
 
   lock_release(&fs_lock);
-
+  // child of the calling process
+  /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(file_name, NICE_DEFAULT, start_process, ps);
   if (tid == TID_ERROR)
   {
@@ -71,13 +70,15 @@ process_execute (const char *file_name)
 
   // even if the child thread gets load balanced, i don't think it matters
   // based off of reference count so everything gets freed anyways?
-  ps->child_tid = tid;
-  ASSERT(ps->user_prog_name != NULL);
 
   struct thread *parent_thread = thread_current();
-
   lock_acquire(&parent_thread->ps_lock);
+
+  ps->child_tid = tid;
+  parent_thread->ps = NULL; // for process_exit
+  ASSERT(ps->user_prog_name != NULL);
   list_push_back(&parent_thread->ps_list, &ps->elem);
+
   lock_release(&parent_thread->ps_lock);
   return tid;
 }
@@ -91,8 +92,6 @@ start_process(void *p)
 
   struct process *ps = (struct process *)p;
   char *file_name = ps->user_prog_name;
-
-  // char *file_name = (char *)file_name_;
 
   char *argv[64]; // find better limit
   char *token, *save_ptr;
@@ -151,8 +150,6 @@ start_process(void *p)
     child_thread->ps->user_prog_name = hold;
   }
 
-  // account for \0
-
   //hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
 
   /* Start the user process by simulating a return from an
@@ -176,21 +173,21 @@ start_process(void *p)
    does nothing. */
 int process_wait(tid_t child_tid)
 {
-  while(true);
   struct thread *parent_thread = thread_current();
   int exit_status = -1;
 
   lock_acquire(&parent_thread->ps_lock);
+  
   for (struct list_elem *e = list_begin(&parent_thread->ps_list);
        e != list_end(&parent_thread->ps_list);)
   {
-    struct thread *child_thread = list_entry(e, struct thread, elem);
-    if (child_tid == child_thread->tid)
+    struct process *ps = list_entry(e, struct process, elem);
+ 
+    if (child_tid == ps->child_tid)
     {
       e = list_remove(e);
-      struct process *ps = child_thread->ps;
-      sema_down(&ps->user_prog_exit);
       exit_status = ps->exit_status;
+      sema_down(&ps->user_prog_exit);
       ps->ref_count--;
 
       if (ps->ref_count == 0)
@@ -198,6 +195,7 @@ int process_wait(tid_t child_tid)
         free(ps);
       }
       lock_release(&parent_thread->ps_lock);
+
       return exit_status;
     }
     e = list_next(e);
@@ -212,7 +210,7 @@ void
 
 process_exit(void)
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current();
 
   uint32_t *pd;
 
@@ -220,8 +218,7 @@ process_exit(void)
   for (struct list_elem *e = list_begin(&cur->ps_list);
        e != list_end(&cur->ps_list);)
   {
-    struct thread *child_thread = list_entry(e, struct thread, elem);
-    struct process *ps = child_thread->ps;
+    struct process *ps = list_entry(e, struct process, elem);
 
     sema_up(&ps->user_prog_exit);
     ps->ref_count--;
@@ -237,6 +234,22 @@ process_exit(void)
     }
   }
   lock_release(&cur->ps_lock);
+
+
+  struct process *ps = cur->ps;
+  if (ps != NULL)
+  { // is not a parent (is not a child for anything); nothing in list above
+    // apart of another list
+    sema_up(&ps->user_prog_exit);
+    ps->ref_count--;
+
+    if (ps->ref_count == 0)
+    {
+      list_remove(&ps->elem); // we should be using the parent lock here
+      free(ps);
+    }
+  }
+
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
