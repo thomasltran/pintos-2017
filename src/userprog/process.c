@@ -472,8 +472,17 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
     }
   }
 
-  // word-align later
-
+  // word-align
+  /* Align stack pointer to 4 byte boundary */
+  uintptr_t esp_int = (uintptr_t)*esp;
+  int padding = esp_int % 4;
+  if (padding != 0)
+  {
+    esp_int -= padding;
+    *esp = (void *)esp_int;
+    memset(*esp, 0, padding); // zero padding bytes
+  }
+  
   *esp -= sizeof(char *); // null sentinel
   *((char **)(*esp)) = NULL;
 
@@ -495,6 +504,10 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
+  /* Debug: Show stack contents */
+  printf("Stack pointer at: %p\n", *esp);
+  hex_dump(*esp, *esp, PHYS_BASE - (uintptr_t)*esp, true);
+  
   success = true;
 
  done:
