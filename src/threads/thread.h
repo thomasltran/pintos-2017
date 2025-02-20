@@ -111,8 +111,7 @@ struct thread
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
   struct process * ps;
-  struct list ps_list;
-  struct lock ps_lock;
+  struct list ps_list; // parent thread is single threaded, list operations only ever executed by itself
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -122,6 +121,7 @@ struct thread
 struct process
 {
    struct list_elem elem; // list of processes
+   struct lock ps_lock; // protect process fields
    int exit_status;
    int ref_count;
    tid_t child_tid;

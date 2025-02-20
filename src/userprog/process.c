@@ -40,6 +40,7 @@ process_execute (const char *file_name)
   tid_t tid;
 
   struct process *ps = malloc(sizeof(struct process));
+  lock_init(&ps->ps_lock);
   ps->exit_status = -1;
   ps->ref_count = 2;
   ps->child_tid = -1;
@@ -68,18 +69,16 @@ process_execute (const char *file_name)
     return TID_ERROR;
   }
 
+  ps->child_tid = tid; // if child is in process_exit before this, it has the ref to ps already so semaphore is good
+  ASSERT(ps->user_prog_name != NULL);
+
   // even if the child thread gets load balanced, i don't think it matters
   // based off of reference count so everything gets freed anyways?
 
   struct thread *parent_thread = thread_current();
-  lock_acquire(&parent_thread->ps_lock);
-
-  ps->child_tid = tid;
   parent_thread->ps = NULL; // for process_exit
-  ASSERT(ps->user_prog_name != NULL);
   list_push_back(&parent_thread->ps_list, &ps->elem);
 
-  lock_release(&parent_thread->ps_lock);
   return tid;
 }
 
@@ -132,7 +131,7 @@ start_process(void *p)
 
   /* If load failed, quit. */
 
-  palloc_free_page (file_name);
+  palloc_free_page(file_name);
 
   lock_release(&fs_lock);
 
@@ -150,7 +149,7 @@ start_process(void *p)
     child_thread->ps->user_prog_name = hold;
   }
 
-  //hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
+  // hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -176,31 +175,36 @@ int process_wait(tid_t child_tid)
   struct thread *parent_thread = thread_current();
   int exit_status = -1;
 
-  lock_acquire(&parent_thread->ps_lock);
-  
   for (struct list_elem *e = list_begin(&parent_thread->ps_list);
        e != list_end(&parent_thread->ps_list);)
   {
     struct process *ps = list_entry(e, struct process, elem);
- 
-    if (child_tid == ps->child_tid)
+
+    if (child_tid == ps->child_tid) // HB relationship for parent in setting vs. reading ps->child_tid
     {
       e = list_remove(e);
-      exit_status = ps->exit_status;
+
       sema_down(&ps->user_prog_exit);
+
+      lock_acquire(&ps->ps_lock);
+
+      exit_status = ps->exit_status;
+
       ps->ref_count--;
 
       if (ps->ref_count == 0)
       {
+        lock_release(&ps->ps_lock);
         free(ps);
       }
-      lock_release(&parent_thread->ps_lock);
-
+      else
+      {
+        lock_release(&ps->ps_lock);
+      }
       return exit_status;
     }
     e = list_next(e);
   }
-  lock_release(&parent_thread->ps_lock);
 
   return -1;
 }
@@ -211,42 +215,50 @@ void
 process_exit(void)
 {
   struct thread *cur = thread_current();
-
   uint32_t *pd;
 
-  lock_acquire(&cur->ps_lock);
   for (struct list_elem *e = list_begin(&cur->ps_list);
        e != list_end(&cur->ps_list);)
   {
     struct process *ps = list_entry(e, struct process, elem);
 
     sema_up(&ps->user_prog_exit);
+
+    lock_acquire(&ps->ps_lock);
+
     ps->ref_count--;
 
     if (ps->ref_count == 0)
     {
+      lock_release(&ps->ps_lock);
       e = list_remove(e);
       free(ps);
     }
     else
     {
+      lock_release(&ps->ps_lock);
       e = list_next(e);
     }
   }
-  lock_release(&cur->ps_lock);
-
 
   struct process *ps = cur->ps;
   if (ps != NULL)
   { // is not a parent (is not a child for anything); nothing in list above
     // apart of another list
     sema_up(&ps->user_prog_exit);
+    lock_acquire(&ps->ps_lock);
+
     ps->ref_count--;
 
     if (ps->ref_count == 0)
     {
+      lock_release(&ps->ps_lock);
       list_remove(&ps->elem); // we should be using the parent lock here
       free(ps);
+    }
+    else
+    {
+      lock_release(&ps->ps_lock);
     }
   }
 
