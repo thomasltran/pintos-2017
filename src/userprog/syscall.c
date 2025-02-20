@@ -62,7 +62,9 @@ static void exit(int status){
   // not sure if we need the locking/disable intr
   
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
+  lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
   free(thread_curr->ps->user_prog_name);
+  lock_release(&ps->ps_lock);
   thread_exit();
 }
