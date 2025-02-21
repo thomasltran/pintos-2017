@@ -16,6 +16,9 @@ static void syscall_handler (struct intr_frame *);
 static void write(int fd, const void * buffer, unsigned size);
 static void exit(int status);
 static bool is_valid_user_ptr(const void *ptr);
+static bool validate_user_buffer(const void *uaddr, size_t size);
+static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
+static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 
 /* Initialize the system call handler */
 void
@@ -73,7 +76,7 @@ is_valid_user_ptr(const void *ptr)
     return ptr != NULL 
         && is_user_vaddr(ptr)
         && pagedir_get_page(t->pagedir, ptr) != NULL;
-}
+} 
 
 /* Validate a buffer in user memory
    Parameters:
