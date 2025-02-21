@@ -13,10 +13,10 @@ Unfortunately, it is impractical to supply every @value{coursenumber} student
 a dedicated PC for use with Pintos.  Therefore, we will run Pintos projects
 in a system simulator, that is, a program that simulates an 80@var{x}86
 CPU and its peripheral devices accurately enough that unmodified operating
-systems and software can run under it.  In class we will use the
-@uref{http://bochs.sourceforge.net, , Bochs} and 
-@uref{http://fabrice.bellard.free.fr/qemu/, ,
-QEMU} simulators.  Pintos has also been tested with
+systems and software can run under it.  In class we will primarily use the
+@uref{http://fabrice.bellard.free.fr/qemu/, , QEMU} simulator,
+using @uref{http://bochs.sourceforge.net, , Bochs} as backup.
+Pintos has also been tested with
 @uref{http://www.vmware.com/, , VMware Player}.
 
 These projects are hard.  @value{coursenumber} has a reputation of taking a lot of
@@ -195,8 +195,8 @@ which passes the arguments @code{run alarm-multiple} to the Pintos
 kernel.  In these arguments, @command{run} instructs the kernel to run a
 test and @code{alarm-multiple} is the test to run.
 
-This command creates a @file{bochsrc.txt} file, which is needed for
-running Bochs, and then invoke Bochs.  Bochs opens a new window that
+This command creates a temporary configuration file, which is needed for
+running Bochs, and then invokes Bochs.  If you have access to an X11 display, Bochs opens a new window that
 represents the simulated machine's display, and a BIOS message briefly
 flashes.  Then Pintos boots and runs the @code{alarm-multiple} test
 program, which outputs a few screenfuls of text.  When it's done, you
@@ -225,7 +225,7 @@ must precede the commands passed to the Pintos kernel and be separated
 from them by @option{--}, so that the whole command looks like
 @code{pintos @var{option}@dots{} -- @var{argument}@dots{}}.  Invoke
 @code{pintos} without any arguments to see a list of available options.
-Options can select a simulator to use: the default is Bochs, but
+Options can select a simulator to use: the default is Qemu, but
 @option{--qemu} selects QEMU.  You can run the simulator
 with a debugger (@pxref{GDB}).  You can set the amount of memory to give
 the VM.  Finally, you can select how you want VM output to be displayed:
@@ -313,9 +313,9 @@ print a ``pass'' or ``fail'' message for each one.  When a test fails,
 After running all the tests, @command{make check} also prints a summary
 of the test results.
 
-For project 1, the tests will probably run faster in Bochs.  For the
-rest of the projects, they will run much faster in QEMU.
-@command{make check} will select the faster simulator by default, but
+Although we used Bochs for project 1 in the past, we are now using
+Qemu for all projects.
+@command{make check} will select the simulator we use, but
 you can override its choice by specifying @option{SIMULATOR=--bochs} or
 @option{SIMULATOR=--qemu} on the @command{make} command line.
 
