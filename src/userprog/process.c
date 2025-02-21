@@ -516,10 +516,10 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
-  /* Debug: Show stack contents */
+  /* Debug: Show stack contents 
   printf("Stack pointer at: %p\n", *esp);
   hex_dump(*esp, *esp, PHYS_BASE - (uintptr_t)*esp, true);
-  
+  */
   success = true;
 
  done:
