@@ -107,6 +107,9 @@ struct thread
   uint64_t vruntime; // vruntime of the thread
   uint64_t last_cpu_time;  // track start (running) time
 
+  struct file **fd_table; /* file descriptor table */
+  int fd_count; /* next available file descriptor */
+  
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */

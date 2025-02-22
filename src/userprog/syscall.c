@@ -8,8 +8,12 @@
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "filesys/filesys.h"
+#include <string.h> 
 
 #define NAME_MAX 14  // Maximum filename length per spec
+#define FD_MIN 3    // skip first 3 fds (stdin, stdout, stderr)
+#define FD_MAX 128 // maximum number of fds (per Dr Back reccomendation)
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -51,9 +55,9 @@ syscall_init (void)
     Pattern 2: Buffer Parameters (SYS_WRITE)
     1. validate_user_buffer(buffer, size)  (Full buffer check)
     2. Direct access after validation      
-      - Safe because:
-        a) Buffer remains mapped (Project 2 assumption)
-        b) Locking prevents concurrent modification
+    - Safe because:
+      a) Buffer remains mapped (Project 2 assumption)
+      b) Locking prevents concurrent modification
 
     Pattern 3: Simple Values (SYS_EXIT)
     1. is_valid_user_ptr(status_ptr)  (Single pointer check)
@@ -189,7 +193,6 @@ syscall_handler(struct intr_frame *f)
   uint32_t sc_num = *((uint32_t *)(f->esp));
 
   // Syscalls Handled Via Switch Cases
-
   switch (sc_num) {
 
     // write
@@ -211,13 +214,13 @@ syscall_handler(struct intr_frame *f)
     case SYS_CREATE: {
       const char *name = *(const char **)(f->esp + 4);
       unsigned initial_size = *(unsigned *)(f->esp + 8);
-      
+      char filename[NAME_MAX + 1];  // Kernel buffer
+
       /* Validate filename pointer and buffer */
-      char filename[NAME_MAX + 1];
       bool valid = validate_user_buffer(name, NAME_MAX + 1) && 
                    copy_user_string(name, filename, sizeof(filename));
       
-      /* Explicit length check for maximum filename size */
+      /* length check for maximum filename size */
       if (!valid || strlen(filename) >= NAME_MAX) {
         f->eax = 0;
       } else {
@@ -225,6 +228,65 @@ syscall_handler(struct intr_frame *f)
         f->eax = filesys_create(filename, initial_size) ? 1 : 0;
         lock_release(&fs_lock);
       }
+      break;
+    }
+
+    // open
+    case SYS_OPEN: { 
+      const char *name = *(const char **)(f->esp + 4);
+      char filename[NAME_MAX + 1];  // Kernel buffer
+
+      /* Validate filename pointer and buffer */
+      bool valid = validate_user_buffer(name, NAME_MAX + 1) && 
+               copy_user_string(name, filename, sizeof(filename));
+
+      /* Check if filename is valid */
+      if (!valid){
+        f->eax = -1;
+        break;
+      } 
+
+      /* Open file */
+      lock_acquire(&fs_lock);
+      struct file *file = filesys_open(filename);
+
+      /* Check if file exists */
+      if (file == NULL) {
+        lock_release(&fs_lock);
+        f->eax = -1;
+        break;
+      }
+
+      /* Allocate FD table if this is first open */
+      struct thread *cur = thread_current(); 
+      if (cur->fd_table == NULL) {
+        // calloc (since we know the size)
+        cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
+        cur->fd_count = FD_MIN;
+      }
+
+      /* Find a free fd */
+      int fd = -1;
+      for (int i = cur->fd_count; i < FD_MAX; i++) {
+        if (cur->fd_table[i] == NULL) {
+          fd = i;
+          cur->fd_count = (i + 1) % FD_MAX;
+          break;
+        }
+      }
+
+      /* Table is full (i.e. no free fds) */
+      if (fd ==- 1) {
+        file_close(file);
+        lock_release(&fs_lock);
+        f->eax = -1;
+        break;
+      }
+
+      /* Store file pointer in FD table */
+      cur->fd_table[fd] = file;
+      lock_release(&fs_lock);
+      f->eax = fd;
       break;
     }
 
