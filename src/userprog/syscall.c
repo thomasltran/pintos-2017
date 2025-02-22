@@ -8,6 +8,7 @@
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "filesys/filesys.h"
 #include <string.h> 
 
@@ -297,6 +298,45 @@ syscall_handler(struct intr_frame *f)
       exit(status);
       break;
     }
+
+    case SYS_WAIT:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+      }
+      else
+      {
+        tid_t pid = *((tid_t *)(f->esp + 4));
+        f->eax = process_wait(pid);
+      }
+
+      break;
+
+    case SYS_EXEC:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+      }
+      else
+      {
+        char *cmd_line = *((char **)(f->esp + 4));
+        char filename[NAME_MAX + 1]; // Kernel buffer
+
+        /* Validate filename pointer and buffer */
+        bool valid = validate_user_buffer(cmd_line, NAME_MAX + 1) &&
+                     copy_user_string(cmd_line, filename, sizeof(filename));
+
+        /* Check if filename is valid */
+        if (!valid)
+        {
+          f->eax = -1;
+        }
+        else
+        {
+          f->eax = process_execute(cmd_line);
+        }
+      }
+      break;
   }
 }
 
@@ -325,14 +365,18 @@ static void write(int fd, const void * buffer, unsigned size){
    Optional message when process fails to load
 */
 static void exit(int status){
-  struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack?? 
+  struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack??
+  // printf("syscall exit %d list size %d\n", thread_curr->tid, list_size(&thread_curr->ps_list));
   struct process * ps = thread_curr->ps;
+  // if(ps == NULL){
+  //   printf("ps is NULL\n");
+  // }
   // not sure if we need the locking/disable intr
-  
+
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
   lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
-  free(thread_curr->ps->user_prog_name);
+  // free(thread_curr->ps->user_prog_name);
   lock_release(&ps->ps_lock);
   thread_exit();
 }
