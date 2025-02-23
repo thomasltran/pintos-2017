@@ -125,12 +125,10 @@ struct process
 {
    struct list_elem elem; // list of processes
    struct lock ps_lock; // protect process fields
-   struct semaphore user_prog_exit;
-   struct semaphore child_started;
-   bool good_start; // started child process's thread and successfully making it past load
    int exit_status;
    int ref_count;
    tid_t child_tid;
+   struct semaphore user_prog_exit;
    char * user_prog_name; // for exit
 };
 #endif
