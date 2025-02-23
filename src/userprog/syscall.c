@@ -335,6 +335,27 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    case SYS_SEEK:
+    {
+      // void seek (int fd, unsigned position)
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        exit(-1);
+      }
+
+      int fd = *(int *)(f->esp + 4);
+      unsigned position = *(unsigned *)(f->esp + 8);
+
+      struct thread *cur = thread_current();
+      if (cur == NULL || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        break;
+      }
+      struct file *cur_file = cur->fd_table[fd];
+      file_seek(cur_file, position);
+      break;
+    }
+
     // create
     case SYS_CREATE: {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
@@ -488,7 +509,7 @@ Returns:
 static int write(int fd, const void * buffer, unsigned size){
   if(fd == 1){
     lock_acquire(&fs_lock);
-    int count = 0;
+    unsigned count = 0;
     void * pos = buffer;
     while(count < size){
       int buffer_size = (size-count) > 200 ? 200 : size-count;
@@ -510,13 +531,12 @@ static int write(int fd, const void * buffer, unsigned size){
     struct file* cur_file = cur->fd_table[fd];
     lock_acquire(&fs_lock);
 
-    int count = 0;
+    unsigned count = 0;
     while(count < size){
-      int buffer_size = (size-count) > 200 ? 200 : size-count;
+      int buffer_size = (size-count) > 207 ? 207 : size-count;
 
-      off_t bytes = file_write(cur_file, buffer, buffer_size);
-      count += buffer_size;
-
+      off_t bytes = file_write(cur_file, buffer+count, buffer_size);
+      count += bytes;
     }
     lock_release(&fs_lock);
     return count;
