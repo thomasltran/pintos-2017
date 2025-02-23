@@ -38,6 +38,10 @@ process_execute (const char *file_name)
   tid_t tid;
 
   struct process *ps = malloc(sizeof(struct process));
+  if (ps == NULL)
+  {
+    return TID_ERROR;
+  }
   lock_init(&ps->ps_lock);
   ps->exit_status = -1;
   ps->child_tid = -1; // remains -1 if failed start
@@ -62,7 +66,7 @@ process_execute (const char *file_name)
 
   if (tid == TID_ERROR || !ps->good_start) // if child thread fails, never gets added to the list
   {
-    palloc_free_page(fn_copy);
+    //palloc_free_page(fn_copy); I think we free in start_process
     free(ps);
     return TID_ERROR;
   }
@@ -74,10 +78,8 @@ process_execute (const char *file_name)
   // based off of reference count so everything gets freed anyways?
 
   struct thread *parent_thread = thread_current();
-  //parent_thread->ps = NULL; // for process_exit
   list_push_back(&parent_thread->ps_list, &ps->elem);
 
-   printf("process_exec for child %d by parent %d name %s\n", ps->child_tid, parent_thread->tid, ps->user_prog_name);
   return tid;
 }
 
@@ -178,24 +180,18 @@ int process_wait(tid_t child_tid)
 
     if (child_tid == ps->child_tid && ps->ref_count > 0) // HB relationship for parent in setting vs. reading ps->child_tid
     {
-       printf("wait thread %d down\n", parent_thread->tid);
       sema_down(&ps->user_prog_exit);
-       printf("wait thread %d up\n", parent_thread->tid);
-
 
       lock_acquire(&ps->ps_lock);
 
       exit_status = ps->exit_status;
       ps->ref_count--;
-       printf("wait thread %d returning exit status %d list size %d\n", parent_thread->tid, exit_status, list_size(&parent_thread->ps_list));
-      lock_release(&ps->ps_lock);
 
-      //ASSERT(parent_thread->ps != NULL);
+      lock_release(&ps->ps_lock);
       return exit_status;
     }
     e = list_next(e);
   }
-
   return -1;
 }
 
@@ -207,14 +203,11 @@ process_exit(void)
   uint32_t *pd;
   int tid = cur->tid;
 
-   printf("exit thread %d enter\n", cur->tid);
-
   for (struct list_elem *e = list_begin(&cur->ps_list);
        e != list_end(&cur->ps_list);)
   {
     struct process *ps = list_entry(e, struct process, elem);
     ASSERT(ps != NULL);
-
 
     lock_acquire(&ps->ps_lock);
 
@@ -223,7 +216,6 @@ process_exit(void)
     if (ps->ref_count == 0) // nothing waiting for it; parent
     {
       e = list_remove(e);
-       printf("ps for child %d was freed by %d prog_name %s\n", ps->child_tid, cur->tid, ps->user_prog_name);
       lock_release(&ps->ps_lock);
 
       free(ps->user_prog_name);
@@ -242,28 +234,22 @@ process_exit(void)
   { // apart of another list (fork1 -> fork2 -> fork3; fork2)
     lock_acquire(&ps->ps_lock);
 
-     printf("thread %d in here to decref its ps struct\n", cur->tid);
     ps->ref_count--;
 
     if (ps->ref_count == 0) // nothing waiting for it; parent
     {
       list_remove(&ps->elem); // list ops only done by parent
-       printf("ps for child %d was freed by %d prog_name %s\n", ps->child_tid, cur->tid, ps->user_prog_name);
       lock_release(&ps->ps_lock);
       free(ps->user_prog_name);
       free(ps);
     }
     else
     {
-       printf("goes here\n");
-
       sema_up(&ps->user_prog_exit);
 
       lock_release(&ps->ps_lock);
     }
   }
-
-   printf("exit thread %d done\n", cur->tid);
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
@@ -308,7 +294,6 @@ process_activate (void)
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 
-/* For use with ELF types in  printf(). */
 #define PE32Wx PRIx32   /*  Print Elf32_Word in hexadecimal. */
 #define PE32Ax PRIx32   /*  Print Elf32_Addr in hexadecimal. */
 #define PE32Ox PRIx32   /*  Print Elf32_Off in hexadecimal. */
@@ -395,7 +380,6 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
@@ -408,7 +392,6 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
 
@@ -520,7 +503,6 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   *eip = (void (*) (void)) ehdr.e_entry;
 
   /* Debug: Show stack contents 
-   printf("Stack pointer at: %p\n", *esp);
   hex_dump(*esp, *esp, PHYS_BASE - (uintptr_t)*esp, true);
   */
   success = true;
