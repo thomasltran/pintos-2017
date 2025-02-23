@@ -331,6 +331,7 @@ syscall_handler(struct intr_frame *f)
         return;
       }
       off_t bytes = write(fd, buffer, size);
+      f->eax = bytes;
       break;
     }
 
