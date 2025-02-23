@@ -518,7 +518,7 @@ static int write(int fd, const void * buffer, unsigned size){
     int count = 0;
     void * pos = buffer;
     while(count < size){
-      int buffer_size = (size-count) > 200 ? 200 : size;
+      int buffer_size = (size-count) > 200 ? 200 : size-count;
 
       putbuf(pos, buffer_size);
       count += buffer_size;
@@ -529,14 +529,26 @@ static int write(int fd, const void * buffer, unsigned size){
     return count;
   }
   else{
-    // printf("Ah nahhh, you've done goofed now!\n");
+
     struct thread * cur = thread_current();
     if(cur->fd_table == NULL || cur->fd_table[fd]== NULL){
       return 0;
     }
     struct file* cur_file = cur->fd_table[fd];
-    off_t bytes = file_write(cur_file, buffer, size);
-    return bytes;
+    lock_acquire(&fs_lock);
+
+    int count = 0;
+    while(count < size){
+      int buffer_size = (size-count) > 200 ? 200 : size-count;
+
+      off_t bytes = file_write(cur_file, buffer, buffer_size);
+      count += buffer_size;
+
+    }
+    lock_release(&fs_lock);
+    return count;
+
+    lock_release(&fs_lock);
   }
   return 0;
   
