@@ -8,6 +8,7 @@
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
+#include "userprog/process.h"
 #include "filesys/filesys.h"
 #include <string.h> 
 
@@ -23,6 +24,7 @@ static bool is_valid_user_ptr(const void *ptr);
 static bool validate_user_buffer(const void *uaddr, size_t size);
 static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
 static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
+static const char *buffer_check(struct intr_frame *f, int set_eax_err);
 
 /* Initialize the system call handler */
 void
@@ -156,13 +158,14 @@ copy_user_string(const char *usrc, char *kdst, size_t max_len)
 
     /* Loop string until max len or null terminator */
     for (size_t i = 0; i < max_len; i++) {
+      // printf("count %d\n", i);
       uint8_t byte;
-      int result = get_user_byte(usrc + i, &byte);
+      const uint8_t * src = (const uint8_t *)usrc + i;
+      int result = get_user_byte(src, &byte);
 
       if (!result){
         return false;
       }
-
       kdst[i] = byte;
       if (byte == '\0'){
         return true;
@@ -214,6 +217,32 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
   return true; // if all byte(s) copied successfully (no page faults)
 }
 
+// checks the program name/file name, returns it if good
+// pass in the value of an error (ex: 0 for false, -1, etc.) in the int
+static const char *buffer_check(struct intr_frame *f, int set_eax_err)
+{
+  char filename[NAME_MAX + 1]; // Kernel buffer
+
+  bool valid = validate_user_buffer(f->esp + 4, NAME_MAX + 1);
+  if (!valid)
+  {
+    f->eax = set_eax_err;
+    exit(-1);
+    NOT_REACHED();
+  }
+  const char *cmd_line = *((char **)(f->esp + 4));
+  valid = copy_user_string(cmd_line, filename, sizeof(filename));
+
+  /* Check if filename is valid */
+  if (!valid)
+  {
+    f->eax = set_eax_err;
+    exit(-1);
+    NOT_REACHED();
+  }
+  return cmd_line;
+}
+
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
 
 /* System call handler 
@@ -225,8 +254,8 @@ syscall_handler(struct intr_frame *f)
 {
   //printf ("system call!\n");
   // Check if user pointer is valid (i.e. is in user space)
-  if(f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp)){
-    printf("exceed valid\n");
+  if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
+  {
     exit(-1);
     return;
   }
@@ -237,6 +266,12 @@ syscall_handler(struct intr_frame *f)
   switch (sc_num) {
     // read
     case SYS_READ: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
       int fd = *((int *)(f->esp + 4));
       const void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
@@ -267,7 +302,7 @@ syscall_handler(struct intr_frame *f)
       if (bytes_read > 0) {
           /* Re-validate buffer since page status might have changed */
           if (!validate_user_buffer(buffer, bytes_read) || 
-              !memcpy_to_user(buffer, kern_buf, bytes_read)) {
+              !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
               bytes_read = -1;
           }
       }
@@ -280,10 +315,16 @@ syscall_handler(struct intr_frame *f)
 
     // write
     case SYS_WRITE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
       int fd = *((int *)(f->esp + 4));
       const void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
-      
+
       /* Validation using buffer range check */
       if (!validate_user_buffer(buffer, size)) {
         exit(-1);
@@ -295,18 +336,21 @@ syscall_handler(struct intr_frame *f)
 
     // create
     case SYS_CREATE: {
-      const char *name = *(const char **)(f->esp + 4);
-      unsigned initial_size = *(unsigned *)(f->esp + 8);
-      char filename[NAME_MAX + 1];  // Kernel buffer
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
 
-      /* Validate filename pointer and buffer */
-      bool valid = validate_user_buffer(name, NAME_MAX + 1) && 
-                   copy_user_string(name, filename, sizeof(filename));
-      
-      /* length check for maximum filename size */
-      if (!valid || strlen(filename) >= NAME_MAX) {
+      const char *filename = buffer_check(f, 0);
+      unsigned initial_size = *(unsigned *)(f->esp + 8);
+
+      if (strnlen(filename, NAME_MAX) >= NAME_MAX)
+      {
         f->eax = 0;
-      } else {
+      }
+      else
+      {
         lock_acquire(&fs_lock);
         f->eax = filesys_create(filename, initial_size) ? 1 : 0;
         lock_release(&fs_lock);
@@ -315,19 +359,14 @@ syscall_handler(struct intr_frame *f)
     }
 
     // open
-    case SYS_OPEN: { 
-      const char *name = *(const char **)(f->esp + 4);
-      char filename[NAME_MAX + 1];  // Kernel buffer
-
-      /* Validate filename pointer and buffer */
-      bool valid = validate_user_buffer(name, NAME_MAX + 1) && 
-               copy_user_string(name, filename, sizeof(filename));
-
-      /* Check if filename is valid */
-      if (!valid){
+    case SYS_OPEN:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
         f->eax = -1;
-        break;
-      } 
+        exit(-1);
+      }
+      const char *filename = buffer_check(f, -1);
 
       /* Open file */
       lock_acquire(&fs_lock);
@@ -394,11 +433,43 @@ syscall_handler(struct intr_frame *f)
 
     // exit
     case SYS_EXIT: {
-      int status = *((int *)(f->esp + 4));
-      f->eax = status;
-      exit(status);
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      else
+      {
+        int status = *((int *)(f->esp + 4));
+        f->eax = status;
+        exit(status);
+      }
       break;
     }
+
+    case SYS_WAIT:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      else
+      {
+        tid_t pid = *((tid_t *)(f->esp + 4));
+        f->eax = process_wait(pid);
+      }
+
+      break;
+
+    case SYS_EXEC:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      const char *cmd_line = buffer_check(f, -1);
+      f->eax = process_execute(cmd_line);
+      break;
   }
 }
 
@@ -427,14 +498,18 @@ static void write(int fd, const void * buffer, unsigned size){
    Optional message when process fails to load
 */
 static void exit(int status){
-  struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack?? 
+  struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack??
+  // printf("syscall exit %d list size %d\n", thread_curr->tid, list_size(&thread_curr->ps_list));
   struct process * ps = thread_curr->ps;
+  // if(ps == NULL){
+  //   printf("ps is NULL\n");
+  // }
   // not sure if we need the locking/disable intr
-  
+
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
   lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
-  free(thread_curr->ps->user_prog_name);
+  // free(thread_curr->ps->user_prog_name);
   lock_release(&ps->ps_lock);
   thread_exit();
 }
