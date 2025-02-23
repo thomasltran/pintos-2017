@@ -12,7 +12,7 @@
 #include <string.h> 
 
 #define NAME_MAX 14  // Maximum filename length per spec
-#define FD_MIN 3    // skip first 3 fds (stdin, stdout, stderr)
+#define FD_MIN 3    // Reserve 0 (stdin), 1 (stdout), 2 (stderr)
 #define FD_MAX 128 // maximum number of fds (per Dr Back reccomendation)
 
 /* Function declarations */
@@ -67,7 +67,7 @@ syscall_init (void)
 
 /* Validates that a user pointer is valid by checking that:
    - It is not NULL
-   - Points to user virtual address space 
+   - Points to user virtual address space (below PHYS_BASE)
    - Has a valid page mapping
    Parameters:
      - ptr: Pointer to validate
@@ -173,6 +173,47 @@ copy_user_string(const char *usrc, char *kdst, size_t max_len)
     return true;
 }
 
+/* Writes a byte from kernel memory to user memory.
+   Parameters:
+     - uaddr: User virtual address to write to
+     - kbyte: Kernel byte to copy
+   Returns true if successful, false if invalid user pointer
+*/
+static bool
+put_user_byte(uint8_t *uaddr, uint8_t kbyte)
+{
+    /* Check if user pointer is valid */
+    if (!is_valid_user_ptr(uaddr))
+        return false;
+
+    /* Write byte to user memory */
+    *uaddr = kbyte;
+    return true; // if byte copied successfully (no page faults)
+}
+
+/* Copies data from kernel memory to user memory.
+   Parameters:
+     - udst: User destination buffer
+     - ksrc: Kernel source buffer
+     - max_len: Maximum length to copy
+   Returns true if successful, false if invalid user pointer or buffer overflow
+*/
+static bool
+memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
+{
+  /* user destination & kernel source pointers */
+  uint8_t *udst_ptr = udst;
+  const uint8_t *ksrc_ptr = ksrc;
+
+  /* Copy each byte from kernel to user */
+  for (size_t i = 0; i < max_len; i++) {
+    if (!put_user_byte(udst_ptr + i, ksrc_ptr[i])) {
+      return false; // if any byte fails to copy
+    }
+  }
+  return true; // if all byte(s) copied successfully (no page faults)
+}
+
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
 
 /* System call handler 
@@ -194,6 +235,48 @@ syscall_handler(struct intr_frame *f)
 
   // Syscalls Handled Via Switch Cases
   switch (sc_num) {
+    // read
+    case SYS_READ: {
+      int fd = *((int *)(f->esp + 4));
+      const void *buffer = *((void **)(f->esp + 8));
+      unsigned size = *((unsigned *)(f->esp + 12));
+      int bytes_read = -1; // default return value (if error when reading)
+      
+      /* Validate FD */
+      struct thread *cur = thread_current();
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
+        f->eax = -1;
+        break;
+      }
+
+      /* Validate buffer */
+      if (!validate_user_buffer(buffer, size)) {
+        f->eax = -1;
+        break;
+      }
+
+      /* Perform read operation */
+      lock_acquire(&fs_lock);
+      struct file *file = cur->fd_table[fd];
+
+      /* Allocate kernel buffer and read from file */
+      uint8_t *kern_buf = malloc(size);
+      bytes_read = file_read(file, kern_buf, size);
+      
+      /* Copy to user buffer if read succeeded */
+      if (bytes_read > 0) {
+          /* Re-validate buffer since page status might have changed */
+          if (!validate_user_buffer(buffer, bytes_read) || 
+              !memcpy_to_user(buffer, kern_buf, bytes_read)) {
+              bytes_read = -1;
+          }
+      }
+      
+      free(kern_buf);
+      lock_release(&fs_lock);
+      f->eax = bytes_read;
+      break;
+    }
 
     // write
     case SYS_WRITE: {
@@ -209,7 +292,7 @@ syscall_handler(struct intr_frame *f)
       write(fd, buffer, size);
       break;
     }
-  
+
     // create
     case SYS_CREATE: {
       const char *name = *(const char **)(f->esp + 4);
@@ -267,7 +350,7 @@ syscall_handler(struct intr_frame *f)
 
       /* Find a free fd */
       int fd = -1;
-      for (int i = cur->fd_count; i < FD_MAX; i++) {
+      for (int i = FD_MIN; i < FD_MAX; i++) {
         if (cur->fd_table[i] == NULL) {
           fd = i;
           cur->fd_count = (i + 1) % FD_MAX;
@@ -285,8 +368,27 @@ syscall_handler(struct intr_frame *f)
 
       /* Store file pointer in FD table */
       cur->fd_table[fd] = file;
+      file_seek(file, 0); // reset file position to 0 (start of file)
       lock_release(&fs_lock);
       f->eax = fd;
+      break;
+    }
+
+    // file size
+    case SYS_FILESIZE: {
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+      
+      /* Validate FD */
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
+        f->eax = -1;
+        break;
+      }
+
+      /* Get file size */
+      lock_acquire(&fs_lock);
+      f->eax = file_length(cur->fd_table[fd]);
+      lock_release(&fs_lock);
       break;
     }
 
