@@ -42,17 +42,19 @@ syscall_init (void)
       buffer checking. Choose the appropriate validation based on the system call's requirements
       and parameter types.
 
-    1. is_valid_user_ptr -> checks if ptr is valid user pointer
-    2. validate_user_buffer -> checks if buffer is valid user buffer
-    3. get_user_byte -> checks if byte is valid user byte
-    4. copy_user_string -> checks if string is valid user string
+    1. is_valid_user_ptr    -> Basic pointer validity check 
+    2. validate_user_buffer -> Full buffer accessibility verification
+    3. get_user_byte        -> Safe single-byte read from user space
+    4. copy_user_string     -> Secure string copying to kernel space
+    5. put_user_byte        -> Single byte write to user space
+    6. memcpy_to_user       -> Bulk data transfer to user buffers
 
   Examples:
 
     Pattern 1: String Parameters (SYS_CREATE)
-    1. validate_user_buffer(name, 1)  (Check pointer validity)
-    2. copy_user_string()            (Create kernel copy)
-    3. Check filename[0] != '\0'     (Explicit empty check)
+    1. validate_user_buffer(name, 1)       (Check pointer validity)
+    2. copy_user_string()                  (Create kernel copy)
+    3. Check filename[0] != '\0'           (Explicit empty check)
 
     Pattern 2: Buffer Parameters (SYS_WRITE)
     1. validate_user_buffer(buffer, size)  (Full buffer check)
@@ -62,9 +64,23 @@ syscall_init (void)
       b) Locking prevents concurrent modification
 
     Pattern 3: Simple Values (SYS_EXIT)
-    1. is_valid_user_ptr(status_ptr)  (Single pointer check)
+    1. is_valid_user_ptr(status_ptr)      (Single pointer check)
     2. Direct read via *(int *)status_ptr
 
+    Pattern 4: Buffer Input (SYS_READ)
+    1. validate_user_buffer(buffer, size) (Initial buffer check)
+    2. Read into kernel buffer            (Isolate user memory)
+    3. memcpy_to_user()                   (Safe bulk copy)
+    4. Re-validate buffer                 (Post copy check)
+    - Prevents:
+      a) Page faults during file ops
+      b) Stale pointer dereferences
+
+    Implementation Notes:
+    - Prefer memcpy_to_user() over put_user_byte() for bulk data
+    - Always pair copy_user_string() with validate_user_buffer()
+    - Re-validation is critical after long operations
+    - Kernel buffers act as safe intermediaries during I/O
 */
 
 /* Validates that a user pointer is valid by checking that:
