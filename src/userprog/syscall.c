@@ -10,11 +10,8 @@
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
-#include <string.h> 
-
-#define NAME_MAX 14  // Maximum filename length per spec
-#define FD_MIN 3    // Reserve 0 (stdin), 1 (stdout), 2 (stderr)
-#define FD_MAX 128 // maximum number of fds (per Dr Back reccomendation)
+#include <string.h>
+#include "devices/shutdown.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -287,6 +284,7 @@ syscall_handler(struct intr_frame *f)
 
   // Syscalls Handled Via Switch Cases
   switch (sc_num) {
+
     // read
     case SYS_READ: {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
@@ -306,21 +304,26 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      /* Validate FD */
-      struct thread *cur = thread_current();
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
+      /* Validate buffer */
+      if (!validate_user_buffer(buffer, size))
+      {
         f->eax = -1;
         exit(-1);
       }
 
-      /* Validate buffer */
-      if (!validate_user_buffer(buffer, size)) {
+      /* Validate FD */
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
 
       /* Perform read operation */
-      lock_acquire(&fs_lock);
       struct file *file = cur->fd_table[fd];
 
       /* Allocate kernel buffer and read from file */
@@ -384,12 +387,17 @@ syscall_handler(struct intr_frame *f)
       unsigned position = *(unsigned *)(f->esp + 8);
 
       struct thread *cur = thread_current();
-      if (cur == NULL || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
       {
-        break;
+        lock_release(&fs_lock);
+        exit(-1);
       }
       struct file *cur_file = cur->fd_table[fd];
       file_seek(cur_file, position);
+
+      lock_release(&fs_lock);
       break;
     }
 
@@ -397,8 +405,8 @@ syscall_handler(struct intr_frame *f)
     case SYS_CREATE: {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
       {
-        f->eax = -1;
-        exit(-1);
+        f->eax = 0;
+        exit(0);
       }
 
       const char *filename = buffer_check(f, 0);
@@ -443,7 +451,12 @@ syscall_handler(struct intr_frame *f)
       if (cur->fd_table == NULL) {
         // calloc (since we know the size)
         cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
-        cur->fd_count = FD_MIN;
+        if (cur->fd_table == NULL)
+        {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+        }
       }
 
       /* Find a free fd */
@@ -451,7 +464,6 @@ syscall_handler(struct intr_frame *f)
       for (int i = FD_MIN; i < FD_MAX; i++) {
         if (cur->fd_table[i] == NULL) {
           fd = i;
-          cur->fd_count = (i + 1) % FD_MAX;
           break;
         }
       }
@@ -477,43 +489,40 @@ syscall_handler(struct intr_frame *f)
 
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
-        f->eax = -1;
-        exit(-1);
-      }
-
-      const char *file = *((char **)(f->esp + 4));
-      char filename[NAME_MAX + 1];  // Kernel buffer
-
-      /* Validate filename pointer and buffer */
-      bool valid = validate_user_buffer(file, NAME_MAX + 1) && 
-                   copy_user_string(file, filename, sizeof(filename));
-      
-      /* length check for maximum filename size */
-      if (!valid || strlen(filename) >= NAME_MAX) {
         f->eax = 0;
+        exit(0);
       }
-      else{
-        lock_acquire(&fs_lock);
-        f->eax = filesys_remove(file) ? 1 : 0;
-        lock_release(&fs_lock);
+      const char *file = buffer_check(f, 0);
 
-      }
+      lock_acquire(&fs_lock);
+      f->eax = filesys_remove(file) ? 1 : 0;
+      lock_release(&fs_lock);
+
       break;
     }
 
     // file size
     case SYS_FILESIZE: {
-      int fd = *((int *)(f->esp + 4));
-      struct thread *cur = thread_current();
-      
-      /* Validate FD */
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
         f->eax = -1;
         exit(-1);
       }
 
-      /* Get file size */
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
       lock_acquire(&fs_lock);
+
+      /* Validate FD */
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      /* Get file size */
       f->eax = file_length(cur->fd_table[fd]);
       lock_release(&fs_lock);
       break;
@@ -559,6 +568,60 @@ syscall_handler(struct intr_frame *f)
       f->eax = process_execute(cmd_line);
       break;
 
+      // close
+    case SYS_CLOSE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      file_close(cur->fd_table[fd]);
+      cur->fd_table[fd] = NULL;
+
+      lock_release(&fs_lock);
+
+      break;
+    }
+
+    case SYS_TELL: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      f->eax = file_tell(cur->fd_table[fd]);
+
+      lock_release(&fs_lock);
+      break;
+    }
+    case SYS_HALT:
+      shutdown_power_off();
+      break;
+
     default:
       // f->eax = -1;
       // exit(-1);
@@ -593,14 +656,16 @@ static int write(int fd, const void * buffer, unsigned size){
     lock_release(&fs_lock);
     return count;
   }
-  else{
-
-    struct thread * cur = thread_current();
-    if(cur->fd_table == NULL || cur->fd_table[fd]== NULL){
-      return 0;
-    }
-    struct file* cur_file = cur->fd_table[fd];
+  else
+  {
+    struct thread *cur = thread_current();
     lock_acquire(&fs_lock);
+    if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+    {
+      lock_release(&fs_lock);
+      exit(-1);
+    }
+    struct file *cur_file = cur->fd_table[fd];
 
     unsigned count = 0;
     while(count < size){
@@ -611,11 +676,7 @@ static int write(int fd, const void * buffer, unsigned size){
     }
     lock_release(&fs_lock);
     return count;
-
-    lock_release(&fs_lock);
   }
-  return 0;
-
 }
 
 /* Exit system call

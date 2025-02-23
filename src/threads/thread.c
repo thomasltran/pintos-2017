@@ -651,6 +651,7 @@ init_thread (struct thread *t, const char *name, int nice)
     spinlock_release (&all_lock);
 #ifdef USERPROG
   list_init(&t->ps_list);
+  t->fd_table = NULL;
 #endif
 }
 

@@ -106,15 +106,13 @@ struct thread
 
   uint64_t vruntime; // vruntime of the thread
   uint64_t last_cpu_time;  // track start (running) time
-
-  struct file **fd_table; /* file descriptor table */
-  int fd_count; /* next available file descriptor */
   
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
   struct process * ps;
   struct list ps_list; // parent thread is single threaded, list operations only ever executed by itself
+  struct file **fd_table; /* file descriptor table */
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */

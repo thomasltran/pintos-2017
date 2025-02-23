@@ -54,7 +54,10 @@ process_execute (const char *file_name)
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
+  {
+    free(ps);
     return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
   ps->user_prog_name = fn_copy;
 
@@ -250,6 +253,21 @@ process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
+
+  // clean up fd's when a thread exits
+  lock_acquire(&fs_lock);
+  struct file **fd_table = cur->fd_table;
+  if (fd_table != NULL)
+  { // called open
+    for (int i = FD_MIN; i < FD_MAX; i++)
+    {
+      if(fd_table[i] != NULL){
+        file_close(fd_table[i]);
+      }
+    }
+    free(fd_table);
+  }
+  lock_release(&fs_lock);
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
