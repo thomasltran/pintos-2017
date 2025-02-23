@@ -18,7 +18,7 @@
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
-static void write(int fd, const void * buffer, unsigned size);
+static int write(int fd, const void * buffer, unsigned size);
 static void exit(int status);
 static bool is_valid_user_ptr(const void *ptr);
 static bool validate_user_buffer(const void *uaddr, size_t size);
@@ -330,7 +330,8 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
         return;
       }
-      write(fd, buffer, size);
+      off_t bytes = write(fd, buffer, size);
+      f->eax = bytes;
       break;
     }
 
@@ -484,11 +485,46 @@ Returns:
   Number of bytes actually written, which may be less than size 
   if some bytes could not be written
 */
-static void write(int fd, const void * buffer, unsigned size){
-  lock_acquire(&fs_lock);
-  putbuf(buffer, size);
-  lock_release(&fs_lock);
-  // TODO: how to write to a fd
+static int write(int fd, const void * buffer, unsigned size){
+  if(fd == 1){
+    lock_acquire(&fs_lock);
+    int count = 0;
+    void * pos = buffer;
+    while(count < size){
+      int buffer_size = (size-count) > 200 ? 200 : size-count;
+
+      putbuf(pos, buffer_size);
+      count += buffer_size;
+      pos = buffer + count;
+
+    }
+    lock_release(&fs_lock);
+    return count;
+  }
+  else{
+
+    struct thread * cur = thread_current();
+    if(cur->fd_table == NULL || cur->fd_table[fd]== NULL){
+      return 0;
+    }
+    struct file* cur_file = cur->fd_table[fd];
+    lock_acquire(&fs_lock);
+
+    int count = 0;
+    while(count < size){
+      int buffer_size = (size-count) > 200 ? 200 : size-count;
+
+      off_t bytes = file_write(cur_file, buffer, buffer_size);
+      count += buffer_size;
+
+    }
+    lock_release(&fs_lock);
+    return count;
+
+    lock_release(&fs_lock);
+  }
+  return 0;
+
 }
 
 /* Exit system call
