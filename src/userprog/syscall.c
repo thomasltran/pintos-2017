@@ -50,9 +50,9 @@ syscall_init (void)
   Examples:
 
     Pattern 1: String Parameters (SYS_CREATE)
-    1. validate_user_buffer(name, 1)  (Check pointer validity)
-    2. copy_user_string()             (Create kernel copy)
-    3. Check filename[0] != '\0'      (Explicit empty check)
+    1. validate_user_buffer(name, 1)       (Check pointer validity)
+    2. copy_user_string()                  (Create kernel copy)
+    3. Check filename[0] != '\0'           (Explicit empty check)
 
     Pattern 2: Buffer Parameters (SYS_WRITE)
     1. validate_user_buffer(buffer, size)  (Full buffer check)
