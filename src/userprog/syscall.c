@@ -228,7 +228,6 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   {
     f->eax = set_eax_err;
     exit(-1);
-    NOT_REACHED();
   }
   const char *cmd_line = *((char **)(f->esp + 4));
   valid = copy_user_string(cmd_line, filename, sizeof(filename));
@@ -238,7 +237,6 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   {
     f->eax = set_eax_err;
     exit(-1);
-    NOT_REACHED();
   }
   return cmd_line;
 }
@@ -257,8 +255,17 @@ syscall_handler(struct intr_frame *f)
   if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
   {
     exit(-1);
-    return;
   }
+
+  for (int i = 0; i < 4; i++)
+  {
+    uint8_t *temp = (uint8_t *)(f->esp + i); // check byte by byte for sc-boundary-3
+    if (!is_valid_user_ptr(temp + i))
+    {
+      exit(-1);
+    }
+  }
+
   // Get the syscall number
   uint32_t sc_num = *((uint32_t *)(f->esp));
 
@@ -276,18 +283,24 @@ syscall_handler(struct intr_frame *f)
       const void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
       int bytes_read = -1; // default return value (if error when reading)
-      
+
+      if (size == 0)
+      {
+        f->eax = 0;
+        break;
+      }
+
       /* Validate FD */
       struct thread *cur = thread_current();
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
         f->eax = -1;
-        break;
+        exit(-1);
       }
 
       /* Validate buffer */
       if (!validate_user_buffer(buffer, size)) {
         f->eax = -1;
-        break;
+        exit(-1);
       }
 
       /* Perform read operation */
@@ -296,6 +309,12 @@ syscall_handler(struct intr_frame *f)
 
       /* Allocate kernel buffer and read from file */
       uint8_t *kern_buf = malloc(size);
+      if (kern_buf == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
       bytes_read = file_read(file, kern_buf, size);
       
       /* Copy to user buffer if read succeeded */
@@ -303,7 +322,9 @@ syscall_handler(struct intr_frame *f)
           /* Re-validate buffer since page status might have changed */
           if (!validate_user_buffer(buffer, bytes_read) || 
               !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
-              bytes_read = -1;
+            f->eax = -1;
+            lock_release(&fs_lock);
+            exit(-1);
           }
       }
       
@@ -327,8 +348,8 @@ syscall_handler(struct intr_frame *f)
 
       /* Validation using buffer range check */
       if (!validate_user_buffer(buffer, size)) {
+        f->eax = -1;
         exit(-1);
-        return;
       }
       write(fd, buffer, size);
       break;
@@ -421,7 +442,7 @@ syscall_handler(struct intr_frame *f)
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table[fd] == NULL) {
         f->eax = -1;
-        break;
+        exit(-1);
       }
 
       /* Get file size */
@@ -469,6 +490,11 @@ syscall_handler(struct intr_frame *f)
       }
       const char *cmd_line = buffer_check(f, -1);
       f->eax = process_execute(cmd_line);
+      break;
+
+    default:
+      // f->eax = -1;
+      // exit(-1);
       break;
   }
 }
