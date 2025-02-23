@@ -472,6 +472,35 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    case SYS_REMOVE: {
+      //bool remove (const char* file)
+
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      const char *file = *((char **)(f->esp + 4));
+      char filename[NAME_MAX + 1];  // Kernel buffer
+
+      /* Validate filename pointer and buffer */
+      bool valid = validate_user_buffer(file, NAME_MAX + 1) && 
+                   copy_user_string(file, filename, sizeof(filename));
+      
+      /* length check for maximum filename size */
+      if (!valid || strlen(filename) >= NAME_MAX) {
+        f->eax = 0;
+      }
+      else{
+        lock_acquire(&fs_lock);
+        f->eax = filesys_remove(file) ? 1 : 0;
+        lock_release(&fs_lock);
+
+      }
+      break;
+    }
+
     // file size
     case SYS_FILESIZE: {
       int fd = *((int *)(f->esp + 4));
