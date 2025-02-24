@@ -16,6 +16,7 @@ main (int argc, char *argv[])
   int child_idx;
   int fd;
 
+  test_name = "child-syn-wrt";
   quiet = true;
   
   CHECK (argc == 2, "argc must be 2, actually %d", argc);

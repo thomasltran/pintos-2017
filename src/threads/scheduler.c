@@ -74,6 +74,8 @@ static uint64_t additional_vruntime(struct thread *current);
 
    If called from the idle thread, curr will be NULL.
 
+   If called from the idle thread, curr will be NULL.
+
    Returns RETURN_YIELD if the CPU containing rq should
    be rescheduled when this function returns, else returns
    RETURN_NONE */
