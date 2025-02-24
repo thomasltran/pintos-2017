@@ -446,8 +446,13 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
+      /* rox checking: Deny write if opening executable */
+      struct thread *cur = thread_current();
+      if (strcmp(filename, cur->ps->user_prog_name) == 0) {
+          file_deny_write(file);
+      }
+
       /* Allocate FD table if this is first open */
-      struct thread *cur = thread_current(); 
       if (cur->fd_table == NULL) {
         // calloc (since we know the size)
         cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
@@ -672,6 +677,10 @@ static int write(int fd, const void * buffer, unsigned size){
       int buffer_size = (size-count) > 207 ? 207 : size-count;
 
       off_t bytes = file_write(cur_file, buffer+count, buffer_size);
+      // check to ensure break on a write fail
+      if (bytes <= 0) {
+        break;
+      }
       count += bytes;
     }
     lock_release(&fs_lock);
