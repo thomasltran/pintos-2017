@@ -110,7 +110,7 @@ struct thread
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
-  struct process * ps;
+  struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // parent thread is single threaded, list operations only ever executed by itself
   struct file **fd_table; /* file descriptor table */
 #endif
@@ -128,8 +128,8 @@ struct process // struct to manage parent/child threads in process.c
    bool good_start; // started child process's thread and successfully making it past load
    int exit_status; // exit status of program
    int ref_count; // init to 2, decremented by parent in process_wait (and possibly exit if it didn't wait for its child) and child in process_exit
-   tid_t child_tid;
-   char * user_prog_name; // for exit
+   tid_t child_tid; // thread id of child
+   char * user_prog_name; // program name
 };
 #endif
 
