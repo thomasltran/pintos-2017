@@ -16,7 +16,6 @@
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
 static int write(int fd, const void * buffer, unsigned size);
-static void exit(int status);
 static bool is_valid_user_ptr(const void *ptr);
 static bool validate_user_buffer(const void *uaddr, size_t size);
 static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
@@ -685,7 +684,7 @@ static int write(int fd, const void * buffer, unsigned size){
    Note: Only prints for user processes, not kernel threads or halt
    Optional message when process fails to load
 */
-static void exit(int status){
+void exit(int status){
   struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack??
   // printf("syscall exit %d list size %d\n", thread_curr->tid, list_size(&thread_curr->ps_list));
   struct process * ps = thread_curr->ps;
