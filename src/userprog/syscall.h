@@ -7,6 +7,7 @@
 #define FD_MAX 128 // maximum number of fds (per Dr Back reccomendation)
 
 void syscall_init (void);
+void exit(int status);
 extern struct lock fs_lock;
 
 #endif /* userprog/syscall.h */
