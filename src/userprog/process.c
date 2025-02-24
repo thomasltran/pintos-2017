@@ -129,7 +129,11 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
+  lock_acquire(&fs_lock);
+
   success = load(file_name, argv, i, &if_.eip, &if_.esp);
+
+  lock_release(&fs_lock);
 
   /* If load failed, quit. */
   palloc_free_page(file_name);
@@ -181,8 +185,12 @@ int process_wait(tid_t child_tid)
     struct process *ps = list_entry(e, struct process, elem);
     ASSERT(ps != NULL);
 
+    lock_acquire(&ps->ps_lock);
+    
     if (child_tid == ps->child_tid && ps->ref_count > 0) // HB relationship for parent in setting vs. reading ps->child_tid
     {
+      lock_release(&ps->ps_lock);
+
       sema_down(&ps->user_prog_exit);
 
       lock_acquire(&ps->ps_lock);
@@ -193,6 +201,8 @@ int process_wait(tid_t child_tid)
       lock_release(&ps->ps_lock);
       return exit_status;
     }
+    lock_release(&ps->ps_lock);
+
     e = list_next(e);
   }
   return -1;
