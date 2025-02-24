@@ -365,8 +365,15 @@ void sched_load_balance(){
     struct list_elem *steal_elem = list_pop_back(&steal_rq->ready_list);
     struct thread *steal_thread = list_entry(steal_elem, struct thread, elem);
     agg_weight += prio_to_weight[steal_thread->nice + 20];
-    ASSERT(steal_thread->vruntime + my_rq->min_vruntime >= cpus[busiest_cpu_index].rq.min_vruntime); // negative check
-    steal_thread->vruntime = steal_thread->vruntime + my_rq->min_vruntime - cpus[busiest_cpu_index].rq.min_vruntime; // adjust vruntime
+
+    if (steal_thread->vruntime + my_rq->min_vruntime >= cpus[busiest_cpu_index].rq.min_vruntime)
+    {
+      steal_thread->vruntime = steal_thread->vruntime + my_rq->min_vruntime - cpus[busiest_cpu_index].rq.min_vruntime; // adjust vruntime
+    }
+    else
+    {
+      steal_thread->vruntime = my_rq->min_vruntime; // non-negative
+    }
     list_insert_ordered(&my_rq->ready_list, steal_elem, vruntime_less, NULL);
     steal_thread->cpu = my_cpu;
 
