@@ -4,14 +4,13 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-#include "threads/cpu.h"
-#include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "userprog/pagedir.h"
 #include "userprog/process.h"
 #include "filesys/filesys.h"
-#include <string.h>
+#include "lib/string.h"
 #include "devices/shutdown.h"
+#include "devices/input.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -333,8 +332,29 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
         exit(-1);
       }
-      bytes_read = file_read(file, kern_buf, size);
-      
+
+      if (fd == 0)
+      {
+        bytes_read = 0;
+        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
+        {
+          uint8_t key_input = input_getc();
+          if (key_input > 0)
+          {
+            *(kern_buf + bytes_read++) = key_input; // ++ will account for null terminator
+          }
+        }
+        if (bytes_read > 0)
+        {
+          kern_buf[bytes_read] = '\0';
+          bytes_read = file_read(file, kern_buf, bytes_read);
+        }
+      }
+      else
+      {
+        bytes_read = file_read(file, kern_buf, size);
+      }
+
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
           /* Re-validate buffer since page status might have changed */
@@ -376,7 +396,6 @@ syscall_handler(struct intr_frame *f)
 
     case SYS_SEEK:
     {
-      // void seek (int fd, unsigned position)
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
       {
         exit(-1);
@@ -447,11 +466,10 @@ syscall_handler(struct intr_frame *f)
 
       /* rox checking: Deny write if opening executable */
       struct thread *cur = thread_current();
-      if (strcmp(filename, cur->ps->user_prog_name) == 0) {
+      if (strncmp(filename, cur->ps->user_prog_name, NAME_MAX) == 0) {
           file_deny_write(file);
       }
 
-      /* Allocate FD table if this is first open */
       if (cur->fd_table == NULL) {
         // calloc (since we know the size)
         cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
@@ -488,9 +506,8 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
-    case SYS_REMOVE: {
-      //bool remove (const char* file)
-
+    case SYS_REMOVE:
+    {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
         f->eax = 0;
@@ -627,8 +644,8 @@ syscall_handler(struct intr_frame *f)
       break;
 
     default:
-      // f->eax = -1;
-      // exit(-1);
+      f->eax = -1;
+      exit(-1);
       break;
   }
 }
@@ -648,14 +665,13 @@ static int write(int fd, const void * buffer, unsigned size){
   if(fd == 1){
     lock_acquire(&fs_lock);
     unsigned count = 0;
-    void * pos = buffer;
+    void *pos = (void *)buffer;
     while(count < size){
       int buffer_size = (size-count) > 200 ? 200 : size-count;
 
       putbuf(pos, buffer_size);
       count += buffer_size;
-      pos = buffer + count;
-
+      pos = (void *)buffer + count;
     }
     lock_release(&fs_lock);
     return count;
@@ -676,8 +692,8 @@ static int write(int fd, const void * buffer, unsigned size){
       int buffer_size = (size-count) > 207 ? 207 : size-count;
 
       off_t bytes = file_write(cur_file, buffer+count, buffer_size);
-      // check to ensure break on a write fail
-      if (bytes <= 0) {
+      if (bytes <= 0)
+      {
         break;
       }
       count += bytes;
@@ -694,18 +710,14 @@ static int write(int fd, const void * buffer, unsigned size){
    Optional message when process fails to load
 */
 void exit(int status){
-  struct thread *thread_curr = thread_current(); // what if thread gets preempted here? best way to get the prog name—use stack??
-  // printf("syscall exit %d list size %d\n", thread_curr->tid, list_size(&thread_curr->ps_list));
-  struct process * ps = thread_curr->ps;
-  // if(ps == NULL){
-  //   printf("ps is NULL\n");
-  // }
-  // not sure if we need the locking/disable intr
+  struct thread *thread_curr = thread_current();
+  struct process *ps = thread_curr->ps;
 
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
+
   lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
-  // free(thread_curr->ps->user_prog_name);
   lock_release(&ps->ps_lock);
+
   thread_exit();
 }

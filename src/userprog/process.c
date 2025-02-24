@@ -4,7 +4,6 @@
 #include <round.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include "threads/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
@@ -69,16 +68,12 @@ process_execute (const char *file_name)
 
   if (tid == TID_ERROR || !ps->good_start) // if child thread fails, never gets added to the list
   {
-    //palloc_free_page(fn_copy); I think we free in start_process
     free(ps);
     return TID_ERROR;
   }
 
   ps->child_tid = tid; // if child is in process_exit before this, it has the ref to ps already so semaphore is good
   ASSERT(ps->user_prog_name != NULL);
-
-  // even if the child thread gets load balanced, i don't think it matters
-  // based off of reference count so everything gets freed anyways?
 
   struct thread *parent_thread = thread_current();
   list_push_back(&parent_thread->ps_list, &ps->elem);
@@ -136,7 +131,7 @@ start_process(void *p)
   lock_release(&fs_lock);
 
   /* If load failed, quit. */
-  palloc_free_page(file_name);
+  palloc_free_page(ps->user_prog_name);
 
   if (!success)
   {
@@ -226,7 +221,7 @@ process_exit(void)
 
     ps->ref_count--;
 
-    if (ps->ref_count == 0) // nothing waiting for it; parent
+    if (ps->ref_count == 0)
     {
       e = list_remove(e);
       lock_release(&ps->ps_lock);
@@ -244,12 +239,12 @@ process_exit(void)
 
   struct process *ps = cur->ps;
   if (ps != NULL)
-  { // apart of another list (fork1 -> fork2 -> fork3; fork2)
+  {
     lock_acquire(&ps->ps_lock);
 
     ps->ref_count--;
 
-    if (ps->ref_count == 0) // nothing waiting for it; parent
+    if (ps->ref_count == 0) // nothing waiting for it
     {
       list_remove(&ps->elem); // list ops only done by parent
       lock_release(&ps->ps_lock);
