@@ -119,15 +119,15 @@ struct thread
 };
 
 #ifdef USERPROG
-struct process
+struct process // struct to manage parent/child threads in process.c
 {
    struct list_elem elem; // list of processes
    struct lock ps_lock; // protect process fields
-   struct semaphore user_prog_exit;
-   struct semaphore child_started;
+   struct semaphore user_prog_exit; // child thread exit
+   struct semaphore child_started; // child thread start (goes along with good_start)
    bool good_start; // started child process's thread and successfully making it past load
-   int exit_status;
-   int ref_count;
+   int exit_status; // exit status of program
+   int ref_count; // init to 2, decremented by parent in process_wait (and possibly exit if it didn't wait for its child) and child in process_exit
    tid_t child_tid;
    char * user_prog_name; // for exit
 };

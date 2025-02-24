@@ -228,7 +228,7 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
   return true; // if all byte(s) copied successfully (no page faults)
 }
 
-// checks the program name/file name, returns it if good
+// checks the program name/file name, returns it if good; filename at esp + 4
 // pass in the value of an error (ex: 0 for false, -1, etc.) in the int
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
@@ -261,7 +261,6 @@ Parameters:
 static void
 syscall_handler(struct intr_frame *f)
 {
-  //printf ("system call!\n");
   // Check if user pointer is valid (i.e. is in user space)
   if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
   {
@@ -283,14 +282,17 @@ syscall_handler(struct intr_frame *f)
   // Syscalls Handled Via Switch Cases
   switch (sc_num) {
 
+    /* comments here that checks ptrs, buffers, fd, extract func params etc. mostly applies to the other syscall cases as well */
     // read
     case SYS_READ: {
+      // check ptrs
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
       {
         f->eax = -1;
         exit(-1);
       }
 
+      // extract func params
       int fd = *((int *)(f->esp + 4));
       const void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
@@ -309,11 +311,11 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
       }
 
-      /* Validate FD */
       struct thread *cur = thread_current();
 
       lock_acquire(&fs_lock);
 
+      /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
       {
         f->eax = -1;
@@ -342,6 +344,9 @@ syscall_handler(struct intr_frame *f)
           if (key_input > 0)
           {
             *(kern_buf + bytes_read++) = key_input; // ++ will account for null terminator
+          }
+          else {
+            break;
           }
         }
         if (bytes_read > 0)
@@ -427,7 +432,7 @@ syscall_handler(struct intr_frame *f)
         exit(0);
       }
 
-      const char *filename = buffer_check(f, 0);
+      const char *filename = buffer_check(f, 0); // called in other syscalls with a filename buffer too, but checks byte by byte for validity
       unsigned initial_size = *(unsigned *)(f->esp + 8);
 
       if (strnlen(filename, NAME_MAX) >= NAME_MAX)
@@ -506,6 +511,7 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    // remove
     case SYS_REMOVE:
     {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
@@ -565,6 +571,7 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    // wait
     case SYS_WAIT:
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
@@ -579,6 +586,7 @@ syscall_handler(struct intr_frame *f)
 
       break;
 
+    // exec
     case SYS_EXEC:
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
@@ -589,7 +597,7 @@ syscall_handler(struct intr_frame *f)
       f->eax = process_execute(cmd_line);
       break;
 
-      // close
+    // close
     case SYS_CLOSE: {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
@@ -616,6 +624,7 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    // tell
     case SYS_TELL: {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
@@ -639,6 +648,7 @@ syscall_handler(struct intr_frame *f)
       lock_release(&fs_lock);
       break;
     }
+    // halt
     case SYS_HALT:
       shutdown_power_off();
       break;

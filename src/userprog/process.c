@@ -221,7 +221,7 @@ process_exit(void)
 
     ps->ref_count--;
 
-    if (ps->ref_count == 0)
+    if (ps->ref_count <= 0)
     {
       e = list_remove(e);
       lock_release(&ps->ps_lock);
@@ -244,7 +244,7 @@ process_exit(void)
 
     ps->ref_count--;
 
-    if (ps->ref_count == 0) // nothing waiting for it
+    if (ps->ref_count <= 0) // nothing waiting for it
     {
       list_remove(&ps->elem); // list ops only done by parent
       lock_release(&ps->ps_lock);
