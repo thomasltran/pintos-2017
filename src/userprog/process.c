@@ -26,10 +26,12 @@
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, char **argv, int argc, void (**eip)(void), void **esp);
 
-/* Starts a new thread running a user program loaded from
-   FILENAME.  The new thread may be scheduled (and may even exit)
-   before process_execute() returns.  Returns the new process's
-   thread id, or TID_ERROR if the thread cannot be created. */
+/* Starts a new thread running a user program loaded from file_name.
+   Creates a process struct to track the parent-child relationship and 
+   synchronize between parent and child threads. The new thread may be 
+   scheduled (and may even exit) before process_execute() returns.
+   Returns the new process's thread id, or TID_ERROR if the thread 
+   cannot be created or if process struct allocation fails. */
 tid_t
 process_execute (const char *file_name)
 {
@@ -81,8 +83,11 @@ process_execute (const char *file_name)
   return tid;
 }
 
-/* A thread function that loads a user process and starts it
-   running. */
+/* A thread function that loads a user process and starts it running.
+   Parses the command line arguments from file_name into argv array.
+   Sets up the initial interrupt frame and loads the executable.
+   Frees the file_name page when done.
+   If load fails, terminates the thread. */
 static void
 start_process(void *p)
 {
@@ -380,6 +385,8 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
    and its initial stack pointer into *ESP.
+   Pushes the command line arguments onto the stack in the correct order,
+   ensuring proper word alignment (4 byte boundaries).
    Returns true if successful, false otherwise. */
 bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void **esp)
 {
