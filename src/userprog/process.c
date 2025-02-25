@@ -231,7 +231,6 @@ process_exit(void)
     }
     else
     {
-      sema_up(&ps->user_prog_exit);
       e = list_next(e);
       lock_release(&ps->ps_lock);
     }
