@@ -315,6 +315,40 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
+      if (fd == 0)
+      {
+        bytes_read = 0;
+        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
+        {
+          uint8_t key_input = input_getc();
+          if (key_input > 0)
+          {
+            void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
+            *(uint8_t *)ptr = key_input;
+          }
+          else
+          {
+            break;
+          }
+        }
+        if (bytes_read > 0)
+        {
+          void *ptr = (void *)buffer + bytes_read;
+          *(uint8_t *)ptr = '\0';
+          /* Re-validate buffer since page status might have changed */
+          if (!validate_user_buffer(buffer, bytes_read) ||
+              !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
+          {
+            f->eax = -1;
+            lock_release(&fs_lock);
+            exit(-1);
+          }
+        }
+        lock_release(&fs_lock);
+        f->eax = bytes_read;
+        break;
+      }
+
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
       {
@@ -335,30 +369,7 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
       }
 
-      if (fd == 0)
-      {
-        bytes_read = 0;
-        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-        {
-          uint8_t key_input = input_getc();
-          if (key_input > 0)
-          {
-            *(kern_buf + bytes_read++) = key_input; // ++ will account for null terminator
-          }
-          else {
-            break;
-          }
-        }
-        if (bytes_read > 0)
-        {
-          kern_buf[bytes_read] = '\0';
-          bytes_read = file_read(file, kern_buf, bytes_read);
-        }
-      }
-      else
-      {
-        bytes_read = file_read(file, kern_buf, size);
-      }
+      bytes_read = file_read(file, kern_buf, size);
 
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
