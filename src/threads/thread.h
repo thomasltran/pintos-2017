@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "threads/synch.h"
+#include "vm/page.h"
+#include "vm/filemap.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -113,6 +115,8 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // parent thread is single threaded, list operations only ever executed by itself
   struct file **fd_table; /* file descriptor table */
+  struct supp_pt supp_pt;
+  struct file_mapping_table file_mapping_table;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
