@@ -57,9 +57,6 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     if (size == 0) 
       return true;
 
-    if (uaddr == NULL || !is_user_vaddr(uaddr))
-      return false;
-
     /* Check start and end addresses */
     const void *start = uaddr;
     const void *end = uaddr + size - 1;
@@ -119,7 +116,6 @@ copy_user_string(const char *usrc, char *kdst, size_t max_len)
 
     /* Loop string until max len or null terminator */
     for (size_t i = 0; i < max_len; i++) {
-      // printf("count %d\n", i);
       uint8_t byte;
       const uint8_t * src = (const uint8_t *)usrc + i;
       int result = get_user_byte(src, &byte);
@@ -182,16 +178,16 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 // pass in the value of an error (ex: 0 for false, -1, etc.) in the int
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
-  char filename[NAME_MAX + 1]; // Kernel buffer
+  char * filename = malloc(128); // Kernel buffer
 
-  bool valid = validate_user_buffer(f->esp + 4, NAME_MAX + 1);
+  bool valid = validate_user_buffer(f->esp + 4, 128);
   if (!valid)
   {
     f->eax = set_eax_err;
     exit(-1);
   }
   const char *cmd_line = *((char **)(f->esp + 4));
-  valid = copy_user_string(cmd_line, filename, sizeof(filename));
+  valid = copy_user_string(cmd_line, filename, 128);
 
   /* Check if filename is valid */
   if (!valid)
@@ -199,7 +195,7 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
     f->eax = set_eax_err;
     exit(-1);
   }
-  return cmd_line;
+  return filename;
 }
 
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
@@ -265,39 +261,39 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      if (fd == 0)
-      {
-        bytes_read = 0;
-        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-        {
-          uint8_t key_input = input_getc();
-          if (key_input > 0)
-          {
-            void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
-            *(uint8_t *)ptr = key_input;
-          }
-          else
-          {
-            break;
-          }
-        }
-        if (bytes_read > 0)
-        {
-          void *ptr = (void *)buffer + bytes_read;
-          *(uint8_t *)ptr = '\0';
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) ||
-              !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
-          {
-            f->eax = -1;
-            lock_release(&fs_lock);
-            exit(-1);
-          }
-        }
-        lock_release(&fs_lock);
-        f->eax = bytes_read;
-        break;
-      }
+      // if (fd == 0)
+      // {
+      //   bytes_read = 0;
+      //   while ((unsigned int)bytes_read < size - 1) // buffer null terminated
+      //   {
+      //     uint8_t key_input = input_getc();
+      //     if (key_input > 0)
+      //     {
+      //       void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
+      //       *(uint8_t *)ptr = key_input;
+      //     }
+      //     else
+      //     {
+      //       break;
+      //     }
+      //   }
+      //   if (bytes_read > 0)
+      //   {
+      //     void *ptr = (void *)buffer + bytes_read;
+      //     *(uint8_t *)ptr = '\0';
+      //     /* Re-validate buffer since page status might have changed */
+      //     if (!validate_user_buffer(buffer, bytes_read) ||
+      //         !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
+      //     {
+      //       f->eax = -1;
+      //       lock_release(&fs_lock);
+      //       exit(-1);
+      //     }
+      //   }
+      //   lock_release(&fs_lock);
+      //   f->eax = bytes_read;
+      //   break;
+      // }
 
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
@@ -319,7 +315,8 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
       }
 
-      bytes_read = file_read(file, kern_buf, size);
+      bytes_read = file_read(file, kern_buf, size); // pinning or chunking read
+      lock_release(&fs_lock);
 
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
@@ -327,13 +324,11 @@ syscall_handler(struct intr_frame *f)
           if (!validate_user_buffer(buffer, bytes_read) || 
               !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
             f->eax = -1;
-            lock_release(&fs_lock);
             exit(-1);
           }
       }
       
       free(kern_buf);
-      lock_release(&fs_lock);
       f->eax = bytes_read;
       break;
     }
@@ -406,6 +401,7 @@ syscall_handler(struct intr_frame *f)
         f->eax = filesys_create(filename, initial_size) ? 1 : 0;
         lock_release(&fs_lock);
       }
+      free((char *)filename);
       break;
     }
 
@@ -422,6 +418,7 @@ syscall_handler(struct intr_frame *f)
       /* Open file */
       lock_acquire(&fs_lock);
       struct file *file = filesys_open(filename);
+      free((char *)filename);
 
       /* Check if file exists */
       if (file == NULL) {
@@ -476,11 +473,12 @@ syscall_handler(struct intr_frame *f)
         f->eax = 0;
         exit(0);
       }
-      const char *file = buffer_check(f, 0);
+      const char *filename = buffer_check(f, 0);
 
       lock_acquire(&fs_lock);
-      f->eax = filesys_remove(file) ? 1 : 0;
+      f->eax = filesys_remove(filename) ? 1 : 0;
       lock_release(&fs_lock);
+      free((char *)filename);
 
       break;
     }
@@ -552,6 +550,7 @@ syscall_handler(struct intr_frame *f)
       }
       const char *cmd_line = buffer_check(f, -1);
       f->eax = process_execute(cmd_line);
+      free((char *)cmd_line);
       break;
 
     // close
