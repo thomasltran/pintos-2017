@@ -24,7 +24,7 @@
 #include "lib/string.h"
 
 static thread_func start_process NO_RETURN;
-static bool load(const char *cmdline, char **argv, int argc, void (**eip)(void), void **esp);
+static bool load(const char *cmdline, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp);
 
 /* Starts a new thread running a user program loaded from file_name.
    Creates a process struct to track the parent-child relationship and 
@@ -48,6 +48,7 @@ process_execute (const char *file_name)
   ps->child_tid = -1; // remains -1 if failed start
   ps->ref_count = 2;
   ps->good_start = false;
+  ps->exe_file = NULL;
   sema_init(&ps->user_prog_exit, 0);
   sema_init(&ps->child_started, 0);
 
@@ -131,7 +132,7 @@ start_process(void *p)
 
   lock_acquire(&fs_lock);
 
-  success = load(file_name, argv, i, &if_.eip, &if_.esp);
+  success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
 
   lock_release(&fs_lock);
 
@@ -242,6 +243,13 @@ process_exit(void)
   }
 
   struct process *ps = cur->ps;
+
+  if(ps != NULL && ps->exe_file != NULL){
+    lock_acquire(&fs_lock);
+    file_close(ps->exe_file);
+    lock_release(&fs_lock);
+  }
+
   if (ps != NULL)
   {
     lock_acquire(&ps->ps_lock);
@@ -388,7 +396,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Pushes the command line arguments onto the stack in the correct order,
    ensuring proper word alignment (4 byte boundaries).
    Returns true if successful, false otherwise. */
-bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void **esp)
+bool load(const char *file_name, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp)
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -409,7 +417,12 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
   file = filesys_open (file_name);
   if (file == NULL) 
     {
+      ps->exe_file = NULL;
       goto done; 
+    }
+    else{
+      ps->exe_file = file;
+      file_deny_write(ps->exe_file);
     }
 
   /* Read and verify executable header. */
@@ -538,7 +551,7 @@ bool load(const char *file_name, char **argv, int argc, void (**eip)(void), void
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close(file);
+  //file_close(file);
 
   return success;
  }
