@@ -38,6 +38,7 @@
 #include "userprog/exception.h"
 #include "userprog/syscall.h"
 #include "userprog/pagedir.h"
+#include "vm/page.h"
 #else
 #include "tests/threads/tests.h"
 #ifdef SELFTEST
@@ -117,6 +118,10 @@ main (void)
 
   /* Initialize bootstrap CPU's LAPIC. */
   lapic_init ();
+
+  #ifdef USERPROG
+  init_spt();
+  #endif
 
   /* Initialize threading system so we can use locks. */
   thread_init ();

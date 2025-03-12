@@ -179,6 +179,11 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
   char * filename = malloc(128); // Kernel buffer
+  if (filename == NULL)
+  {
+    f->eax = set_eax_err;
+    exit(-1);
+  }
 
   bool valid = validate_user_buffer(f->esp + 4, 128);
   if (!valid)

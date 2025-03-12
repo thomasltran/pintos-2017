@@ -5,6 +5,7 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -159,9 +160,34 @@ page_fault (struct intr_frame *f)
 //           user ? "user" : "kernel");
   if (user) // if user exception, exit(-1)
   {
-     f->eax = -1;
-     exit(-1);
+     struct thread *thread_cur = thread_current();
+     struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+     if (fault_page == NULL)
+     {
+          f->eax = -1;
+          exit(-1);
+     }
   }
+
+  // /* Get a page of memory. */
+  // uint8_t *kpage = palloc_get_page (PAL_USER);
+  // if (kpage == NULL)
+  //   return false;
+
+  // /* Load this page. */
+  // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
+  //   {
+  //     palloc_free_page (kpage);
+  //     return false;
+  //   }
+  // memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+  // /* Add the page to the process's address space. */
+  // if (!install_page (upage, kpage, writable))
+  //   {
+  //     palloc_free_page (kpage);
+  //     return false;
+  //   }
   kill (f);
 }
 
