@@ -11,6 +11,7 @@
 #include "lib/string.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
+#include "vm/page.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -40,9 +41,13 @@ static bool
 is_valid_user_ptr(const void *ptr)
 {
     struct thread *t = thread_current();
-    return ptr != NULL 
-        && is_user_vaddr(ptr)
-        && pagedir_get_page(t->pagedir, ptr) != NULL;
+    struct supp_pt *supp_pt = t->supp_pt;
+
+    lock_acquire(&vm_lock);
+    bool ret = ptr != NULL && is_user_vaddr(ptr) && (pagedir_get_page(t->pagedir, ptr) != NULL || find_page(supp_pt, (void *)ptr) != NULL);
+    lock_release(&vm_lock);
+
+    return ret;
 } 
 
 /* Validate a buffer in user memory
@@ -66,6 +71,7 @@ bool validate_user_buffer(const void *uaddr, size_t size)
 
     /* Check page directory entries */
     struct thread *t = thread_current();
+    struct supp_pt *supp_pt = t->supp_pt;
     uint32_t *pd = t->pagedir;
     
     /* Handle single page case */
@@ -77,8 +83,14 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     for (void *page = pg_round_down(start); page <= end; page += PGSIZE) 
     {
         // check if page is mapped; if not, return false
-        if (pagedir_get_page(pd, page) == NULL)
+        lock_acquire(&vm_lock);
+        bool ret = pagedir_get_page(pd, page) == NULL && find_page(supp_pt, page) == NULL;
+        lock_release(&vm_lock);
+
+        if (ret)
+        {
           return false;
+        }
     }
     
     return true;
@@ -185,13 +197,14 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
     exit(-1);
   }
 
+  const char *cmd_line = *((char **)(f->esp + 4));
+
   bool valid = validate_user_buffer(f->esp + 4, 128);
   if (!valid)
   {
     f->eax = set_eax_err;
     exit(-1);
   }
-  const char *cmd_line = *((char **)(f->esp + 4));
   valid = copy_user_string(cmd_line, filename, 128);
 
   /* Check if filename is valid */
@@ -345,6 +358,7 @@ syscall_handler(struct intr_frame *f)
         f->eax = -1;
         exit(-1);
       }
+
 
       int fd = *((int *)(f->esp + 4));
       const void *buffer = *((void **)(f->esp + 8));

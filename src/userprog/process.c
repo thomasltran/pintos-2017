@@ -289,6 +289,11 @@ void process_exit(void)
   }
   lock_release(&fs_lock);
 
+  lock_acquire(&vm_lock);
+  ASSERT(&cur->supp_pt != NULL);
+  free_map(cur->supp_pt);
+  lock_release(&vm_lock);
+
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
 
@@ -550,7 +555,7 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
  done:
   /* We arrive here whether the load is successful or not. */
   //file_close(file);
-
+  //printf("done with setup\n");
   return success;
  }
 
@@ -658,13 +663,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Advance. */
       // be careful of implicit advance?
-      struct page * page = create_page(upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
+      struct page * page = create_page((void*)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
       if(page == NULL){
         return false;
       }
       ASSERT(thread_current()->supp_pt != NULL)
       lock_acquire(&vm_lock);
       struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+      //printf("inserted %p\n", pg_round_down((void *)upage));
+
       ASSERT(ret == NULL);
       lock_release(&vm_lock);
 
@@ -700,6 +707,7 @@ setup_stack (void **esp)
         struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
         ASSERT(ret == NULL);
         lock_release(&vm_lock);
+        //printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
       }
       else
         palloc_free_page (kpage);

@@ -115,8 +115,11 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
-  struct supp_pt *supp_pt;
 //   struct file_mapping_table file_mapping;
+#endif
+
+#ifdef USERPROG
+struct supp_pt *supp_pt;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
