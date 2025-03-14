@@ -261,7 +261,7 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     sf->eip = switch_entry;
     sf->ebp = 0;
 
-    #ifdef USERPROG
+    #ifdef VM
     struct supp_pt * supp_pt = create_supp_pt();
     if(supp_pt == NULL){
       return NULL;

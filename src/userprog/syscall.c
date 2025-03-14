@@ -41,11 +41,17 @@ static bool
 is_valid_user_ptr(const void *ptr)
 {
     struct thread *t = thread_current();
+    
+    #ifdef VM
     struct supp_pt *supp_pt = t->supp_pt;
 
     lock_acquire(&vm_lock);
     bool ret = ptr != NULL && is_user_vaddr(ptr) && (pagedir_get_page(t->pagedir, ptr) != NULL || find_page(supp_pt, (void *)ptr) != NULL);
     lock_release(&vm_lock);
+
+    #else
+    bool ret = ptr != NULL && is_user_vaddr(ptr) && (pagedir_get_page(t->pagedir, ptr) != NULL);
+    #endif
 
     return ret;
 } 
@@ -71,7 +77,9 @@ bool validate_user_buffer(const void *uaddr, size_t size)
 
     /* Check page directory entries */
     struct thread *t = thread_current();
+    #ifdef VM
     struct supp_pt *supp_pt = t->supp_pt;
+    #endif
     uint32_t *pd = t->pagedir;
     
     /* Handle single page case */
@@ -83,10 +91,14 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     for (void *page = pg_round_down(start); page <= end; page += PGSIZE) 
     {
         // check if page is mapped; if not, return false
+        #ifdef VM
         lock_acquire(&vm_lock);
         bool ret = pagedir_get_page(pd, page) == NULL && find_page(supp_pt, page) == NULL;
         lock_release(&vm_lock);
 
+        #else
+        bool ret = pagedir_get_page(pd, page) == NULL;
+        #endif
         if (ret)
         {
           return false;
@@ -179,6 +191,11 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 
   /* Copy each byte from kernel to user */
   for (size_t i = 0; i < max_len; i++) {
+      // if (pg_round_down(udst_ptr + i) != pg_round_down(udst_ptr + i - 1))
+      // {
+      //   printf("Crossing page boundary at %p\n", udst_ptr + i);
+      // }
+
     if (!put_user_byte(udst_ptr + i, ksrc_ptr[i])) {
       return false; // if any byte fails to copy
     }
@@ -202,6 +219,7 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   bool valid = validate_user_buffer(f->esp + 4, 128);
   if (!valid)
   {
+    free(filename);
     f->eax = set_eax_err;
     exit(-1);
   }
@@ -210,6 +228,7 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   /* Check if filename is valid */
   if (!valid)
   {
+    free(filename);
     f->eax = set_eax_err;
     exit(-1);
   }
@@ -697,6 +716,7 @@ static int write(int fd, const void * buffer, unsigned size){
 void exit(int status){
   struct thread *thread_curr = thread_current();
   struct process *ps = thread_curr->ps;
+  ASSERT(ps != NULL);
 
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
 

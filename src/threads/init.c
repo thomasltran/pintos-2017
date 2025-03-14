@@ -119,7 +119,7 @@ main (void)
   /* Initialize bootstrap CPU's LAPIC. */
   lapic_init ();
 
-  #ifdef USERPROG
+  #ifdef VM
   init_spt();
   #endif
 

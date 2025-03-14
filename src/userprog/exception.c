@@ -165,88 +165,98 @@ page_fault (struct intr_frame *f)
 //           write ? "writing" : "reading",
 //           user ? "user" : "kernel");
    //printf("fault addr %p\n", pg_round_down(fault_addr));
+#ifdef VM
+   if (fault_addr < PHYS_BASE)
+   {
+      lock_acquire(&vm_lock);
+      struct thread *thread_cur = thread_current();
+      struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+      if (fault_page == NULL)
+      {
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
 
+      void *upage = pg_round_down(fault_addr);
 
-     lock_acquire(&vm_lock);
-     struct thread *thread_cur = thread_current();
-     struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
-     if (fault_page == NULL)
-     {
-        lock_release(&vm_lock);
-        f->eax = -1;
-        exit(-1);
-     }
+      ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
-     uint8_t *kpage = palloc_get_page(PAL_USER);
-     if (kpage == NULL)
-     {
-        lock_release(&vm_lock);
-        f->eax = -1;
-        exit(-1);
-     }
+      uint8_t *kpage = palloc_get_page(PAL_USER);
+      if (kpage == NULL)
+      {
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
 
-     /* Load this page. */
-     lock_release(&vm_lock);
+      /* Load this page. */
+      lock_release(&vm_lock);
 
-     lock_acquire(&fs_lock);
-     file_seek(fault_page->file, fault_page->ofs);
-     if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
-     {
-        lock_release(&fs_lock);
-        f->eax = -1;
-        exit(-1);
-     }
-     lock_release(&fs_lock);
+      lock_acquire(&fs_lock);
+      file_seek(fault_page->file, fault_page->ofs);
+      if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+      {
+         lock_release(&fs_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+      lock_release(&fs_lock);
 
-     lock_acquire(&vm_lock);
-     memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+      lock_acquire(&vm_lock);
+      memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
 
-     void *upage = pg_round_down(fault_addr);
-     ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
+      ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
 
-     if (pagedir_get_page(thread_cur->pagedir, upage) != NULL)
-     {
-        lock_release(&vm_lock);
+      if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+      {
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+      lock_release(&vm_lock);
+   }
+   else
+   {
+      //   kill(f);
+      f->eax = -1;
+      exit(-1);
+   }
 
-        f->eax = -1;
-        exit(-1);
-     }
-     pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable);
-     lock_release(&vm_lock);
-     //printf("First instruction at %p: %x\n", f->eip, *(uint32_t*)f->eip);
-//   }
-//   else
-//   {
-//      kill(f);
-//   }
-
-  // /* Get a page of memory. */
-
-  // /* Add the page to the process's address space. */
-  // if (!install_page (upage, kpage, writable))
-  //   {
-  //     palloc_free_page (kpage);
-  //     return false;
-  //   }
-
-  //   struct thread *t = thread_current ();
-
-  //   /* Verify that there's not already a page at that virtual
-  //      address, then map our page there. */
-  //   return (pagedir_get_page (t->pagedir, upage) == NULL
-  //           && pagedir_set_page (t->pagedir, upage, kpage, writable));
+#else
+   if (user)
+   {
+      f->eax = -1;
+      exit(-1);
+   }
+#endif
 }
 
 /*
 keep track of this info in ds (for ucode eviction is free (r-only, alr on disc), data/bss/ustack (need to find swap space to write it to, mmap write to file)
 */
 static bool
-install_page (void *upage, void *kpage, bool writable)
+install_page(void *upage, void *kpage, bool writable)
 {
-  struct thread *t = thread_current ();
+   struct thread *t = thread_current();
 
-  /* Verify that there's not already a page at that virtual
-     address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+   /* Verify that there's not already a page at that virtual
+      address, then map our page there. */
+   return (pagedir_get_page(t->pagedir, upage) == NULL && pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
+
+   // /* Get a page of memory. */
+
+   // /* Add the page to the process's address space. */
+   // if (!install_page (upage, kpage, writable))
+   //   {
+   //     palloc_free_page (kpage);
+   //     return false;
+   //   }
+
+   //   struct thread *t = thread_current ();
+
+   //   /* Verify that there's not already a page at that virtual
+   //      address, then map our page there. */
+   //   return (pagedir_get_page (t->pagedir, upage) == NULL
+   //           && pagedir_set_page (t->pagedir, upage, kpage, writable));

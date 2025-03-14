@@ -289,10 +289,12 @@ void process_exit(void)
   }
   lock_release(&fs_lock);
 
+#ifdef VM
   lock_acquire(&vm_lock);
-  ASSERT(&cur->supp_pt != NULL);
+  ASSERT(cur->supp_pt != NULL);
   free_map(cur->supp_pt);
   lock_release(&vm_lock);
+#endif
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
@@ -550,12 +552,10 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   */
   success = true;
 
-  // spt add *esp
-
  done:
   /* We arrive here whether the load is successful or not. */
-  //file_close(file);
-  //printf("done with setup\n");
+  // file_close(file);
+  //// printf("done with setup\n");
   return success;
  }
 
@@ -639,47 +639,52 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      /* Get a page of memory. */
-      // uint8_t *kpage = palloc_get_page (PAL_USER);
-      // if (kpage == NULL)
-      //   return false;
-
-      // /* Load this page. */
-      // if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-      //   {
-      //     palloc_free_page (kpage);
-      //     return false;
-      //   }
-      // memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      // /* Add the page to the process's address space. */
-      // if (!install_page (upage, kpage, writable))
-      //   {
-      //     palloc_free_page (kpage);
-      //     return false;
-      //   }
-
       // add to spt here
 
       /* Advance. */
       // be careful of implicit advance?
-      struct page * page = create_page((void*)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
-      if(page == NULL){
-        return false;
-      }
-      ASSERT(thread_current()->supp_pt != NULL)
-      lock_acquire(&vm_lock);
-      struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-      //printf("inserted %p\n", pg_round_down((void *)upage));
-
-      ASSERT(ret == NULL);
-      lock_release(&vm_lock);
-
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      ofs += page_read_bytes;
-      upage += PGSIZE;
+#ifdef VM
+    struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
+    if (page == NULL)
+    {
+      return false;
     }
+    ASSERT(thread_current()->supp_pt != NULL)
+    lock_acquire(&vm_lock);
+    struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+    //// printf("inserted %p\n", pg_round_down((void *)upage));
+
+    ASSERT(ret == NULL);
+    lock_release(&vm_lock);
+/* Get a page of memory. */
+#else
+    uint8_t *kpage = palloc_get_page(PAL_USER);
+    if (kpage == NULL)
+      return false;
+
+    /* Load this page. */
+    if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+    {
+      palloc_free_page(kpage);
+      return false;
+    }
+    memset(kpage + page_read_bytes, 0, page_zero_bytes);
+
+    /* Add the page to the process's address space. */
+    if (!install_page(upage, kpage, writable))
+    {
+      palloc_free_page(kpage);
+      return false;
+    }
+#endif
+
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+#ifdef VM
+    ofs += page_read_bytes;
+#endif
+    upage += PGSIZE;
+  }
   return true;
 }
 
@@ -698,6 +703,7 @@ setup_stack (void **esp)
       if (success)
       {
         *esp = PHYS_BASE; // when can we revert this?
+#ifdef VM
         struct page * page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK);
         if(page == NULL){
           return false;
@@ -707,11 +713,12 @@ setup_stack (void **esp)
         struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
         ASSERT(ret == NULL);
         lock_release(&vm_lock);
-        //printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
-      }
-      else
-        palloc_free_page (kpage);
+//// printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
+#endif
     }
+    else
+      palloc_free_page(kpage);
+  }
   return success;
 }
 
