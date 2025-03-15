@@ -53,14 +53,13 @@ struct page *find_page(struct supp_pt *supp_pt, void *uaddr)
 {
     struct hash hash_map = supp_pt->hash_map;
     struct page page;
-    page.uaddr = pg_round_down(uaddr);
+    page.uaddr = uaddr;
+    // printf("find page %p round %p\n",  page.uaddr, pg_round_down(page.uaddr));
 
     struct hash_elem *e = hash_find(&hash_map, &page.hash_elem);
     if(e == NULL){
-        //printf("not found\n");
         return NULL;
     }
-    //printf("finding %p\n", page.uaddr);
     return hash_entry(e, struct page, hash_elem);
 }
 
@@ -70,7 +69,8 @@ page_hash(const struct hash_elem *p_, void *aux UNUSED)
 {
     const struct page *p = hash_entry(p_, struct page, hash_elem);
     void * round = pg_round_down(p->uaddr);
-    return hash_bytes(&round, sizeof(p->uaddr));
+    // printf("hash %p rounded %p\n", p->uaddr, round);
+    return hash_bytes(&round, sizeof(round));
 }
 
 /* Returns true if page a precedes page b. */
@@ -80,8 +80,11 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 {
     const struct page *a = hash_entry(a_, struct page, hash_elem);
     const struct page *b = hash_entry(b_, struct page, hash_elem);
+    // printf("finding a %p\n", a->uaddr);
+    // printf("finding b %p\n", b->uaddr);
+    // printf("\n");
 
-    return a->uaddr < b->uaddr;
+    return pg_round_down(a->uaddr) < pg_round_down(b->uaddr);
 }
 
 void free_map(struct supp_pt *supp_pt){
@@ -93,3 +96,14 @@ static void free_page(struct hash_elem *e, void *aux UNUSED){
     struct page *page = hash_entry(e, struct page, hash_elem);
     free(page);
 }
+
+/*
+    // struct hash_iterator i;
+    // hash_first(&i, &thread_cur->supp_pt->hash_map);
+    // // printf("Current hash table contents:\n");
+    // while (hash_next(&i))
+    // {
+    //    struct page *p = hash_entry(hash_cur(&i), struct page, hash_elem);
+    //    // printf("Entry: %p\n", p->uaddr);
+    // }
+*/

@@ -10,6 +10,7 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 #include "lib/string.h"
+#include <stdbool.h>
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -164,15 +165,71 @@ page_fault (struct intr_frame *f)
 //           not_present ? "not present" : "rights violation",
 //           write ? "writing" : "reading",
 //           user ? "user" : "kernel");
-   //printf("fault addr %p\n", pg_round_down(fault_addr));
+
+// printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 #ifdef VM
    if (fault_addr < PHYS_BASE)
    {
-      lock_acquire(&vm_lock);
+      void * esp = NULL;
       struct thread *thread_cur = thread_current();
+
+      // saved thread_cur->esp at the beginning of syscall, null at the end or exit
+      if(thread_cur->esp != NULL){
+         esp = thread_cur->esp;
+      }
+      else {
+         esp = f->esp;
+      }
+
+      // printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+      // printf("esp %p\n", esp);
+      // printf("minus %p\n", esp - 32);
+
+      bool stack_growth = false;
+    
+      if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT)
+          stack_growth = true;
+
+      lock_acquire(&vm_lock);
+
+      if (stack_growth)
+      {
+         // printf("stack access\n");
+         //printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+
+         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK);
+         if (page == NULL)
+         {
+            lock_release(&vm_lock);
+            f->eax = -1;
+            exit(-1);
+         }
+
+         ASSERT(thread_current()->supp_pt != NULL)
+         struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+         ASSERT(ret == NULL);
+
+         struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+
+         if (fault_page == NULL)
+         {  
+            // printf("pf couldn't find stack access\n");
+            lock_release(&vm_lock);
+            f->eax = -1;
+            exit(-1);
+         }
+      }
+
       struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
       if (fault_page == NULL)
       {
+         // printf("pf couldn't find\n");
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+
+      if(write && !fault_page->writable){
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -191,17 +248,22 @@ page_fault (struct intr_frame *f)
       }
 
       /* Load this page. */
+
       lock_release(&vm_lock);
 
-      lock_acquire(&fs_lock);
-      file_seek(fault_page->file, fault_page->ofs);
-      if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+      if (!stack_growth)
       {
+
+         lock_acquire(&fs_lock);
+         file_seek(fault_page->file, fault_page->ofs);
+         if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+         {
+            lock_release(&fs_lock);
+            f->eax = -1;
+            exit(-1);
+         }
          lock_release(&fs_lock);
-         f->eax = -1;
-         exit(-1);
       }
-      lock_release(&fs_lock);
 
       lock_acquire(&vm_lock);
       memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
@@ -210,6 +272,7 @@ page_fault (struct intr_frame *f)
 
       if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
       {
+         //printf("failed pf end\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);

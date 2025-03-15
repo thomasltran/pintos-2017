@@ -267,6 +267,7 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
       return NULL;
     }
     t->supp_pt = supp_pt;
+    t->esp = NULL;
     #endif
 
     return t;

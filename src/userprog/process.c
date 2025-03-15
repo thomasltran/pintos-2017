@@ -650,12 +650,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       return false;
     }
     ASSERT(thread_current()->supp_pt != NULL)
+    lock_release(&fs_lock);
     lock_acquire(&vm_lock);
     struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
     //// printf("inserted %p\n", pg_round_down((void *)upage));
 
     ASSERT(ret == NULL);
     lock_release(&vm_lock);
+    lock_acquire(&fs_lock);
 /* Get a page of memory. */
 #else
     uint8_t *kpage = palloc_get_page(PAL_USER);
@@ -709,10 +711,12 @@ setup_stack (void **esp)
           return false;
         }
         ASSERT(thread_current()->supp_pt != NULL)
+        lock_release(&fs_lock);
         lock_acquire(&vm_lock);
         struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
         ASSERT(ret == NULL);
         lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
 //// printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
 #endif
     }

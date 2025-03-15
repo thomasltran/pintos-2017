@@ -91,21 +91,27 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     for (void *page = pg_round_down(start); page <= end; page += PGSIZE) 
     {
         // check if page is mapped; if not, return false
-        #ifdef VM
-        lock_acquire(&vm_lock);
-        bool ret = pagedir_get_page(pd, page) == NULL && find_page(supp_pt, page) == NULL;
-        lock_release(&vm_lock);
+#ifdef VM
 
-        #else
-        bool ret = pagedir_get_page(pd, page) == NULL;
-        #endif
-        if (ret)
-        {
-          return false;
-        }
+    // VOLATILE THANK YOU DR. BACK
+    volatile char touch UNUSED;
+    touch = *(volatile char *)page;
+    //*(char *)page = touch;
+
+    lock_acquire(&vm_lock);
+    bool ret = pagedir_get_page(pd, page) == NULL && find_page(supp_pt, page) == NULL;
+    lock_release(&vm_lock);
+
+#else
+    bool ret = pagedir_get_page(pd, page) == NULL;
+#endif
+    if (ret)
+    {
+      return false;
     }
-    
-    return true;
+  }
+
+  return true;
 }
 
 /* Copies a byte from user memory into kernel memory.
@@ -191,10 +197,10 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 
   /* Copy each byte from kernel to user */
   for (size_t i = 0; i < max_len; i++) {
-      // if (pg_round_down(udst_ptr + i) != pg_round_down(udst_ptr + i - 1))
-      // {
-      //   printf("Crossing page boundary at %p\n", udst_ptr + i);
-      // }
+    // if (pg_round_down(udst_ptr + i) != pg_round_down(udst_ptr + i - 1))
+    // {
+    //   printf("cross at %p\n", udst_ptr + i);
+    // }
 
     if (!put_user_byte(udst_ptr + i, ksrc_ptr[i])) {
       return false; // if any byte fails to copy
@@ -244,6 +250,7 @@ Parameters:
 static void
 syscall_handler(struct intr_frame *f)
 {
+  thread_current()->esp = f->esp;
   // Check if user pointer is valid (i.e. is in user space)
   if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
   {
@@ -283,6 +290,7 @@ syscall_handler(struct intr_frame *f)
 
       if (size == 0)
       {
+
         f->eax = 0;
         break;
       }
@@ -290,6 +298,7 @@ syscall_handler(struct intr_frame *f)
       /* Validate buffer */
       if (!validate_user_buffer(buffer, size))
       {
+        thread_current()->esp = NULL;
         f->eax = -1;
         exit(-1);
       }
@@ -357,16 +366,19 @@ syscall_handler(struct intr_frame *f)
 
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) || 
-              !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
-            f->eax = -1;
-            exit(-1);
-          }
+        /* Re-validate buffer since page status might have changed */
+        if (!validate_user_buffer(buffer, bytes_read) ||
+            !memcpy_to_user((void *)buffer, kern_buf, bytes_read))
+        {
+          f->eax = -1;
+          exit(-1);
+        }
       }
       
       free(kern_buf);
       f->eax = bytes_read;
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -377,7 +389,6 @@ syscall_handler(struct intr_frame *f)
         f->eax = -1;
         exit(-1);
       }
-
 
       int fd = *((int *)(f->esp + 4));
       const void *buffer = *((void **)(f->esp + 8));
@@ -390,6 +401,8 @@ syscall_handler(struct intr_frame *f)
       }
       off_t bytes = write(fd, buffer, size);
       f->eax = bytes;
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -415,6 +428,8 @@ syscall_handler(struct intr_frame *f)
       file_seek(cur_file, position);
 
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -440,6 +455,8 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
       }
       free((char *)filename);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -500,6 +517,8 @@ syscall_handler(struct intr_frame *f)
       file_seek(file, 0); // reset file position to 0 (start of file)
       lock_release(&fs_lock);
       f->eax = fd;
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -518,6 +537,7 @@ syscall_handler(struct intr_frame *f)
       lock_release(&fs_lock);
       free((char *)filename);
 
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -545,6 +565,8 @@ syscall_handler(struct intr_frame *f)
       /* Get file size */
       f->eax = file_length(cur->fd_table[fd]);
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -561,6 +583,8 @@ syscall_handler(struct intr_frame *f)
         f->eax = status;
         exit(status);
       }
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -577,6 +601,7 @@ syscall_handler(struct intr_frame *f)
         f->eax = process_wait(pid);
       }
 
+      thread_current()->esp = NULL;
       break;
 
     // exec
@@ -589,6 +614,8 @@ syscall_handler(struct intr_frame *f)
       const char *cmd_line = buffer_check(f, -1);
       f->eax = process_execute(cmd_line);
       free((char *)cmd_line);
+
+      thread_current()->esp = NULL;
       break;
 
     // close
@@ -615,6 +642,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_release(&fs_lock);
 
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -640,14 +668,18 @@ syscall_handler(struct intr_frame *f)
       f->eax = file_tell(cur->fd_table[fd]);
 
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
     // halt
     case SYS_HALT:
+      thread_current()->esp = NULL;
       shutdown_power_off();
       break;
 
     default:
+      thread_current()->esp = NULL;
       f->eax = -1;
       exit(-1);
       break;
@@ -723,6 +755,8 @@ void exit(int status){
   lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
   lock_release(&ps->ps_lock);
+
+  thread_current()->esp = NULL;
 
   thread_exit();
 }

@@ -115,6 +115,7 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
+  void * esp;
 //   struct file_mapping_table file_mapping;
 #endif
 
