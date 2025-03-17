@@ -53,6 +53,7 @@
 #endif
 #include "lib/kernel/x86.h"
 #include "lib/atomic-ops.h"
+#include "vm/frame.h"
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -121,6 +122,9 @@ main (void)
 
   #ifdef VM
   init_spt();
+
+  /* Intialize the frame table*/
+  init_ft();
   #endif
 
   /* Initialize threading system so we can use locks. */
