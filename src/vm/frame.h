@@ -2,11 +2,11 @@
 #include "threads/synch.h"
 #include "vm/page.h"
 #include "stdbool.h"
-#include "threads/palloc.h"
+// #include "threads/palloc.h"
 #include "threads/thread.h"
-#include "userprog/pagedir.h"
-#include "threads/vaddr.h"
-#include <stdlib.h>
+// #include "userprog/pagedir.h"
+// #include "threads/vaddr.h"
+// #include <stdlib.h>
 
 
 #ifndef VM_FRAME_H

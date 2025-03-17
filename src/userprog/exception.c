@@ -11,7 +11,8 @@
 #include "threads/vaddr.h"
 #include "lib/string.h"
 #include <stdbool.h>
-
+#include "threads/pte.h"
+#include "vm/frame.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -133,7 +134,7 @@ page_fault (struct intr_frame *f)
 {
   bool not_present UNUSED;  /* True: not-present page, false: writing r/o page. */
   bool write UNUSED;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
+  bool user UNUSED;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
   /* Obtain faulting address, the virtual address that was
@@ -239,7 +240,9 @@ page_fault (struct intr_frame *f)
 
       ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
-      uint8_t *kpage = palloc_get_page(PAL_USER);
+      // uint8_t *kpage = palloc_get_page(PAL_USER);
+      uint8_t *kpage = ft_get_page(thread_current(), fault_addr, false);
+
       if (kpage == NULL)
       {
          lock_release(&vm_lock);
@@ -277,6 +280,71 @@ page_fault (struct intr_frame *f)
          f->eax = -1;
          exit(-1);
       }
+      // printf("%p\n", kpage);
+      // printf("%p\n", fault_addr);
+      // struct page *k_spt_page = find_page(thread_cur->supp_pt, (void *)kpage);
+      // if(k_spt_page == NULL){
+      //    printf("k_spt_page: NULL\n");
+      // }
+      // else{
+      //    printf("k_spt_page: %p\n", k_spt_page);
+      // }
+
+      // void *k_pte = pagedir_get_page(thread_cur->pagedir, (void*)kpage);
+      void *k_pde = thread_cur->pagedir + pd_no((void*) kpage);
+      uint32_t* k_pt = (uint32_t*)pde_get_pt(*(uint32_t*)k_pde);
+      uint32_t k_pte = k_pt[pt_no(kpage)];
+
+      if((k_pte) == 0){
+         printf("k_pte: NULL\n");
+      }
+      else{
+         // printf("k_spt_page: %p", (uint32_t *)k_pde);
+         printf("k_pte: VALID\n");
+         printf("k_pte physical address: %p\n", (uint32_t* )k_pte);
+
+         switch(fault_page->page_status){
+
+            case PHYS:
+               printf("PHYS\n");
+               break;
+            case SWAP:
+               printf("SWAP\n");
+               break;
+            case MAPPED:
+               printf("MAPPED\n");
+               break;
+            case CODE:
+               printf("CODE\n");
+               break;
+            case DATA:
+               printf("DATA\n");
+               break;
+            case BSS:
+               printf("BSS\n");
+               break;
+            case STACK:
+               printf("STACK\n");
+               break;
+            case UNKNOWN:
+               printf("UNKNOWN\n");
+               break;
+            default:
+               printf("BAD\n");
+
+         }
+
+
+         printf("fault page: %zu\n", fault_page->page_status);
+         
+      }
+      // printf("address of k_spt_page: %p\n", k_spt_page);
+      
+      
+      // printf("content of k_spt_page long unsigned: %lu", *k_spt_page);
+
+      // printf("%p\n", k_pte);
+
       lock_release(&vm_lock);
    }
    else
@@ -298,7 +366,7 @@ page_fault (struct intr_frame *f)
 /*
 keep track of this info in ds (for ucode eviction is free (r-only, alr on disc), data/bss/ustack (need to find swap space to write it to, mmap write to file)
 */
-static bool
+UNUSED static bool
 install_page(void *upage, void *kpage, bool writable)
 {
    struct thread *t = thread_current();

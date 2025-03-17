@@ -23,8 +23,7 @@
 #include "lib/stdio.h"
 #include "vm/page.h"
 #include "lib/string.h"
-
-#include "vm/page.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp);
@@ -698,7 +697,9 @@ setup_stack (void **esp)
   uint8_t *kpage;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = ft_get_page(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, false);
+
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
