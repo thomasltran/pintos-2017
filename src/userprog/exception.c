@@ -181,8 +181,7 @@ page_fault (struct intr_frame *f)
          esp = f->esp;
       }
 
-      // printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
-      // printf("esp %p\n", esp);
+      //printf("fault addr %p fesp %p thread esp %p esp %p\n", fault_addr, f->esp, thread_current()->esp, esp);
       // printf("minus %p\n", esp - 32);
 
       bool stack_growth = false;
@@ -223,7 +222,7 @@ page_fault (struct intr_frame *f)
       struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
       if (fault_page == NULL)
       {
-         // printf("pf couldn't find\n");
+         //printf("pf couldn't find\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);

@@ -12,6 +12,7 @@
 #include "devices/shutdown.h"
 #include "devices/input.h"
 #include "vm/page.h"
+#include "vm/mappedfile.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -367,7 +368,7 @@ syscall_handler(struct intr_frame *f)
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
         /* Re-validate buffer since page status might have changed */
-        if (!validate_user_buffer(buffer, bytes_read) ||
+        if (/*!validate_user_buffer(buffer, bytes_read) ||*/
             !memcpy_to_user((void *)buffer, kern_buf, bytes_read))
         {
           f->eax = -1;
@@ -517,6 +518,8 @@ syscall_handler(struct intr_frame *f)
       file_seek(file, 0); // reset file position to 0 (start of file)
       lock_release(&fs_lock);
       f->eax = fd;
+
+      //printf("tid %d open\n", cur->tid);
 
       thread_current()->esp = NULL;
       break;
@@ -678,6 +681,204 @@ syscall_handler(struct intr_frame *f)
       shutdown_power_off();
       break;
 
+    case SYS_MMAP:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      void *buffer = *((void **)(f->esp + 8));
+
+      if (pg_ofs(buffer) != 0 || buffer == 0)
+      {
+        f->eax = -1;
+        thread_current()->esp = NULL;
+        break;
+      }
+
+      // i dont want to fault it?
+
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      struct file *file = cur->fd_table[fd];
+
+      struct file *reopen = file_reopen(file);
+      if (reopen == NULL)
+      {
+        // printf("failed reopen\n");
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      off_t length = file_length(reopen);
+      if (length == 0)
+      {
+        // printf("length 0\n");
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      lock_release(&fs_lock);
+
+      int pages = (length + PGSIZE - 1) / PGSIZE; // round up formula
+      void *curr = buffer;
+
+      lock_acquire(&vm_lock);
+      struct supp_pt *supp_pt = cur->supp_pt;
+
+      for (int i = 0; i < pages; i++)
+      {
+        if (find_page(supp_pt, curr) != NULL)
+        {
+          // printf("alr mapped\n");
+          f->eax = -1;
+          thread_current()->esp = NULL;
+          lock_release(&vm_lock);
+          return;
+        }
+        curr += PGSIZE;
+      }
+
+      struct mapped_file *mapped_file = create_mapped_file(reopen, buffer, length);
+      if (mapped_file == NULL)
+      {
+        f->eax = -1;
+        lock_release(&vm_lock);
+        exit(-1);
+      }
+      list_push_back(&cur->mapped_file_table->list, &mapped_file->elem);
+
+      off_t ofs = 0;
+      // printf("hi %d\n", pages);
+
+      curr = buffer;
+      for (int i = 0; i < pages; i++)
+      {
+        size_t page_read_bytes = PGSIZE;
+        size_t page_zero_bytes = 0;
+
+        if (length % PGSIZE != 0 && i == pages - 1)
+        {
+          page_read_bytes = length % PGSIZE; // remainder
+          page_zero_bytes = PGSIZE - page_read_bytes;
+          // printf("tid %d read %d\n", cur->tid, page_read_bytes);
+          struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+          if (page == NULL)
+          {
+            f->eax = -1;
+            lock_release(&vm_lock);
+            exit(-1);
+          }
+          // printf("mmap added %p\n", curr);
+
+          struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
+          ASSERT(ret == NULL);
+          continue;
+        } // zero remainder
+
+        struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+        if (page == NULL)
+        {
+          f->eax = -1;
+          lock_release(&vm_lock);
+          exit(-1);
+        }
+        struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
+        ASSERT(ret == NULL);
+
+        curr += PGSIZE;
+        ofs += page_read_bytes; // would be PGSIZE, remainder doesn't matter
+      }
+
+      f->eax = mapped_file->map_id;
+
+
+      lock_release(&vm_lock);
+
+      thread_current()->esp = NULL;
+      break;
+    }
+
+    case SYS_MUNMAP:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      mapid_t mapping = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&vm_lock);
+
+      struct mapped_file *mapped_file = NULL;
+      for (struct list_elem *e = list_begin(&cur->mapped_file_table->list); e != list_end(&cur->mapped_file_table->list); e = list_next(e))
+      {
+        mapped_file = list_entry(e, struct mapped_file, elem);
+        if (mapped_file->map_id == mapping)
+        {
+          break;
+        }
+        mapped_file = NULL;
+      }
+
+      if (mapped_file == NULL)
+      {
+        f->eax = -1;
+        lock_release(&vm_lock);
+        break;
+      }
+
+      int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
+      void *curr = mapped_file->addr;
+
+      struct supp_pt *supp_pt = cur->supp_pt;
+
+      // we want to pin before
+      
+      for (int i = 0; i < pages; i++)
+      {
+        struct page *page = find_page(supp_pt, curr); // continguous
+        ASSERT(page != NULL);
+        if (!pagedir_is_dirty(cur->pagedir, curr))
+        {
+          hash_delete(&supp_pt->hash_map, &page->hash_elem);
+          free(page);
+          curr += PGSIZE;
+          continue;
+        }
+        lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
+        off_t wrote = file_write_at(mapped_file->file, page->uaddr, page->read_bytes, page->ofs);
+        lock_release(&fs_lock);
+        lock_acquire(&vm_lock);
+        // ASSERT(wrote == page->read_bytes);
+        curr += PGSIZE;
+
+        hash_delete(&supp_pt->hash_map, &page->hash_elem);
+        free(page);
+      }
+      list_remove(&mapped_file->elem);
+      free(mapped_file);
+
+      lock_release(&vm_lock);
+
+      thread_current()->esp = NULL;
+      break;
+    }
     default:
       thread_current()->esp = NULL;
       f->eax = -1;

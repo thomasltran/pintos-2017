@@ -23,6 +23,7 @@
 #include "lib/stdio.h"
 #include "vm/page.h"
 #include "lib/string.h"
+#include "vm/mappedfile.h"
 
 #include "vm/page.h"
 
@@ -252,6 +253,42 @@ void process_exit(void)
     lock_release(&fs_lock);
   }
 
+  #ifdef VM
+  lock_acquire(&vm_lock);
+  //printf("tid %d munmap\n", cur->tid);
+  ASSERT(cur->supp_pt != NULL);
+
+  for (struct list_elem *e = list_begin(&cur->mapped_file_table->list); e != list_end(&cur->mapped_file_table->list);){
+    struct mapped_file * mapped_file = list_entry(e, struct mapped_file, elem);
+    munmap(mapped_file->map_id);
+    e = list_remove(&mapped_file->elem);
+    free(mapped_file);
+  }
+  free(cur->mapped_file_table);
+
+  free_spt(cur->supp_pt);
+
+  lock_release(&vm_lock);
+#endif
+
+  // clean up fd's when a thread exits
+  lock_acquire(&fs_lock);
+  struct file **fd_table = cur->fd_table;
+  if (fd_table != NULL)
+  { // called open
+    for (int i = FD_MIN; i < FD_MAX; i++)
+    {
+      if (fd_table[i] != NULL)
+      {
+        file_close(fd_table[i]);
+      }
+    }
+    free(fd_table);
+  }
+  lock_release(&fs_lock);
+
+  //printf("tid %d exited\n", cur->tid);
+
   if (ps != NULL)
   {
     lock_acquire(&ps->ps_lock);
@@ -272,29 +309,6 @@ void process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
-
-  // clean up fd's when a thread exits
-  lock_acquire(&fs_lock);
-  struct file **fd_table = cur->fd_table;
-  if (fd_table != NULL)
-  { // called open
-    for (int i = FD_MIN; i < FD_MAX; i++)
-    {
-      if (fd_table[i] != NULL)
-      {
-        file_close(fd_table[i]);
-      }
-    }
-    free(fd_table);
-  }
-  lock_release(&fs_lock);
-
-#ifdef VM
-  lock_acquire(&vm_lock);
-  ASSERT(cur->supp_pt != NULL);
-  free_map(cur->supp_pt);
-  lock_release(&vm_lock);
-#endif
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */

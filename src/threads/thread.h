@@ -7,7 +7,7 @@
 #include "filesys/file.h"
 #include "threads/synch.h"
 #include "vm/page.h"
-#include "vm/filemap.h"
+#include "vm/mappedfile.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -115,12 +115,12 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
-  void * esp;
-//   struct file_mapping_table file_mapping;
 #endif
 
-#ifdef USERPROG
+#ifdef VM
+void * esp;
 struct supp_pt *supp_pt;
+struct mapped_file_table * mapped_file_table;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
