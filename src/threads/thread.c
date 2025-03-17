@@ -17,6 +17,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #include "userprog/syscall.h"
+#include "vm/page.h"
 #endif
 #include "threads/cpu.h"
 #include "devices/lapic.h"
@@ -259,6 +260,22 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     sf = alloc_frame (t, sizeof *sf);
     sf->eip = switch_entry;
     sf->ebp = 0;
+
+    #ifdef VM
+    struct supp_pt * supp_pt = create_supp_pt();
+    if(supp_pt == NULL){
+      return NULL;
+    }
+    t->supp_pt = supp_pt;
+
+    struct mapped_file_table * mapped_file_table = create_mapped_file_table();
+    if(mapped_file_table == NULL){
+      return NULL;
+    }
+    t->mapped_file_table = mapped_file_table;
+
+    t->esp = NULL;
+    #endif
 
     return t;
 }

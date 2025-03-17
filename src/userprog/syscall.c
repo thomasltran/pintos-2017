@@ -11,6 +11,8 @@
 #include "lib/string.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
+#include "vm/page.h"
+#include "vm/mappedfile.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -28,56 +30,6 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-/* - - - - - - - - - - User Memory Validity Functions - - - - - - - - - - */
-
-/* Validation Hierarchy:
-  
-    - Key idea is that these functions should cover every case of memory validation checks for `system calls`
-    - Each validation function serves a specific purpose. From basic pointer validation to complete
-      buffer checking. Choose the appropriate validation based on the system call's requirements
-      and parameter types.
-
-    1. is_valid_user_ptr    -> Basic pointer validity check 
-    2. validate_user_buffer -> Full buffer accessibility verification
-    3. get_user_byte        -> Safe single-byte read from user space
-    4. copy_user_string     -> Secure string copying to kernel space
-    5. put_user_byte        -> Single byte write to user space
-    6. memcpy_to_user       -> Bulk data transfer to user buffers
-
-  Examples:
-
-    Pattern 1: String Parameters (SYS_CREATE)
-    1. validate_user_buffer(name, 1)       (Check pointer validity)
-    2. copy_user_string()                  (Create kernel copy)
-    3. Check filename[0] != '\0'           (Explicit empty check)
-
-    Pattern 2: Buffer Parameters (SYS_WRITE)
-    1. validate_user_buffer(buffer, size)  (Full buffer check)
-    2. Direct access after validation      
-    - Safe because:
-      a) Buffer remains mapped (Project 2 assumption)
-      b) Locking prevents concurrent modification
-
-    Pattern 3: Simple Values (SYS_EXIT)
-    1. is_valid_user_ptr(status_ptr)      (Single pointer check)
-    2. Direct read via *(int *)status_ptr
-
-    Pattern 4: Buffer Input (SYS_READ)
-    1. validate_user_buffer(buffer, size) (Initial buffer check)
-    2. Read into kernel buffer            (Isolate user memory)
-    3. memcpy_to_user()                   (Safe bulk copy)
-    4. Re-validate buffer                 (Post copy check)
-    - Prevents:
-      a) Page faults during file ops
-      b) Stale pointer dereferences
-
-    Implementation Notes:
-    - Prefer memcpy_to_user() over put_user_byte() for bulk data
-    - Always pair copy_user_string() with validate_user_buffer()
-    - Re-validation is critical after long operations
-    - Kernel buffers act as safe intermediaries during I/O
-*/
-
 /* Validates that a user pointer is valid by checking that:
    - It is not NULL
    - Points to user virtual address space (below PHYS_BASE)
@@ -90,9 +42,19 @@ static bool
 is_valid_user_ptr(const void *ptr)
 {
     struct thread *t = thread_current();
-    return ptr != NULL 
-        && is_user_vaddr(ptr)
-        && pagedir_get_page(t->pagedir, ptr) != NULL;
+    
+    #ifdef VM
+    struct supp_pt *supp_pt = t->supp_pt;
+
+    lock_acquire(&vm_lock);
+    bool ret = ptr != NULL && is_user_vaddr(ptr) && (pagedir_get_page(t->pagedir, ptr) != NULL || find_page(supp_pt, (void *)ptr) != NULL);
+    lock_release(&vm_lock);
+
+    #else
+    bool ret = ptr != NULL && is_user_vaddr(ptr) && (pagedir_get_page(t->pagedir, ptr) != NULL);
+    #endif
+
+    return ret;
 } 
 
 /* Validate a buffer in user memory
@@ -107,9 +69,6 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     if (size == 0) 
       return true;
 
-    if (uaddr == NULL || !is_user_vaddr(uaddr))
-      return false;
-
     /* Check start and end addresses */
     const void *start = uaddr;
     const void *end = uaddr + size - 1;
@@ -119,6 +78,9 @@ bool validate_user_buffer(const void *uaddr, size_t size)
 
     /* Check page directory entries */
     struct thread *t = thread_current();
+    #ifdef VM
+    struct supp_pt *supp_pt = t->supp_pt;
+    #endif
     uint32_t *pd = t->pagedir;
     
     /* Handle single page case */
@@ -130,11 +92,27 @@ bool validate_user_buffer(const void *uaddr, size_t size)
     for (void *page = pg_round_down(start); page <= end; page += PGSIZE) 
     {
         // check if page is mapped; if not, return false
-        if (pagedir_get_page(pd, page) == NULL)
-          return false;
+#ifdef VM
+
+    // VOLATILE THANK YOU DR. BACK
+    volatile char touch UNUSED;
+    touch = *(volatile char *)page;
+    //*(char *)page = touch;
+
+    lock_acquire(&vm_lock);
+    bool ret = pagedir_get_page(pd, page) == NULL && find_page(supp_pt, page) == NULL;
+    lock_release(&vm_lock);
+
+#else
+    bool ret = pagedir_get_page(pd, page) == NULL;
+#endif
+    if (ret)
+    {
+      return false;
     }
-    
-    return true;
+  }
+
+  return true;
 }
 
 /* Copies a byte from user memory into kernel memory.
@@ -169,7 +147,6 @@ copy_user_string(const char *usrc, char *kdst, size_t max_len)
 
     /* Loop string until max len or null terminator */
     for (size_t i = 0; i < max_len; i++) {
-      // printf("count %d\n", i);
       uint8_t byte;
       const uint8_t * src = (const uint8_t *)usrc + i;
       int result = get_user_byte(src, &byte);
@@ -221,6 +198,11 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 
   /* Copy each byte from kernel to user */
   for (size_t i = 0; i < max_len; i++) {
+    // if (pg_round_down(udst_ptr + i) != pg_round_down(udst_ptr + i - 1))
+    // {
+    //   printf("cross at %p\n", udst_ptr + i);
+    // }
+
     if (!put_user_byte(udst_ptr + i, ksrc_ptr[i])) {
       return false; // if any byte fails to copy
     }
@@ -232,24 +214,32 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 // pass in the value of an error (ex: 0 for false, -1, etc.) in the int
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
-  char filename[NAME_MAX + 1]; // Kernel buffer
-
-  bool valid = validate_user_buffer(f->esp + 4, NAME_MAX + 1);
-  if (!valid)
+  char * filename = malloc(128); // Kernel buffer
+  if (filename == NULL)
   {
     f->eax = set_eax_err;
     exit(-1);
   }
+
   const char *cmd_line = *((char **)(f->esp + 4));
-  valid = copy_user_string(cmd_line, filename, sizeof(filename));
+
+  bool valid = validate_user_buffer(f->esp + 4, 128);
+  if (!valid)
+  {
+    free(filename);
+    f->eax = set_eax_err;
+    exit(-1);
+  }
+  valid = copy_user_string(cmd_line, filename, 128);
 
   /* Check if filename is valid */
   if (!valid)
   {
+    free(filename);
     f->eax = set_eax_err;
     exit(-1);
   }
-  return cmd_line;
+  return filename;
 }
 
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
@@ -261,6 +251,7 @@ Parameters:
 static void
 syscall_handler(struct intr_frame *f)
 {
+  thread_current()->esp = f->esp;
   // Check if user pointer is valid (i.e. is in user space)
   if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
   {
@@ -300,6 +291,7 @@ syscall_handler(struct intr_frame *f)
 
       if (size == 0)
       {
+
         f->eax = 0;
         break;
       }
@@ -307,6 +299,7 @@ syscall_handler(struct intr_frame *f)
       /* Validate buffer */
       if (!validate_user_buffer(buffer, size))
       {
+        thread_current()->esp = NULL;
         f->eax = -1;
         exit(-1);
       }
@@ -315,39 +308,39 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      if (fd == 0)
-      {
-        bytes_read = 0;
-        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-        {
-          uint8_t key_input = input_getc();
-          if (key_input > 0)
-          {
-            void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
-            *(uint8_t *)ptr = key_input;
-          }
-          else
-          {
-            break;
-          }
-        }
-        if (bytes_read > 0)
-        {
-          void *ptr = (void *)buffer + bytes_read;
-          *(uint8_t *)ptr = '\0';
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) ||
-              !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
-          {
-            f->eax = -1;
-            lock_release(&fs_lock);
-            exit(-1);
-          }
-        }
-        lock_release(&fs_lock);
-        f->eax = bytes_read;
-        break;
-      }
+      // if (fd == 0)
+      // {
+      //   bytes_read = 0;
+      //   while ((unsigned int)bytes_read < size - 1) // buffer null terminated
+      //   {
+      //     uint8_t key_input = input_getc();
+      //     if (key_input > 0)
+      //     {
+      //       void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
+      //       *(uint8_t *)ptr = key_input;
+      //     }
+      //     else
+      //     {
+      //       break;
+      //     }
+      //   }
+      //   if (bytes_read > 0)
+      //   {
+      //     void *ptr = (void *)buffer + bytes_read;
+      //     *(uint8_t *)ptr = '\0';
+      //     /* Re-validate buffer since page status might have changed */
+      //     if (!validate_user_buffer(buffer, bytes_read) ||
+      //         !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
+      //     {
+      //       f->eax = -1;
+      //       lock_release(&fs_lock);
+      //       exit(-1);
+      //     }
+      //   }
+      //   lock_release(&fs_lock);
+      //   f->eax = bytes_read;
+      //   break;
+      // }
 
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
@@ -369,22 +362,24 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
       }
 
-      bytes_read = file_read(file, kern_buf, size);
+      bytes_read = file_read(file, kern_buf, size); // pinning or chunking read
+      lock_release(&fs_lock);
 
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) || 
-              !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
-            f->eax = -1;
-            lock_release(&fs_lock);
-            exit(-1);
-          }
+        /* Re-validate buffer since page status might have changed */
+        if (/*!validate_user_buffer(buffer, bytes_read) ||*/
+            !memcpy_to_user((void *)buffer, kern_buf, bytes_read))
+        {
+          f->eax = -1;
+          exit(-1);
+        }
       }
       
       free(kern_buf);
-      lock_release(&fs_lock);
       f->eax = bytes_read;
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -407,6 +402,8 @@ syscall_handler(struct intr_frame *f)
       }
       off_t bytes = write(fd, buffer, size);
       f->eax = bytes;
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -432,6 +429,8 @@ syscall_handler(struct intr_frame *f)
       file_seek(cur_file, position);
 
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -456,6 +455,9 @@ syscall_handler(struct intr_frame *f)
         f->eax = filesys_create(filename, initial_size) ? 1 : 0;
         lock_release(&fs_lock);
       }
+      free((char *)filename);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -472,6 +474,7 @@ syscall_handler(struct intr_frame *f)
       /* Open file */
       lock_acquire(&fs_lock);
       struct file *file = filesys_open(filename);
+      free((char *)filename);
 
       /* Check if file exists */
       if (file == NULL) {
@@ -480,11 +483,7 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      /* rox checking: Deny write if opening executable */
       struct thread *cur = thread_current();
-      if (strncmp(filename, cur->ps->user_prog_name, NAME_MAX) == 0) {
-          file_deny_write(file);
-      }
 
       if (cur->fd_table == NULL) {
         // calloc (since we know the size)
@@ -519,6 +518,10 @@ syscall_handler(struct intr_frame *f)
       file_seek(file, 0); // reset file position to 0 (start of file)
       lock_release(&fs_lock);
       f->eax = fd;
+
+      //printf("tid %d open\n", cur->tid);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -530,12 +533,14 @@ syscall_handler(struct intr_frame *f)
         f->eax = 0;
         exit(0);
       }
-      const char *file = buffer_check(f, 0);
+      const char *filename = buffer_check(f, 0);
 
       lock_acquire(&fs_lock);
-      f->eax = filesys_remove(file) ? 1 : 0;
+      f->eax = filesys_remove(filename) ? 1 : 0;
       lock_release(&fs_lock);
+      free((char *)filename);
 
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -563,6 +568,8 @@ syscall_handler(struct intr_frame *f)
       /* Get file size */
       f->eax = file_length(cur->fd_table[fd]);
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -579,6 +586,8 @@ syscall_handler(struct intr_frame *f)
         f->eax = status;
         exit(status);
       }
+
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -595,6 +604,7 @@ syscall_handler(struct intr_frame *f)
         f->eax = process_wait(pid);
       }
 
+      thread_current()->esp = NULL;
       break;
 
     // exec
@@ -606,6 +616,9 @@ syscall_handler(struct intr_frame *f)
       }
       const char *cmd_line = buffer_check(f, -1);
       f->eax = process_execute(cmd_line);
+      free((char *)cmd_line);
+
+      thread_current()->esp = NULL;
       break;
 
     // close
@@ -632,6 +645,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_release(&fs_lock);
 
+      thread_current()->esp = NULL;
       break;
     }
 
@@ -657,14 +671,215 @@ syscall_handler(struct intr_frame *f)
       f->eax = file_tell(cur->fd_table[fd]);
 
       lock_release(&fs_lock);
+
+      thread_current()->esp = NULL;
       break;
     }
     // halt
     case SYS_HALT:
+      thread_current()->esp = NULL;
       shutdown_power_off();
       break;
 
+    // mmap
+    case SYS_MMAP:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      void *buffer = *((void **)(f->esp + 8));
+
+      // check NULL and aligned
+      if (pg_ofs(buffer) != 0 || buffer == 0)
+      {
+        f->eax = -1;
+        thread_current()->esp = NULL;
+        break;
+      }
+      // lazy loaded—no need to validate_buffer as it'll get faulted if applicable when buffer gets accessed
+
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      struct file *file = cur->fd_table[fd];
+
+      struct file *reopen = file_reopen(file); // operate on reopen vers
+      if (reopen == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      off_t length = file_length(reopen);
+      if (length == 0)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      lock_release(&fs_lock);
+
+      int pages = (length + PGSIZE - 1) / PGSIZE; // round up formula
+      void *curr = buffer;
+
+      lock_acquire(&vm_lock);
+      struct supp_pt *supp_pt = cur->supp_pt;
+
+      for (int i = 0; i < pages; i++)
+      {
+        if (find_page(supp_pt, curr) != NULL) // alr mapped/overlap
+        {
+          f->eax = -1;
+          thread_current()->esp = NULL;
+          lock_release(&vm_lock);
+          return;
+        }
+        curr += PGSIZE;
+      }
+
+      struct mapped_file *mapped_file = create_mapped_file(reopen, buffer, length);
+      if (mapped_file == NULL)
+      {
+        f->eax = -1;
+        lock_release(&vm_lock);
+        exit(-1);
+      }
+      list_push_back(&cur->mapped_file_table->list, &mapped_file->elem);
+
+      off_t ofs = 0;
+
+      curr = buffer;
+      for (int i = 0; i < pages; i++)
+      {
+        size_t page_read_bytes = PGSIZE;
+        size_t page_zero_bytes = 0;
+
+        if (length % PGSIZE != 0 && i == pages - 1) // zero out the remainder if read_bytes isn't PGSIZE
+        {
+          page_read_bytes = length % PGSIZE; // remainder
+          page_zero_bytes = PGSIZE - page_read_bytes;
+          struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+          if (page == NULL)
+          {
+            f->eax = -1;
+            lock_release(&vm_lock);
+            exit(-1);
+          }
+
+          struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
+          ASSERT(ret == NULL);
+          continue;
+        }
+
+        struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+        if (page == NULL)
+        {
+          f->eax = -1;
+          lock_release(&vm_lock);
+          exit(-1);
+        }
+        struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
+        ASSERT(ret == NULL);
+
+        curr += PGSIZE;
+        ofs += page_read_bytes; // would be PGSIZE, remainder doesn't matter
+      }
+
+      f->eax = mapped_file->map_id;
+
+      lock_release(&vm_lock);
+
+      thread_current()->esp = NULL;
+      break;
+    }
+
+    // munmap
+    case SYS_MUNMAP:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      mapid_t mapping = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&vm_lock);
+
+      struct mapped_file *mapped_file = NULL;
+      for (struct list_elem *e = list_begin(&cur->mapped_file_table->list); e != list_end(&cur->mapped_file_table->list); e = list_next(e))
+      {
+        mapped_file = list_entry(e, struct mapped_file, elem);
+        if (mapped_file->map_id == mapping)
+        {
+          break;
+        }
+        mapped_file = NULL;
+      }
+
+      if (mapped_file == NULL)
+      {
+        f->eax = -1;
+        lock_release(&vm_lock);
+        break;
+      }
+
+      int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
+      void *curr = mapped_file->addr;
+
+      struct supp_pt *supp_pt = cur->supp_pt;
+
+      // we want to pin before
+      // we want to check both uaddr and kaddr dirty
+      
+      for (int i = 0; i < pages; i++)
+      {
+        struct page *page = find_page(supp_pt, curr); // continguous
+        ASSERT(page != NULL);
+        if (!pagedir_is_dirty(cur->pagedir, page->uaddr)) // not dirty, nothing to write back
+        {
+          hash_delete(&supp_pt->hash_map, &page->hash_elem);
+          free(page);
+          curr += PGSIZE;
+          continue;
+        }
+
+        lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
+
+        off_t wrote = file_write_at(mapped_file->file, page->uaddr, page->read_bytes, page->ofs);
+
+        lock_release(&fs_lock);
+        lock_acquire(&vm_lock);
+        ASSERT((uint32_t)wrote == page->read_bytes);
+        curr += PGSIZE;
+
+        hash_delete(&supp_pt->hash_map, &page->hash_elem);
+        free(page);
+      }
+      list_remove(&mapped_file->elem);
+      free(mapped_file);
+
+      lock_release(&vm_lock);
+
+      thread_current()->esp = NULL;
+      break;
+    }
     default:
+      thread_current()->esp = NULL;
       f->eax = -1;
       exit(-1);
       break;
@@ -733,12 +948,15 @@ static int write(int fd, const void * buffer, unsigned size){
 void exit(int status){
   struct thread *thread_curr = thread_current();
   struct process *ps = thread_curr->ps;
+  ASSERT(ps != NULL);
 
   printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
 
   lock_acquire(&ps->ps_lock);
   ps->exit_status = status;
   lock_release(&ps->ps_lock);
+
+  thread_current()->esp = NULL;
 
   thread_exit();
 }

@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "threads/synch.h"
+#include "vm/page.h"
+#include "vm/mappedfile.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -111,8 +113,14 @@ struct thread
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
   struct process * ps; // reference a child thread holds to its struct process
-  struct list ps_list; // parent thread is single threaded, list operations only ever executed by itself
+  struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
+#endif
+
+#ifdef VM
+void * esp;
+struct supp_pt *supp_pt;
+struct mapped_file_table * mapped_file_table;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -130,6 +138,7 @@ struct process // struct to manage parent/child threads in process.c
    int ref_count; // init to 2, decremented by parent in process_wait (and possibly exit if it didn't wait for its child) and child in process_exit
    tid_t child_tid; // thread id of child
    char * user_prog_name; // program name
+   struct file * exe_file; // keep exe around until exit
 };
 #endif
 
