@@ -698,8 +698,11 @@ setup_stack (void **esp)
   bool success = false;
 
   // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  if(!lock_held_by_current_thread(&vm_lock)){
+    lock_acquire(&vm_lock);
+  }
   kpage = ft_get_page(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, false);
-
+  lock_release(&vm_lock);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
