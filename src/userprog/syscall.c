@@ -681,6 +681,7 @@ syscall_handler(struct intr_frame *f)
       shutdown_power_off();
       break;
 
+    // mmap
     case SYS_MMAP:
     {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
@@ -692,14 +693,14 @@ syscall_handler(struct intr_frame *f)
       int fd = *((int *)(f->esp + 4));
       void *buffer = *((void **)(f->esp + 8));
 
+      // check NULL and aligned
       if (pg_ofs(buffer) != 0 || buffer == 0)
       {
         f->eax = -1;
         thread_current()->esp = NULL;
         break;
       }
-
-      // i dont want to fault it?
+      // lazy loaded—no need to validate_buffer as it'll get faulted if applicable when buffer gets accessed
 
       struct thread *cur = thread_current();
 
@@ -713,10 +714,9 @@ syscall_handler(struct intr_frame *f)
       }
       struct file *file = cur->fd_table[fd];
 
-      struct file *reopen = file_reopen(file);
+      struct file *reopen = file_reopen(file); // operate on reopen vers
       if (reopen == NULL)
       {
-        // printf("failed reopen\n");
         f->eax = -1;
         lock_release(&fs_lock);
         exit(-1);
@@ -725,7 +725,6 @@ syscall_handler(struct intr_frame *f)
       off_t length = file_length(reopen);
       if (length == 0)
       {
-        // printf("length 0\n");
         f->eax = -1;
         lock_release(&fs_lock);
         exit(-1);
@@ -740,9 +739,8 @@ syscall_handler(struct intr_frame *f)
 
       for (int i = 0; i < pages; i++)
       {
-        if (find_page(supp_pt, curr) != NULL)
+        if (find_page(supp_pt, curr) != NULL) // alr mapped/overlap
         {
-          // printf("alr mapped\n");
           f->eax = -1;
           thread_current()->esp = NULL;
           lock_release(&vm_lock);
@@ -761,7 +759,6 @@ syscall_handler(struct intr_frame *f)
       list_push_back(&cur->mapped_file_table->list, &mapped_file->elem);
 
       off_t ofs = 0;
-      // printf("hi %d\n", pages);
 
       curr = buffer;
       for (int i = 0; i < pages; i++)
@@ -769,11 +766,10 @@ syscall_handler(struct intr_frame *f)
         size_t page_read_bytes = PGSIZE;
         size_t page_zero_bytes = 0;
 
-        if (length % PGSIZE != 0 && i == pages - 1)
+        if (length % PGSIZE != 0 && i == pages - 1) // zero out the remainder if read_bytes isn't PGSIZE
         {
           page_read_bytes = length % PGSIZE; // remainder
           page_zero_bytes = PGSIZE - page_read_bytes;
-          // printf("tid %d read %d\n", cur->tid, page_read_bytes);
           struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
           if (page == NULL)
           {
@@ -781,12 +777,11 @@ syscall_handler(struct intr_frame *f)
             lock_release(&vm_lock);
             exit(-1);
           }
-          // printf("mmap added %p\n", curr);
 
           struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
           ASSERT(ret == NULL);
           continue;
-        } // zero remainder
+        }
 
         struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
         if (page == NULL)
@@ -804,13 +799,13 @@ syscall_handler(struct intr_frame *f)
 
       f->eax = mapped_file->map_id;
 
-
       lock_release(&vm_lock);
 
       thread_current()->esp = NULL;
       break;
     }
 
+    // munmap
     case SYS_MUNMAP:
     {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
@@ -848,24 +843,28 @@ syscall_handler(struct intr_frame *f)
       struct supp_pt *supp_pt = cur->supp_pt;
 
       // we want to pin before
+      // we want to check both uaddr and kaddr dirty
       
       for (int i = 0; i < pages; i++)
       {
         struct page *page = find_page(supp_pt, curr); // continguous
         ASSERT(page != NULL);
-        if (!pagedir_is_dirty(cur->pagedir, curr))
+        if (!pagedir_is_dirty(cur->pagedir, page->uaddr)) // not dirty, nothing to write back
         {
           hash_delete(&supp_pt->hash_map, &page->hash_elem);
           free(page);
           curr += PGSIZE;
           continue;
         }
+
         lock_release(&vm_lock);
         lock_acquire(&fs_lock);
+
         off_t wrote = file_write_at(mapped_file->file, page->uaddr, page->read_bytes, page->ofs);
+
         lock_release(&fs_lock);
         lock_acquire(&vm_lock);
-        // ASSERT(wrote == page->read_bytes);
+        ASSERT((uint32_t)wrote == page->read_bytes);
         curr += PGSIZE;
 
         hash_delete(&supp_pt->hash_map, &page->hash_elem);

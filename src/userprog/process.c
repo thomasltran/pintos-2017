@@ -244,28 +244,10 @@ void process_exit(void)
     }
   }
 
-  struct process *ps = cur->ps;
-
-  if (ps != NULL && ps->exe_file != NULL)
-  {
-    lock_acquire(&fs_lock);
-    file_close(ps->exe_file);
-    lock_release(&fs_lock);
-  }
-
-  #ifdef VM
+#ifdef VM
   lock_acquire(&vm_lock);
-  //printf("tid %d munmap\n", cur->tid);
-  ASSERT(cur->supp_pt != NULL);
 
-  for (struct list_elem *e = list_begin(&cur->mapped_file_table->list); e != list_end(&cur->mapped_file_table->list);){
-    struct mapped_file * mapped_file = list_entry(e, struct mapped_file, elem);
-    munmap(mapped_file->map_id);
-    e = list_remove(&mapped_file->elem);
-    free(mapped_file);
-  }
-  free(cur->mapped_file_table);
-
+  free_mapped_file_table(cur->mapped_file_table);
   free_spt(cur->supp_pt);
 
   lock_release(&vm_lock);
@@ -287,7 +269,14 @@ void process_exit(void)
   }
   lock_release(&fs_lock);
 
-  //printf("tid %d exited\n", cur->tid);
+  struct process *ps = cur->ps;
+
+  if (ps != NULL && ps->exe_file != NULL)
+  {
+    lock_acquire(&fs_lock);
+    file_close(ps->exe_file);
+    lock_release(&fs_lock);
+  }
 
   if (ps != NULL)
   {

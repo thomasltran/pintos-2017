@@ -24,9 +24,10 @@ struct mapped_file {
 
 struct mapped_file_table *create_mapped_file_table(void);
 struct mapped_file * create_mapped_file(struct file * file, void * addr, off_t length);
+void free_mapped_file_table(struct mapped_file_table * mapped_file_table);
 
 mapid_t * mmap (int fd, void *addr);
-void munmap (mapid_t mapping);
+void free_mapped_file (mapid_t mapping, struct mapped_file_table * mapped_file_table);
 extern mapid_t id;
 
 #endif
