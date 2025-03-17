@@ -33,7 +33,12 @@ void init_ft(){
 }
 
 void* ft_get_page(struct thread* page_thread, void* u_vaddr, bool pinned){
-    //primitive implementation
+
+    lock_acquire(&ft->lock);
+
+    void *kpage = NULL;
+
+    // primitive implementation
     if(!list_empty(&ft->free_list)){
         struct list_elem * e = list_pop_front(&ft->free_list);
         struct frame * frame_ptr = list_entry(e, struct frame, elem);
@@ -43,21 +48,17 @@ void* ft_get_page(struct thread* page_thread, void* u_vaddr, bool pinned){
         list_push_front(&ft->used_list, e);
         return frame_ptr->kaddr;
     }
-    else{
-        // struct list_elem * e = list_pop_front(&ft->used_list);
-        // struct frame * frame_ptr = list_entry(e, struct frame, elem);
+    else {
+        // no free frames, we must evict a frame
+        kpage = evict_frame(page_thread, u_vaddr, pinned);
 
-        // pagedir_clear_page(frame_ptr->thread->pagedir, pg_round_down(frame_ptr->page->uaddr));
-        // pagedir_set_accessed(frame_ptr->thread->pagedir, pg_round_down(frame_ptr->page->uaddr), false);
-        // pagedir_set_dirty(frame_ptr->thread->pagedir, pg_round_down(frame_ptr->page->uaddr), false);
-        // //writeback if necessary
-        // memset (frame_ptr->kaddr, 0, PGSIZE * page_cnt);
-        // frame_ptr->thread = page_thread;
-        // frame_ptr->page = find_page(page_thread->supp_pt, u_vaddr);
-        // frame_ptr->pinned = pinned;
-        // list_push_front(&ft->used_list, e);
-        // return frame_ptr->kaddr;
-        exit(1);
+        if (kpage != NULL) { // if we successfully evicted a frame
+            struct frame *frame_ptr = list_entry(list_next(list_begin(&ft->used_list)), struct frame, elem); // get the next frame in the clock hand order
+            frame_ptr->thread = page_thread; // set the thread
+            frame_ptr->page = find_page(page_thread->supp_pt, u_vaddr); // find the page
+            frame_ptr->pinned = pinned; // set the pinned status
+            list_push_front(&ft->used_list, &frame_ptr->elem); // add to the used list
+        }
     }
     return NULL;
 }
@@ -76,4 +77,101 @@ void destroy_frame_table(){
     }
 
     free(ft);
+}
+
+/* - - - - - - - - - - Helper Functions For Eviction - - - - - - - - - - */
+
+// Get the next frame in the clock hand order
+static struct frame * 
+get_next_frame(struct frame *current) {
+
+    struct list_elem *next = list_next(&current->elem);
+    if (next == list_end(&ft->used_list)) {
+        next = list_begin(&ft->used_list); // wrap around to the beginning of the list
+    }
+    return list_entry(next, struct frame, elem);
+}
+
+// Evict a frame from the frame table (using clock hand algorithm)
+static void *
+evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
+
+    ASSERT(lock_held_by_current_thread(&vm_lock));
+
+    struct frame *victim = NULL;
+    struct frmae *clock_start = list_entry(ft->clock_elem.next, struct frame, elem);
+    struct frame *curr = clock_start;
+
+    // loop through the frame table until victim is found
+    while (victim == NULL) {
+        // skip pinned frames
+        if (curr->pinned) {
+            curr = get_next_frame(curr);
+            continue;
+        }
+        
+        // get the page table entries for user address
+        uint32_t *pd = curr->thread->pagedir;
+        void *upage = curr->page->uaddr;
+
+        // check if the frame has been accessed
+        bool accessed = pagedir_is_accessed(pd, upage);
+
+        if (!accessed) {
+            // found a non recently accessed frame to evict
+            victim = curr;
+        } else {
+            // clear the accessed bit and move to next frame
+            pagedir_set_accessed(pd, upage, false);
+            curr = get_next_frame(curr);
+        }
+
+        // if we've looped through the entire frame table with no victim found, reset the clock hand
+        if (curr == clock_start && victim == NULL) {
+            curr = get_next_frame(curr);
+        }
+    } // end while loop
+
+    // update clock hand for next eviction
+    ft->clock_elem.next = &get_next_frame(victim)->elem;
+
+    // handle victim based on its type
+    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
+
+    switch (victim->page->page_status) {
+
+        // TODO: Might have to add more cases here
+
+        case CODE:
+            break; // no need to write back code pages (just a read-only page)
+        // DATA, BSS, STACK: write to swap if dirty
+        case DATA:
+        case BSS:
+        case STACK:
+            if (dirty) {
+                // write to swap if dirty
+                victim->page->swap_index = swap_out(victim->kaddr);
+                victim->page->page_status = SWAP; // update status to show in swap
+            }
+            break;
+        // MAPPED: write back to file if dirty
+        case MAPPED:
+            if (dirty) {
+                // write back to file if dirty
+                file_write_at(victim->page->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs);
+            }
+            break;
+        defauklt:
+            break;
+    } // end switch
+
+    // remove page table mappings
+    pagedir_clear_page(victim->thread->pagedir, victim->page->uaddr);
+
+    // clear frame data but keep the frame sturcture
+    void *kaddr = victim->kaddr;
+    victim->page = NULL;
+    victim->thread = NULL;
+
+    return kaddr;
 }
