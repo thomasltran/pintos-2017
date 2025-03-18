@@ -15,10 +15,13 @@
 struct frame_table* ft;
 
 
-void init_ft(){
+void init_ft(void) {
     ft = malloc(sizeof(struct frame_table));
-    list_init(&(ft->free_list));
-    list_init(&(ft->used_list));
+    list_init(&ft->used_list);
+    list_init(&ft->free_list);
+    lock_init(&ft->lock);
+    // Initialize clock element to head of used list
+    ft->clock_elem = list_head(&ft->used_list);
 
     uint32_t* kpage;
 
@@ -27,15 +30,9 @@ void init_ft(){
         frame_ptr->kaddr = kpage;
         list_push_front(&ft->free_list, &frame_ptr->elem);
     }
-
-
-
 }
 
 void* ft_get_page(struct thread* page_thread, void* u_vaddr, bool pinned){
-
-    lock_acquire(&ft->lock);
-
     void *kpage = NULL;
 
     // primitive implementation
@@ -58,9 +55,13 @@ void* ft_get_page(struct thread* page_thread, void* u_vaddr, bool pinned){
             frame_ptr->page = find_page(page_thread->supp_pt, u_vaddr); // find the page
             frame_ptr->pinned = pinned; // set the pinned status
             list_push_front(&ft->used_list, &frame_ptr->elem); // add to the used list
+            
+            // Reset accessed and dirty bits for kernel virtual address
+            pagedir_set_accessed(page_thread->pagedir, kpage, false);
+            pagedir_set_dirty(page_thread->pagedir, kpage, false);
         }
     }
-    return NULL;
+    return kpage;
 }
 
 void destroy_frame_table(){
@@ -98,8 +99,15 @@ evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
 
     ASSERT(lock_held_by_current_thread(&vm_lock));
 
+    // validation for clock hand
+    if(ft->clock_elem.next == NULL || 
+       ft->clock_elem.next == list_head(&ft->used_list) || 
+       ft->clock_elem.next == list_tail(&ft->used_list)) {
+        ft->clock_elem.next = list_begin(&ft->used_list);
+    }
+
     struct frame *victim = NULL;
-    struct frmae *clock_start = list_entry(ft->clock_elem.next, struct frame, elem);
+    struct frame *clock_start = list_entry(ft->clock_elem.next, struct frame, elem);
     struct frame *curr = clock_start;
 
     // loop through the frame table until victim is found
@@ -165,13 +173,17 @@ evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
             break;
     } // end switch
 
-    // remove page table mappings
+    // Reset bits before clearing page
+    pagedir_set_accessed(victim->thread->pagedir, victim->page->uaddr, false);
+    pagedir_set_dirty(victim->thread->pagedir, victim->page->uaddr, false);
+    
+    // then clear the page
     pagedir_clear_page(victim->thread->pagedir, victim->page->uaddr);
 
     // clear frame data but keep the frame sturcture
     void *kaddr = victim->kaddr;
     victim->page = NULL;
     victim->thread = NULL;
-
+    
     return kaddr;
 }
