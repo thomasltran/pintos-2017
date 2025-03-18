@@ -13,6 +13,7 @@
 #include "devices/input.h"
 #include "vm/page.h"
 #include "vm/mappedfile.h"
+#include "userprog/exception.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -22,6 +23,7 @@ static bool validate_user_buffer(const void *uaddr, size_t size);
 static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
 static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
+static bool get_pinned_frames(void *uaddr, bool write, size_t size);
 
 /* Initialize the system call handler */
 void
@@ -965,4 +967,115 @@ void exit(int status){
   thread_current()->esp = NULL;
 
   thread_exit();
+}
+
+static bool get_pinned_frames(void *uaddr, bool write, size_t size)
+{
+  const void *start = uaddr;
+  const void *end = uaddr + size - 1;
+  struct thread *cur = thread_current();
+
+  if (start >= PHYS_BASE || end >= PHYS_BASE)
+    return false;
+
+  int pages = (size + PGSIZE - 1) / PGSIZE; // round up formula
+  void *curr = uaddr;
+
+  struct supp_pt *supp_pt = cur->supp_pt;
+
+  for (int i = 0; i < pages; i++)
+  {
+    struct page *page = find_page(supp_pt, curr);
+    if (page != NULL && page->page_location == PAGED_IN) // alr mapped/overlap
+    {
+      page->frame->pinned = true;
+      curr += PGSIZE;
+      continue;
+    }
+
+    void *esp = NULL;
+    struct thread *thread_cur = thread_current();
+
+    esp = thread_cur->esp;
+
+    bool stack_growth = false;
+
+    if (uaddr >= esp - 32 && uaddr > PHYS_BASE - STACK_LIMIT)
+      stack_growth = true;
+
+    struct page *fault_page = NULL;
+
+    if (stack_growth)
+    {
+      struct page *page = create_page(uaddr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+      if (page == NULL)
+      {
+        return false;
+      }
+
+      ASSERT(thread_current()->supp_pt != NULL)
+      struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+      ASSERT(ret == NULL);
+
+      fault_page = find_page(thread_cur->supp_pt, uaddr); // dont need this here, just temp
+
+      if (fault_page == NULL)
+      {
+        return false;
+      }
+    }
+
+    fault_page = find_page(thread_cur->supp_pt, uaddr);
+    if (fault_page == NULL)
+    {
+      return false;
+    }
+
+    if (write && !fault_page->writable)
+    {
+      return false;
+    }
+
+    void *upage = pg_round_down(uaddr);
+
+    ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
+
+    struct frame *frame = ft_get_page_frame(thread_current(), fault_page, true);
+    uint8_t *kpage = frame->kaddr;
+
+    if (kpage == NULL)
+    {
+      return false;
+    }
+
+    if (!stack_growth)
+    {
+
+      lock_acquire(&fs_lock);
+      file_seek(fault_page->file, fault_page->ofs);
+      if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+      {
+        lock_release(&fs_lock);
+        return false;
+      }
+      lock_release(&fs_lock);
+    }
+
+    lock_acquire(&vm_lock);
+    memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+
+    ASSERT(pg_round_down(uaddr) == pg_round_down(fault_page->uaddr));
+
+    if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+    {
+      return false;
+    }
+    fault_page->page_location = PAGED_IN;
+    fault_page->frame = frame;
+    frame->pinned = false;
+
+    lock_release(&vm_lock);
+
+    curr += PGSIZE;
+  }
 }

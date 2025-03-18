@@ -258,6 +258,16 @@ page_fault (struct intr_frame *f)
 
       lock_release(&vm_lock);
 
+      ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
+
+      if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+      {
+         // printf("failed pf end\n");
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+
       if (!stack_growth)
       {
 
@@ -275,15 +285,6 @@ page_fault (struct intr_frame *f)
       lock_acquire(&vm_lock);
       memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
 
-      ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
-
-      if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
-      {
-         //printf("failed pf end\n");
-         lock_release(&vm_lock);
-         f->eax = -1;
-         exit(-1);
-      }
       fault_page->page_location = PAGED_IN;
       fault_page->frame = frame;
       frame->pinned = false;
