@@ -167,7 +167,7 @@ evict_frame()
             // victim_spt = victim->thread->supp_pt;
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim->pinned = true; // for write back if applicable
-            victim->thread = NULL; // break mapping (in transit page)
+            //     victim->thread = NULL; should we break mapping here?
             break;
         } else {
             // clear the accessed bit and move to next frame
@@ -186,12 +186,9 @@ evict_frame()
 
     // handle victim based on its type
 
-    // printf("ptr is %p\n", victim->page->uaddr); // we get a weird ptr
-    //printf("pre dirty check\n");
     ASSERT(victim->thread->pagedir != NULL);
     ASSERT(victim->page != NULL);
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
-    //printf("post dirty check\n");
 
     switch (victim->page->page_status) {
 
@@ -251,7 +248,7 @@ evict_frame()
 
     // clear frame data but keep the frame sturcture
     victim->page = NULL;
-    // victim->thread = NULL;
+    victim->thread = NULL;
 
     return victim;
 }
