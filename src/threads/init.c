@@ -191,6 +191,7 @@ main (void)
   /* Run actions specified on kernel command line. */
   run_actions (argv);
   /* Finish up. */
+  destroy_frame_table();
   shutdown ();
   thread_exit ();
   NOT_REACHED ();
