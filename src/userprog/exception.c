@@ -197,7 +197,7 @@ page_fault (struct intr_frame *f)
          // printf("stack access\n");
          //printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 
-         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK);
+         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, NONE);
          if (page == NULL)
          {
             lock_release(&vm_lock);

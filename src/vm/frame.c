@@ -13,7 +13,9 @@
 //frame table
 //static because frame.c should use it directly while other compilation units should utilzie frame table functions
 struct frame_table* ft;
-
+static struct frame * get_next_frame(struct frame *);
+// static void * evict_frame(struct thread *, void *, bool);
+static void * evict_frame(void);
 
 void init_ft(void) {
     ft = malloc(sizeof(struct frame_table));
@@ -47,7 +49,8 @@ void* ft_get_page(struct thread* page_thread, void* u_vaddr, bool pinned){
     }
     else {
         // no free frames, we must evict a frame
-        kpage = evict_frame(page_thread, u_vaddr, pinned);
+        // kpage = evict_frame(page_thread, u_vaddr, pinned);
+        kpage = evict_frame();
 
         if (kpage != NULL) { // if we successfully evicted a frame
             struct frame *frame_ptr = list_entry(list_next(list_begin(&ft->used_list)), struct frame, elem); // get the next frame in the clock hand order
@@ -94,20 +97,22 @@ get_next_frame(struct frame *current) {
 }
 
 // Evict a frame from the frame table (using clock hand algorithm)
+// static void *
+// evict_frame(UNUSED struct thread *page_thread, UNUSED void *u_vaddr, UNUSED bool pinned) {
 static void *
-evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
+evict_frame() {
 
     ASSERT(lock_held_by_current_thread(&vm_lock));
 
     // validation for clock hand
-    if(ft->clock_elem.next == NULL || 
-       ft->clock_elem.next == list_head(&ft->used_list) || 
-       ft->clock_elem.next == list_tail(&ft->used_list)) {
-        ft->clock_elem.next = list_begin(&ft->used_list);
+    if(ft->clock_elem == NULL || 
+       ft->clock_elem == list_head(&ft->used_list) || 
+       ft->clock_elem == list_tail(&ft->used_list)) {
+        ft->clock_elem = list_begin(&ft->used_list);
     }
 
     struct frame *victim = NULL;
-    struct frame *clock_start = list_entry(ft->clock_elem.next, struct frame, elem);
+    struct frame *clock_start = list_entry(ft->clock_elem, struct frame, elem);
     struct frame *curr = clock_start;
 
     // loop through the frame table until victim is found
@@ -141,7 +146,7 @@ evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
     } // end while loop
 
     // update clock hand for next eviction
-    ft->clock_elem.next = &get_next_frame(victim)->elem;
+    ft->clock_elem = &get_next_frame(victim)->elem;
 
     // handle victim based on its type
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
@@ -153,23 +158,19 @@ evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned) {
         case CODE:
             break; // no need to write back code pages (just a read-only page)
         // DATA, BSS, STACK: write to swap if dirty
-        case DATA:
-        case BSS:
+        case DATA_BSS:
         case STACK:
-            if (dirty) {
-                // write to swap if dirty
-                victim->page->swap_index = swap_out(victim->kaddr);
-                victim->page->page_status = SWAP; // update status to show in swap
-            }
+            // victim->page->swap_index = swap_out(victim->kaddr);
+            victim->page->page_location = SWAP; // update status to show in swap
             break;
-        // MAPPED: write back to file if dirty
-        case MAPPED:
+        // MMAP: write back to file if dirty
+        case MMAP:
             if (dirty) {
                 // write back to file if dirty
                 file_write_at(victim->page->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs);
             }
             break;
-        defauklt:
+        default:
             break;
     } // end switch
 

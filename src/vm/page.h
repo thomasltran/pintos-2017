@@ -8,14 +8,20 @@
 extern struct lock vm_lock;
 
 enum page_status {
-    PHYS, // frame table
-    SWAP, // swap space
-    MAPPED, // mapped to file
+    MMAP, // mapped to file
     CODE, // ucode
-    DATA, // data
-    BSS, // bss
+    DATA_BSS, // data or bss
     STACK, // ustack
-    UNKNOWN
+    S_UNKNOWN //status unknown
+};
+
+
+enum page_location {
+    PHYS, // frame table, in physical memory
+    SWAP, // swap space, evicted files
+    DISK, //executable, files
+    NONE, //stack growth
+    L_UNKNOWN //location unknown
 };
 
 // code or data/bss pages in it are virtually allocated (which
@@ -31,6 +37,7 @@ struct supp_pt {
 struct page {
     void * uaddr;
     enum page_status page_status;
+    enum page_location page_location;
     // struct lock lock;
     struct hash_elem hash_elem;
 
@@ -49,7 +56,7 @@ void init_spt(void);
 // created at thread startup
 struct supp_pt * create_supp_pt(void);
 
-struct page * create_page(void * uaddr, struct file * file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status);
+struct page * create_page(void * uaddr, struct file * file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status, enum page_location);
 
 struct page *find_page(struct supp_pt *supp_pt, void *uaddr);
 

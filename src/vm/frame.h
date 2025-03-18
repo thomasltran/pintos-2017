@@ -17,7 +17,7 @@ struct frame_table {
     struct list free_list; // free pages
     struct lock lock; //lock to protect lists
 
-    struct list_elem clock_elem; // clock hand
+    struct list_elem* clock_elem; // clock hand
 };
 
 struct frame {
@@ -32,6 +32,5 @@ struct frame {
 void init_ft(void);
 void destroy_frame_table(void);
 void* ft_get_page(struct thread*, void*, bool);
-static struct frame * get_next_frame(struct frame *current);
-static void * evict_frame(struct thread *page_thread, void *u_vaddr, bool pinned);
+
 #endif

@@ -645,7 +645,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Advance. */
       // be careful of implicit advance?
 #ifdef VM
-    struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
+    // struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
+
+    enum page_status page_status = writable == true ? CODE : DATA_BSS;
+    struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, DISK);
+
     if (page == NULL)
     {
       return false;
@@ -712,7 +716,7 @@ setup_stack (void **esp)
       {
         *esp = PHYS_BASE; // when can we revert this?
 #ifdef VM
-        struct page * page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK);
+        struct page * page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
         if(page == NULL){
           return false;
         }
