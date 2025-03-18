@@ -16,7 +16,7 @@ struct mapped_file_table *create_mapped_file_table()
         return NULL;
     }
     list_init(&mapped_file_table->list);
-    id = 0;
+    id = -1;
     return mapped_file_table;
 }
 
@@ -27,9 +27,9 @@ struct mapped_file * create_mapped_file(struct file * file, void * addr, off_t l
         return NULL;
     }
     mapped_file->file = file; // call reopen before, use that ref
-mapped_file->addr = addr;
+    mapped_file->addr = addr;
     mapped_file->length = length;
-    mapped_file->map_id = id++;
+    mapped_file->map_id = ++id;
 
     return mapped_file;
 }
