@@ -49,7 +49,7 @@ struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t rea
     page->page_location = page_location;
     page->map_id = -1;
     page->frame = NULL;
-    // printf("inserted %p\n", pg_round_down(uaddr));
+    //printf("inserted %p\n", pg_round_down(uaddr));
 
     return page;
 }

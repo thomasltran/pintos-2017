@@ -59,6 +59,7 @@ void page_frame_freed(struct frame * frame){
 
     ASSERT(frame->page != NULL && frame->page->frame != NULL);
     struct page * page = frame->page;
+    page->page_location = PAGED_OUT;
     page->frame = NULL;
 
     frame->page = NULL;
@@ -173,6 +174,7 @@ evict_frame()
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim->pinned = true; // for write back if applicable
             //     victim->thread = NULL; should we break mapping here?
+            list_remove(&victim->elem);
             break;
         } else {
             // clear the accessed bit and move to next frame
@@ -195,6 +197,8 @@ evict_frame()
     ASSERT(victim->page != NULL);
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
 
+    // why is this failing
+    // if pageout and not pinned
     ASSERT(victim->page->page_location == PAGED_IN);
     switch (victim->page->page_status) {
 
@@ -245,7 +249,6 @@ evict_frame()
             break;
     } // end switch
 
-    victim->pinned = false; // reset for writeback, if applicable
 
     // Reset bits before clearing page
     // pagedir_set_accessed(victim->thread->pagedir, victim->page->uaddr, false);
@@ -256,8 +259,7 @@ evict_frame()
 
     // clear frame data but keep the frame sturcture
     ASSERT(victim->page != NULL && victim->page->frame != NULL);
-    struct page * page = victim->page;
-    page->frame = NULL;
+    victim->page->frame = NULL;
 
     victim->page = NULL;
     victim->thread = NULL;
