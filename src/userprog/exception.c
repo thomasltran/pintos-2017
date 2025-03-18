@@ -256,13 +256,15 @@ page_fault (struct intr_frame *f)
 
       /* Load this page. */
 
-      lock_release(&vm_lock);
-
       ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
+
+      fault_page->frame = frame;
+      fault_page->page_location = PAGED_IN; // if it exits in the chunk after, free_page needs to be able to free it
+      // pinned so it won't get evicted
 
       if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
       {
-         // printf("failed pf end\n");
+         page_frame_freed(frame);
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -270,7 +272,7 @@ page_fault (struct intr_frame *f)
 
       if (!stack_growth)
       {
-
+         lock_release(&vm_lock);
          lock_acquire(&fs_lock);
          file_seek(fault_page->file, fault_page->ofs);
          if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
@@ -280,13 +282,9 @@ page_fault (struct intr_frame *f)
             exit(-1);
          }
          lock_release(&fs_lock);
+         lock_acquire(&vm_lock);
       }
-
-      lock_acquire(&vm_lock);
       memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
-
-      fault_page->page_location = PAGED_IN;
-      fault_page->frame = frame;
       frame->pinned = false;
 
       lock_release(&vm_lock);

@@ -23,7 +23,10 @@ static bool validate_user_buffer(const void *uaddr, size_t size);
 static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
 static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
-static bool get_pinned_frames(void *uaddr, bool write, size_t size);
+#ifdef VM
+bool get_pinned_frames(void *uaddr, bool write, size_t size);
+void unpin_frames(void *uaddr, size_t size);
+#endif
 
 /* Initialize the system call handler */
 void
@@ -293,11 +296,21 @@ syscall_handler(struct intr_frame *f)
 
       if (size == 0)
       {
-
+        thread_current()->esp = NULL;
         f->eax = 0;
         break;
       }
 
+#ifdef VM
+      lock_acquire(&vm_lock);
+      if (!get_pinned_frames((void *)buffer, false, size))
+      {
+        lock_release(&vm_lock);
+        f->eax = -1;
+        exit(-1);
+      }
+      lock_release(&vm_lock);
+#else
       /* Validate buffer */
       if (!validate_user_buffer(buffer, size))
       {
@@ -305,44 +318,11 @@ syscall_handler(struct intr_frame *f)
         f->eax = -1;
         exit(-1);
       }
+#endif
 
       struct thread *cur = thread_current();
 
       lock_acquire(&fs_lock);
-
-      // if (fd == 0)
-      // {
-      //   bytes_read = 0;
-      //   while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-      //   {
-      //     uint8_t key_input = input_getc();
-      //     if (key_input > 0)
-      //     {
-      //       void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
-      //       *(uint8_t *)ptr = key_input;
-      //     }
-      //     else
-      //     {
-      //       break;
-      //     }
-      //   }
-      //   if (bytes_read > 0)
-      //   {
-      //     void *ptr = (void *)buffer + bytes_read;
-      //     *(uint8_t *)ptr = '\0';
-      //     /* Re-validate buffer since page status might have changed */
-      //     if (!validate_user_buffer(buffer, bytes_read) ||
-      //         !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
-      //     {
-      //       f->eax = -1;
-      //       lock_release(&fs_lock);
-      //       exit(-1);
-      //     }
-      //   }
-      //   lock_release(&fs_lock);
-      //   f->eax = bytes_read;
-      //   break;
-      // }
 
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
@@ -370,7 +350,7 @@ syscall_handler(struct intr_frame *f)
       /* Copy to user buffer if read succeeded */
       if (bytes_read > 0) {
         /* Re-validate buffer since page status might have changed */
-        if (/*!validate_user_buffer(buffer, bytes_read) ||*/
+        if (!validate_user_buffer(buffer, bytes_read) ||
             !memcpy_to_user((void *)buffer, kern_buf, bytes_read))
         {
           f->eax = -1;
@@ -382,6 +362,13 @@ syscall_handler(struct intr_frame *f)
       f->eax = bytes_read;
 
       thread_current()->esp = NULL;
+
+#ifdef VM
+      lock_acquire(&vm_lock);
+      unpin_frames((void *)buffer, size);
+      lock_release(&vm_lock);
+#endif
+
       break;
     }
 
@@ -397,15 +384,34 @@ syscall_handler(struct intr_frame *f)
       const void *buffer = *((void **)(f->esp + 8));
       unsigned size = *((unsigned *)(f->esp + 12));
 
-      /* Validation using buffer range check */
-      if (!validate_user_buffer(buffer, size)) {
+#ifdef VM
+      lock_acquire(&vm_lock);
+      if (!get_pinned_frames((void *)buffer, false, size))
+      {
+        lock_release(&vm_lock);
         f->eax = -1;
         exit(-1);
       }
+      lock_release(&vm_lock);
+#else
+      /* Validate buffer */
+      if (!validate_user_buffer(buffer, size))
+      {
+        thread_current()->esp = NULL;
+        f->eax = -1;
+        exit(-1);
+      }
+#endif
+
       off_t bytes = write(fd, buffer, size);
       f->eax = bytes;
 
       thread_current()->esp = NULL;
+#ifdef VM
+      lock_acquire(&vm_lock);
+      unpin_frames((void *)buffer, size);
+      lock_release(&vm_lock);
+#endif
       break;
     }
 
@@ -969,7 +975,31 @@ void exit(int status){
   thread_exit();
 }
 
-static bool get_pinned_frames(void *uaddr, bool write, size_t size)
+#ifdef VM
+void unpin_frames(void *uaddr, size_t size)
+{
+  const void *start = uaddr;
+  const void *end = uaddr + size - 1;
+  struct thread *cur = thread_current();
+
+  ASSERT(start < PHYS_BASE || end < PHYS_BASE);
+
+  int pages = (pg_no(end) - pg_no(start)) + 1; // num of pages the buff spans across, didntt need in mapped files bc its aligned
+
+  void *curr = uaddr;
+
+  struct supp_pt *supp_pt = cur->supp_pt;
+
+  for (int i = 0; i < pages; i++)
+  {
+    struct page *page = find_page(supp_pt, curr);
+    ASSERT(page != NULL && page->page_location == PAGED_IN)
+    page->frame->pinned = false;
+    curr += PGSIZE;
+  }
+}
+
+bool get_pinned_frames(void *uaddr, bool write, size_t size)
 {
   const void *start = uaddr;
   const void *end = uaddr + size - 1;
@@ -978,7 +1008,8 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
   if (start >= PHYS_BASE || end >= PHYS_BASE)
     return false;
 
-  int pages = (size + PGSIZE - 1) / PGSIZE; // round up formula
+  int pages = (pg_no(end) - pg_no(start)) + 1; // num of pages the buff spans across, didntt need in mapped files bc its aligned
+
   void *curr = uaddr;
 
   struct supp_pt *supp_pt = cur->supp_pt;
@@ -1000,14 +1031,14 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     bool stack_growth = false;
 
-    if (uaddr >= esp - 32 && uaddr > PHYS_BASE - STACK_LIMIT)
+    if (curr >= esp - 32 && curr > PHYS_BASE - STACK_LIMIT)
       stack_growth = true;
 
     struct page *fault_page = NULL;
 
     if (stack_growth)
     {
-      struct page *page = create_page(uaddr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+      struct page *page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
       if (page == NULL)
       {
         return false;
@@ -1017,7 +1048,7 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
       ASSERT(ret == NULL);
 
-      fault_page = find_page(thread_cur->supp_pt, uaddr); // dont need this here, just temp
+      fault_page = find_page(thread_cur->supp_pt, curr); // dont need this here, just temp
 
       if (fault_page == NULL)
       {
@@ -1025,7 +1056,7 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
       }
     }
 
-    fault_page = find_page(thread_cur->supp_pt, uaddr);
+    fault_page = find_page(thread_cur->supp_pt, curr);
     if (fault_page == NULL)
     {
       return false;
@@ -1036,7 +1067,7 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
       return false;
     }
 
-    void *upage = pg_round_down(uaddr);
+    void *upage = pg_round_down(curr);
 
     ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
@@ -1048,9 +1079,18 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
       return false;
     }
 
+    fault_page->frame = frame;
+    fault_page->page_location = PAGED_IN;
+
+    if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+    {
+      page_frame_freed(frame);
+      return false;
+    }
+
     if (!stack_growth)
     {
-
+      lock_release(&vm_lock);
       lock_acquire(&fs_lock);
       file_seek(fault_page->file, fault_page->ofs);
       if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
@@ -1059,23 +1099,15 @@ static bool get_pinned_frames(void *uaddr, bool write, size_t size)
         return false;
       }
       lock_release(&fs_lock);
+      lock_acquire(&vm_lock);
     }
 
-    lock_acquire(&vm_lock);
     memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
 
-    ASSERT(pg_round_down(uaddr) == pg_round_down(fault_page->uaddr));
-
-    if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
-    {
-      return false;
-    }
-    fault_page->page_location = PAGED_IN;
-    fault_page->frame = frame;
-    frame->pinned = false;
-
-    lock_release(&vm_lock);
+    ASSERT(fault_page->page_location == PAGED_IN && frame->pinned == true && frame->thread == cur);
 
     curr += PGSIZE;
   }
+  return true;
 }
+#endif

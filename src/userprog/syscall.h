@@ -9,5 +9,9 @@
 void syscall_init (void);
 void exit(int status); // declared here for use in exception.c
 extern struct lock fs_lock; // global filesys lock
+#ifdef VM
+bool get_pinned_frames(void *uaddr, bool write, size_t size);
+void unpin_frames(void *uaddr, size_t size);
+#endif
 
 #endif /* userprog/syscall.h */

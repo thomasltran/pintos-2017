@@ -739,12 +739,12 @@ setup_stack(void **esp)
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-    page->page_location = PAGED_IN;
-    page->frame = frame;
     if (success)
     {
       *esp = PHYS_BASE; // when can we revert this?
 #ifdef VM
+      page->page_location = PAGED_IN;
+      page->frame = frame;
       ASSERT(thread_current()->supp_pt != NULL)
       struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
       ASSERT(ret == NULL);
@@ -752,8 +752,9 @@ setup_stack(void **esp)
     }
     else{
 #ifdef VM
-      free(page);
+      page->frame = frame;
       page_frame_freed(frame);
+      free(page);
 #else
       palloc_free_page(kpage);
 #endif

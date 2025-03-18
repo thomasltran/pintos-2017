@@ -59,6 +59,7 @@ void page_frame_freed(struct frame * frame){
 
     ASSERT(frame->page != NULL && frame->page->frame != NULL);
     struct page * page = frame->page;
+    page->page_location = PAGED_OUT;
     page->frame = NULL;
 
     frame->page = NULL;
@@ -196,6 +197,8 @@ evict_frame()
     ASSERT(victim->page != NULL);
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
 
+    // why is this failing
+    // if pageout and not pinned
     ASSERT(victim->page->page_location == PAGED_IN);
     switch (victim->page->page_status) {
 
@@ -256,8 +259,7 @@ evict_frame()
 
     // clear frame data but keep the frame sturcture
     ASSERT(victim->page != NULL && victim->page->frame != NULL);
-    struct page * page = victim->page;
-    page->frame = NULL;
+    victim->page->frame = NULL;
 
     victim->page = NULL;
     victim->thread = NULL;
