@@ -31,7 +31,8 @@ struct supp_pt *create_supp_pt(void)
     return supp_pt;
 }
 
-struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status page_status)
+
+struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status page_status, enum page_location page_location)
 {
     struct page *page = malloc(sizeof(struct page));
     if (page == NULL)
@@ -45,6 +46,7 @@ struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t rea
     page->zero_bytes = zero_bytes;
     page->writable = writable;
     page->page_status = page_status;
+    page->page_location = page_location;
     //printf("inserted %p\n", pg_round_down(uaddr));
 
     return page;

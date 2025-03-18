@@ -770,7 +770,7 @@ syscall_handler(struct intr_frame *f)
         {
           page_read_bytes = length % PGSIZE; // remainder
           page_zero_bytes = PGSIZE - page_read_bytes;
-          struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+          struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MMAP, DISK);
           if (page == NULL)
           {
             f->eax = -1;
@@ -783,7 +783,7 @@ syscall_handler(struct intr_frame *f)
           continue;
         }
 
-        struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MAPPED);
+        struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MMAP, DISK);
         if (page == NULL)
         {
           f->eax = -1;
