@@ -53,6 +53,7 @@
 #endif
 #include "lib/kernel/x86.h"
 #include "lib/atomic-ops.h"
+#include "vm/frame.h"
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -118,13 +119,12 @@ main (void)
 
   /* Initialize bootstrap CPU's LAPIC. */
   lapic_init ();
+  /* Initialize threading system so we can use locks. */
+  thread_init ();
 
   #ifdef VM
   init_spt();
   #endif
-
-  /* Initialize threading system so we can use locks. */
-  thread_init ();
 
   /* Initialize segmentation hardware. */
   gdt_init ();
@@ -181,6 +181,13 @@ main (void)
   printf ("Started %'"PRIu32" additional CPUs.\n", num_started);
   printf ("Boot complete.\n");
   
+  #ifdef VM
+  /* Intialize the frame table*/
+
+  init_ft();
+
+  #endif
+
   /* Run actions specified on kernel command line. */
   run_actions (argv);
   /* Finish up. */
