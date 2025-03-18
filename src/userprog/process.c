@@ -716,7 +716,7 @@ setup_stack(void **esp)
 #ifdef VM
   lock_acquire(&vm_lock);
 
-  struct page *page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
+  struct page *page = create_page(PHYS_BASE - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
   if (page == NULL)
   {
     lock_release(&vm_lock);
@@ -738,7 +738,6 @@ setup_stack(void **esp)
       ASSERT(thread_current()->supp_pt != NULL)
       struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
       ASSERT(ret == NULL);
-      //// printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
 #endif
     }
     else{

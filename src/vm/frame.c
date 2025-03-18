@@ -185,10 +185,13 @@ evict_frame()
     ft->clock_elem = &get_next_frame(victim)->elem;
 
     // handle victim based on its type
-    // printf("ptr is %p\n", victim->page->uaddr);
-    // printf("pre dirty check\n");
+
+    // printf("ptr is %p\n", victim->page->uaddr); // we get a weird ptr
+    //printf("pre dirty check\n");
+    ASSERT(victim->thread->pagedir != NULL);
+    ASSERT(victim->page != NULL);
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
-    // printf("post dirty check\n");
+    //printf("post dirty check\n");
 
     switch (victim->page->page_status) {
 

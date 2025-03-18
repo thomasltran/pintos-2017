@@ -230,7 +230,6 @@ page_fault (struct intr_frame *f)
          f->eax = -1;
          exit(-1);
       }
-      printf("write %d, writable %d\n", write, fault_page->writable);
 
       if(write && !fault_page->writable){
          lock_release(&vm_lock);

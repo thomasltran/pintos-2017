@@ -778,7 +778,6 @@ syscall_handler(struct intr_frame *f)
             lock_release(&vm_lock);
             exit(-1);
           }
-          printf("here %d\n", i);
 
           page->map_id = mapped_file->map_id;
 
@@ -790,7 +789,6 @@ syscall_handler(struct intr_frame *f)
         struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MMAP, DISK);
         if (page == NULL)
         {
-          printf("here %d\n", i);
           f->eax = -1;
           lock_release(&vm_lock);
           exit(-1);
@@ -803,10 +801,8 @@ syscall_handler(struct intr_frame *f)
         curr += PGSIZE;
         ofs += page_read_bytes; // would be PGSIZE, remainder doesn't matter
       }
-      printf("here\n");
 
       f->eax = mapped_file->map_id;
-      printf("id %d\n", mapped_file->map_id);
 
       lock_release(&vm_lock);
 
