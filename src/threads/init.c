@@ -192,7 +192,7 @@ main (void)
   run_actions (argv);
   /* Finish up. */
   #ifdef VM
-  destroy_frame_table();
+  // destroy_frame_table(); // thread_exit -> process_exit will fail
   #endif
   shutdown ();
   thread_exit ();

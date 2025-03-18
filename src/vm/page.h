@@ -5,6 +5,7 @@
 #include "threads/synch.h"
 #include "filesys/file.h"
 #include "vm/mappedfile.h"
+#include "vm/frame.h"
 
 extern struct lock vm_lock;
 
@@ -18,11 +19,9 @@ enum page_status {
 
 
 enum page_location {
-    PHYS, // frame table, in physical memory
-    SWAP, // swap space, evicted files
-    DISK, //executable, files
-    NONE, //stack growth
-    L_UNKNOWN //location unknown
+    PAGED_IN,
+    PAGED_OUT,
+    SWAP
 };
 
 // code or data/bss pages in it are virtually allocated (which
@@ -50,6 +49,7 @@ struct page {
     struct file * file; // segment in file
     size_t swap_index; // if page in swap space
     mapid_t map_id;
+    struct frame *frame;
 };
 
 // lock init

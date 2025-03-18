@@ -199,7 +199,7 @@ page_fault (struct intr_frame *f)
          // printf("stack access\n");
          //printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 
-         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, NONE);
+         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (page == NULL)
          {
             lock_release(&vm_lock);
@@ -242,8 +242,10 @@ page_fault (struct intr_frame *f)
       ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
       // uint8_t *kpage = palloc_get_page(PAL_USER);
-      struct frame * frame = ft_get_page_frame(thread_current(), fault_page, false);
+      struct frame * frame = ft_get_page_frame(thread_current(), fault_page, true);
       uint8_t *kpage = frame->kaddr;
+      // can get evicted here, i think we need to pin
+      // dont want eviction before file_read
 
       if (kpage == NULL)
       {
@@ -282,6 +284,9 @@ page_fault (struct intr_frame *f)
          f->eax = -1;
          exit(-1);
       }
+      fault_page->page_location = PAGED_IN;
+      fault_page->frame = frame;
+      frame->pinned = false;
 
       lock_release(&vm_lock);
    }

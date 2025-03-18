@@ -49,13 +49,18 @@ void init_ft(void) {
 
 void page_frame_freed(struct frame * frame){
     ASSERT(frame->thread->pagedir != NULL);
-    pagedir_clear_page(frame->thread->pagedir, frame->page->uaddr); // do we need this?
-    pagedir_set_accessed(frame->thread->pagedir, frame->kaddr, false);
-    pagedir_set_dirty(frame->thread->pagedir, frame->kaddr, false);
+    pagedir_clear_page(frame->thread->pagedir, pg_round_down(frame->page->uaddr)); // do we need this?
+    // pagedir_set_accessed(frame->thread->pagedir, frame->kaddr, false);
+    // pagedir_set_dirty(frame->thread->pagedir, frame->kaddr, false);
 
     frame->thread = NULL;
     list_remove(&frame->elem);
     list_push_front(&ft->free_list, &frame->elem);
+
+    ASSERT(frame->page != NULL && frame->page->frame != NULL);
+    struct page * page = frame->page;
+    page->frame = NULL;
+
     frame->page = NULL;
     frame->pinned = false;
 }
@@ -88,8 +93,8 @@ struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, 
         
         // Reset accessed and dirty bits for kernel virtual address
         // we shouldn't need these?
-        pagedir_set_accessed(page_thread->pagedir, frame_ptr->kaddr, false);
-        pagedir_set_dirty(page_thread->pagedir, frame_ptr->kaddr, false);
+        // pagedir_set_accessed(page_thread->pagedir, frame_ptr->kaddr, false);
+        // pagedir_set_dirty(page_thread->pagedir, frame_ptr->kaddr, false);
     }
     return frame_ptr;
 }
@@ -190,11 +195,13 @@ evict_frame()
     ASSERT(victim->page != NULL);
     bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
 
+    ASSERT(victim->page->page_location == PAGED_IN);
     switch (victim->page->page_status) {
 
         // TODO: Might have to add more cases here
 
         case CODE:
+            victim->page->page_location = PAGED_OUT;
             break; // no need to write back code pages (just a read-only page)
         // DATA, BSS, STACK: write to swap if dirty
         case DATA_BSS:
@@ -208,6 +215,7 @@ evict_frame()
                 // write back to file if dirty
                 // wrong
                 // do we write just the evicted page back to file, or the entirety of the buffer mmap spans? will this be handled on a eviction by eviction basis?
+                victim->page->page_location = PAGED_OUT;
                 struct mapped_file *mapped_file = NULL;
 
                 for (struct list_elem *e = list_begin(&victim_mapped_file_table->list); e != list_end(&victim_mapped_file_table->list); e = list_next(e))
@@ -244,9 +252,13 @@ evict_frame()
     // pagedir_set_dirty(victim->thread->pagedir, victim->page->uaddr, false);
 
     // then clear the page
-    pagedir_clear_page(victim->thread->pagedir, victim->page->uaddr);
+    pagedir_clear_page(victim->thread->pagedir, pg_round_down(victim->page->uaddr));
 
     // clear frame data but keep the frame sturcture
+    ASSERT(victim->page != NULL && victim->page->frame != NULL);
+    struct page * page = victim->page;
+    page->frame = NULL;
+
     victim->page = NULL;
     victim->thread = NULL;
 

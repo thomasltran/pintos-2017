@@ -242,7 +242,8 @@ void process_exit(void)
   lock_acquire(&vm_lock);
 
   free_mapped_file_table(cur->mapped_file_table);
-  free_spt(cur->supp_pt);
+
+  // free_spt(cur->supp_pt);
 
   lock_release(&vm_lock);
 #endif
@@ -261,16 +262,16 @@ void process_exit(void)
     }
     free(fd_table);
   }
-  lock_release(&fs_lock);
 
   struct process *ps = cur->ps;
 
   if (ps != NULL && ps->exe_file != NULL)
   {
-    lock_acquire(&fs_lock);
     file_close(ps->exe_file);
-    lock_release(&fs_lock);
   }
+
+  lock_release(&fs_lock);
+
 
   if (ps != NULL)
   {
@@ -293,6 +294,10 @@ void process_exit(void)
     }
   }
 
+#ifdef VM
+  lock_acquire(&vm_lock);
+  free_spt(cur->supp_pt);
+#endif
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
 
@@ -311,6 +316,9 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+#ifdef VM
+  lock_release(&vm_lock);
+#endif
 }
 
 /* Sets up the CPU for running user code in the current
@@ -657,7 +665,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     // struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
 
       enum page_status page_status = writable == true ? DATA_BSS : CODE;
-      struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, DISK);
+      struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, PAGED_OUT);
 
       if (page == NULL)
       {
@@ -716,13 +724,13 @@ setup_stack(void **esp)
 #ifdef VM
   lock_acquire(&vm_lock);
 
-  struct page *page = create_page(PHYS_BASE - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
+  struct page *page = create_page(PHYS_BASE - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
   if (page == NULL)
   {
     lock_release(&vm_lock);
     return false;
   }
-  struct frame *frame = ft_get_page_frame(thread_current(), page, false); //should stack frames be pinned
+  struct frame *frame = ft_get_page_frame(thread_current(), page, true); //should stack frames be pinned? i think until end of this func after install
   kpage = frame->kaddr;
 
 #else
@@ -731,6 +739,8 @@ setup_stack(void **esp)
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+    page->page_location = PAGED_IN;
+    page->frame = frame;
     if (success)
     {
       *esp = PHYS_BASE; // when can we revert this?
@@ -750,6 +760,7 @@ setup_stack(void **esp)
     }
   }
 #ifdef VM
+  frame->pinned = false;
   lock_release(&vm_lock);
 #endif
   return success;

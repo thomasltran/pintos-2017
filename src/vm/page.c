@@ -48,6 +48,7 @@ struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t rea
     page->page_status = page_status;
     page->page_location = page_location;
     page->map_id = -1;
+    page->frame = NULL;
     // printf("inserted %p\n", pg_round_down(uaddr));
 
     return page;
@@ -98,6 +99,15 @@ void free_spt(struct supp_pt *supp_pt){
 
 static void free_page(struct hash_elem *e, void *aux UNUSED){
     struct page *page = hash_entry(e, struct page, hash_elem);
+    
+    if(page->frame != NULL){
+        ASSERT(page->page_location == PAGED_IN);
+    }
+    if(page->page_location == PAGED_IN){
+        ASSERT(page->frame != NULL){
+            page_frame_freed(page->frame);
+        }
+    }
     free(page);
 }
 
