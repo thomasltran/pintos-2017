@@ -25,13 +25,13 @@ struct supp_pt *create_supp_pt(void)
         return NULL;
     }
     if(hash_init(&supp_pt->hash_map, page_hash, page_less, NULL) == false){
-        free_map(supp_pt);
+        free_spt(supp_pt);
         return NULL;
     }
     return supp_pt;
 }
 
-struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status)
+struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t read_bytes, uint32_t zero_bytes, bool writable, enum page_status page_status)
 {
     struct page *page = malloc(sizeof(struct page));
     if (page == NULL)
@@ -44,6 +44,7 @@ struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t rea
     page->read_bytes = read_bytes;
     page->zero_bytes = zero_bytes;
     page->writable = writable;
+    page->page_status = page_status;
     //printf("inserted %p\n", pg_round_down(uaddr));
 
     return page;
@@ -87,7 +88,7 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_,
     return pg_round_down(a->uaddr) < pg_round_down(b->uaddr);
 }
 
-void free_map(struct supp_pt *supp_pt){
+void free_spt(struct supp_pt *supp_pt){
     hash_destroy(&supp_pt->hash_map, free_page); // or clear?
     free(supp_pt);
 }

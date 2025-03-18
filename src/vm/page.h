@@ -53,7 +53,7 @@ struct page * create_page(void * uaddr, struct file * file, off_t ofs, uint32_t 
 
 struct page *find_page(struct supp_pt *supp_pt, void *uaddr);
 
-void free_map(struct supp_pt *supp_pt);
+void free_spt(struct supp_pt *supp_pt);
 
 #endif /* threads/thread.h */
 
