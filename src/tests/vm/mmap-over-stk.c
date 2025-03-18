@@ -13,6 +13,7 @@ test_main (void)
   uintptr_t handle_page = ROUND_DOWN ((uintptr_t) &handle, 4096);
   
   CHECK ((handle = open ("sample.txt")) > 1, "open \"sample.txt\"");
+  msg("fail %d\n", MAP_FAILED);
   CHECK (mmap (handle, (void *) handle_page) == MAP_FAILED,
          "try to mmap over stack segment");
 }

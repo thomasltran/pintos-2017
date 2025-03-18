@@ -682,6 +682,7 @@ syscall_handler(struct intr_frame *f)
       break;
 
     // mmap
+#ifdef VM
     case SYS_MMAP:
     {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
@@ -777,6 +778,9 @@ syscall_handler(struct intr_frame *f)
             lock_release(&vm_lock);
             exit(-1);
           }
+          printf("here %d\n", i);
+
+          page->map_id = mapped_file->map_id;
 
           struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
           ASSERT(ret == NULL);
@@ -786,18 +790,23 @@ syscall_handler(struct intr_frame *f)
         struct page *page = create_page(curr, reopen, ofs, page_read_bytes, page_zero_bytes, true, MMAP, DISK);
         if (page == NULL)
         {
+          printf("here %d\n", i);
           f->eax = -1;
           lock_release(&vm_lock);
           exit(-1);
         }
+        page->map_id = mapped_file->map_id;
+
         struct hash_elem *ret = hash_insert(&supp_pt->hash_map, &page->hash_elem);
         ASSERT(ret == NULL);
 
         curr += PGSIZE;
         ofs += page_read_bytes; // would be PGSIZE, remainder doesn't matter
       }
+      printf("here\n");
 
       f->eax = mapped_file->map_id;
+      printf("id %d\n", mapped_file->map_id);
 
       lock_release(&vm_lock);
 
@@ -878,6 +887,7 @@ syscall_handler(struct intr_frame *f)
       thread_current()->esp = NULL;
       break;
     }
+#endif
     default:
       thread_current()->esp = NULL;
       f->eax = -1;

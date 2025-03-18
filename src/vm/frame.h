@@ -1,3 +1,6 @@
+#ifndef VM_FRAME_H
+#define VM_FRAME_H
+
 #include "lib/kernel/list.h"
 #include "threads/synch.h"
 #include "vm/page.h"
@@ -9,16 +12,9 @@
 // #include <stdlib.h>
 
 
-#ifndef VM_FRAME_H
-#define VM_FRAME_H
-// enables page fault handling by supplementing the page table
-struct frame_table {
-    struct list used_list; // used pages
-    struct list free_list; // free pages
-    struct lock lock; //lock to protect lists
 
-    struct list_elem* clock_elem; // clock hand
-};
+// enables page fault handling by supplementing the page table
+
 
 struct frame {
     void * kaddr; // kernel/phys addr
@@ -31,6 +27,7 @@ struct frame {
 
 void init_ft(void);
 void destroy_frame_table(void);
-void* ft_get_page(struct thread*, void*, bool);
+struct frame* ft_get_page_frame(struct thread*, struct page * page, bool);
+void page_frame_freed(struct frame * frame);
 
 #endif

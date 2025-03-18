@@ -182,7 +182,7 @@ page_fault (struct intr_frame *f)
          esp = f->esp;
       }
 
-      //printf("fault addr %p fesp %p thread esp %p esp %p\n", fault_addr, f->esp, thread_current()->esp, esp);
+      // printf("fault addr %p fesp %p thread esp %p esp %p\n", fault_addr, f->esp, thread_current()->esp, esp);
       // printf("minus %p\n", esp - 32);
 
       bool stack_growth = false;
@@ -191,6 +191,8 @@ page_fault (struct intr_frame *f)
           stack_growth = true;
 
       lock_acquire(&vm_lock);
+
+      struct page *fault_page = NULL;
 
       if (stack_growth)
       {
@@ -209,7 +211,7 @@ page_fault (struct intr_frame *f)
          struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
          ASSERT(ret == NULL);
 
-         struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+         fault_page = find_page(thread_cur->supp_pt, fault_addr); // dont need this here, just temp
 
          if (fault_page == NULL)
          {  
@@ -220,7 +222,7 @@ page_fault (struct intr_frame *f)
          }
       }
 
-      struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+      fault_page = find_page(thread_cur->supp_pt, fault_addr);
       if (fault_page == NULL)
       {
          //printf("pf couldn't find\n");
@@ -228,6 +230,7 @@ page_fault (struct intr_frame *f)
          f->eax = -1;
          exit(-1);
       }
+      printf("write %d, writable %d\n", write, fault_page->writable);
 
       if(write && !fault_page->writable){
          lock_release(&vm_lock);
@@ -240,7 +243,8 @@ page_fault (struct intr_frame *f)
       ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
       // uint8_t *kpage = palloc_get_page(PAL_USER);
-      uint8_t *kpage = ft_get_page(thread_current(), fault_addr, false);
+      struct frame * frame = ft_get_page_frame(thread_current(), fault_page, false);
+      uint8_t *kpage = frame->kaddr;
 
       if (kpage == NULL)
       {

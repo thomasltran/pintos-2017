@@ -131,11 +131,7 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  lock_acquire(&fs_lock);
-
   success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
-
-  lock_release(&fs_lock);
 
   /* If load failed, quit. */
   palloc_free_page(ps->user_prog_name);
@@ -424,10 +420,12 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   process_activate();
 
   /* Open executable file. */
+  lock_acquire(&fs_lock);
   file = filesys_open(file_name);
   if (file == NULL)
   {
     ps->exe_file = NULL;
+    lock_release(&fs_lock);
     goto done;
   }
   else
@@ -439,21 +437,32 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
+    lock_release(&fs_lock);
     goto done;
   }
+  lock_release(&fs_lock);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++)
   {
     struct Elf32_Phdr phdr;
+    lock_acquire(&fs_lock);
 
     if (file_ofs < 0 || file_ofs > file_length(file))
+    {
+      lock_release(&fs_lock);
       goto done;
+    }
     file_seek(file, file_ofs);
 
     if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
+    {
+      lock_release(&fs_lock);
       goto done;
+    }
+    lock_release(&fs_lock);
+
     file_ofs += sizeof phdr;
     switch (phdr.p_type)
     {
@@ -647,42 +656,43 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 #ifdef VM
     // struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
 
-    enum page_status page_status = writable == true ? CODE : DATA_BSS;
-    struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, DISK);
+      enum page_status page_status = writable == true ? DATA_BSS : CODE;
+      struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, DISK);
 
-    if (page == NULL)
-    {
-      return false;
-    }
-    ASSERT(thread_current()->supp_pt != NULL)
-    lock_release(&fs_lock);
-    lock_acquire(&vm_lock);
-    struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-    //// printf("inserted %p\n", pg_round_down((void *)upage));
+      if (page == NULL)
+      {
+        return false;
+      }
+      ASSERT(thread_current()->supp_pt != NULL)
+      lock_acquire(&vm_lock);
+      struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+      //// printf("inserted %p\n", pg_round_down((void *)upage));
 
-    ASSERT(ret == NULL);
-    lock_release(&vm_lock);
-    lock_acquire(&fs_lock);
+      ASSERT(ret == NULL);
+      lock_release(&vm_lock);
 /* Get a page of memory. */
 #else
-    uint8_t *kpage = palloc_get_page(PAL_USER);
-    if (kpage == NULL)
-      return false;
+      uint8_t *kpage = palloc_get_page(PAL_USER);
+      if (kpage == NULL)
+        return false;
 
-    /* Load this page. */
-    if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
-    {
-      palloc_free_page(kpage);
-      return false;
-    }
-    memset(kpage + page_read_bytes, 0, page_zero_bytes);
+      /* Load this page. */
+      lock_acquire(&fs_lock);
+      if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+      {
+        palloc_free_page(kpage);
+        lock_release(&fs_lock);
+        return false;
+      }
+      lock_release(&fs_lock);
+      memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
-    /* Add the page to the process's address space. */
-    if (!install_page(upage, kpage, writable))
-    {
-      palloc_free_page(kpage);
-      return false;
-    }
+      /* Add the page to the process's address space. */
+      if (!install_page(upage, kpage, writable))
+      {
+        palloc_free_page(kpage);
+        return false;
+      }
 #endif
 
     read_bytes -= page_read_bytes;
@@ -698,41 +708,51 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp) 
+setup_stack(void **esp)
 {
   uint8_t *kpage;
   bool success = false;
 
-  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  if(!lock_held_by_current_thread(&vm_lock)){
-    lock_acquire(&vm_lock);
-  }
-  kpage = ft_get_page(thread_current(), ((uint8_t *) PHYS_BASE) - PGSIZE, false);
-  lock_release(&vm_lock);
-  if (kpage != NULL) 
-    {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
-      {
-        *esp = PHYS_BASE; // when can we revert this?
 #ifdef VM
-        struct page * page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
-        if(page == NULL){
-          return false;
-        }
-        ASSERT(thread_current()->supp_pt != NULL)
-        lock_release(&fs_lock);
-        lock_acquire(&vm_lock);
-        struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-        ASSERT(ret == NULL);
-        lock_release(&vm_lock);
-        lock_acquire(&fs_lock);
-//// printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
+  lock_acquire(&vm_lock);
+
+  struct page *page = create_page(*esp - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PHYS);
+  if (page == NULL)
+  {
+    lock_release(&vm_lock);
+    return false;
+  }
+  struct frame *frame = ft_get_page_frame(thread_current(), page, false); //should stack frames be pinned
+  kpage = frame->kaddr;
+
+#else
+  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+#endif
+  if (kpage != NULL)
+  {
+    success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+    if (success)
+    {
+      *esp = PHYS_BASE; // when can we revert this?
+#ifdef VM
+      ASSERT(thread_current()->supp_pt != NULL)
+      struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+      ASSERT(ret == NULL);
+      //// printf("inserted %p\n", pg_round_down(*esp - PGSIZE));
 #endif
     }
-    else
+    else{
+#ifdef VM
+      free(page);
+      page_frame_freed(frame);
+#else
       palloc_free_page(kpage);
+#endif
+    }
   }
+#ifdef VM
+  lock_release(&vm_lock);
+#endif
   return success;
 }
 

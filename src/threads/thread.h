@@ -115,10 +115,10 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
+  void * esp;
 #endif
 
 #ifdef VM
-void * esp;
 struct supp_pt *supp_pt;
 struct mapped_file_table * mapped_file_table;
 #endif
