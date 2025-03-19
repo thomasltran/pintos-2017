@@ -1,0 +1,125 @@
+Copying tests/vm/page-parallel to scratch partition...
+Copying tests/vm/child-linear to scratch partition...
+qemu -drive file=/tmp/LTvzB9dqlj.dsk,format=raw,index=0,media=disk -m 4 -smp 2 -net none -nographic -monitor null -machine type=pc,accel=kvm
+c[?7l[2J[0mSeaBIOS (version rel-1.14.0-0-g155821a1990b-prebuilt.qemu.org)
+Booting from Hard Disk...
+PPiiLLoo  hhddaa1
+1
+LLooaaddiinngg.........................................
+Kernel command line: -q -f extract run page-parallel
+CPU 0 is up
+Pintos booting with 3,968 kB RAM...
+PCI Device 0:0.0 (8086,1237): Intel - 82441FX (PCI Host) IRQ 0
+PCI Device 0:1.0 (8086,7000): Intel - 82371SB_ISA (PCI-ISA Bridge) IRQ 0
+PCI Device 0:1.1 (8086,7010): Intel - 82371SB_IDE (Unknown Type) IRQ 0
+PCI Device 0:1.3 (8086,7113): Intel - 82371AB/EB/MB_ACPI (Unknown Type) IRQ 9
+PCI Device 0:2.0 (1234,1111): Unknown Vendor - Unknown Device (VGA Controller) IRQ 0
+Calibrating timer...  454,656,000 loops/s.
+Initializing EHCI
+Initializing UHCI
+ide0: unexpected interrupt
+hda: 13,104 sectors (6 MB), model "QM00001", serial "QEMU HARDDISK"
+hda1: 345 sectors (172 kB), Pintos OS kernel (20)
+hda2: 4,096 sectors (2 MB), Pintos file system (21)
+hda3: 185 sectors (92 kB), Pintos scratch (22)
+hda4: 8,192 sectors (4 MB), Pintos swap (23)
+filesys: using hda2
+scratch: using hda3
+swap: using hda4
+Formatting file system...done.
+CPU 1 is up
+Started 1 additional CPUs.
+Boot complete.
+Extracting ustar archive from hda3 into file system...
+Putting 'page-parallel' into the file system...
+Putting 'child-linear' into the file system...
+Erasing ustar archive...
+Executing 'page-parallel':
+(page-parallel) begin
+(page-parallel) exec "child-linear"
+(page-parallel) exec "child-linear"
+(page-parallel) exec "child-linear"
+(page-parallel) exec "child-linear"
+check swap index cur_t 6 vic_t 6 alloc swap index -1
+cur_t 6 vic_t 6 alloc swap index 0
+check swap index cur_t 8 vic_t 7 alloc swap index -1
+cur_t 8 vic_t 7 alloc swap index 1
+check swap index cur_t 7 vic_t 7 alloc swap index -1
+cur_t 7 vic_t 7 alloc swap index 2
+check swap index cur_t 6 vic_t 6 alloc swap index -1
+cur_t 6 vic_t 6 alloc swap index 3
+check swap index cur_t 8 vic_t 6 alloc swap index -1
+cur_t 8 vic_t 6 alloc swap index 4
+check swap index cur_t 6 vic_t 7 alloc swap index -1
+cur_t 6 vic_t 7 alloc swap index 5
+check swap index cur_t 8 vic_t 6 alloc swap index -1
+cur_t 8 vic_t 6 alloc swap index 6
+check swap index cur_t 6 vic_t 8 alloc swap index -1
+cur_t 6 vic_t 8 alloc swap index 7
+check swap index cur_t 7 vic_t 6 alloc swap index -1
+cur_t 7 vic_t 6 alloc swap index 8
+check swap index cur_t 6 vic_t 7 alloc swap index -1
+cur_t 6 vic_t 7 alloc swap index 9
+check swap index cur_t 9 vic_t 6 alloc swap index -1
+cur_t 9 vic_t 6 alloc swap index 10
+check swap index cur_t 7 vic_t 9 alloc swap index -1
+
+
+
+Kernel PANIC from CPU 1 at ../../vm/frame.c:155 in evict_frame(): (page-parallel) wait for child 0
+assertion `victim->page->swap_index == UINT32_MAX' failed.
+Call stack: 0xc0033043 0xc00330fd 0xc003c653 0xc003c24d 0xc0037782 0xc0022a94 0xc0022e92 0x80482eb 0x8048106 0x804896f.
+The `backtrace' program can make call stacks useful.
+Read "Backtraces" in the "Debugging Tools" chapter
+of the Pintos documentation for more information.
+
+Printing a backtrace of all CPUs
+Printing a backtrace of all threads
+Call stack: 0xc0033043Call stack of thread 'initial' (status BLOCKED, CPU0): 0xc0025b87 0xc00222e5 0xc0022a94 0xc0021895 0xc0022e92 0xc0023dc4 0xc0021d6b 0xc0035bfb 0xc0021e3f 0xc0020eaf.
+ 0xc0020f8e 0xc00205dd.
+Call stack of thread 'idle_cpu0' (status RUNNING, CPU0):thread appears currently running on another CPU, skipping.
+Call stack of thread 'idle_cpu1' (status READY, CPU1): 0xc00222e5 0xc0021c94 0xc0022b4e 0xc0022e92 0xc0021d6b 0xc0021e3f.
+Call stack of thread 'page-parallel' (status BLOCKED, CPU0): 0xc00222e5 0xc0021895 0xc0023dc4 0xc00240e1 0xc0038457 0xc0022a94 0xc0022e92 0x804a867 0x3877375Kernel PANIC recursion at ../../threads/thread.c:761 in schedule().
+Ec[?7l[2J[0mSeaBIOS (version rel-1.14.0-0-g155821a1990b-prebuilt.qemu.org)
+Booting from Hard Disk...
+PPiiLLoo  hhddaa1
+1
+LLooaaddiinngg.........................................
+Kernel command line: -q -f extract run page-parallel
+CPU 0 is up
+Pintos booting with 3,968 kB RAM...
+PCI Device 0:0.0 (8086,1237): Intel - 82441FX (PCI Host) IRQ 0
+PCI Device 0:1.0 (8086,7000): Intel - 82371SB_ISA (PCI-ISA Bridge) IRQ 0
+PCI Device 0:1.1 (8086,7010): Intel - 82371SB_IDE (Unknown Type) IRQ 0
+PCI Device 0:1.3 (8086,7113): Intel - 82371AB/EB/MB_ACPI (Unknown Type) IRQ 9
+PCI Device 0:2.0 (1234,1111): Unknown Vendor - Unknown Device (VGA Controller) IRQ 0
+Calibrating timer...  390,656,000 loops/s.
+Initializing EHCI
+Initializing UHCI
+ide0: unexpected interrupt
+hda: 13,104 sectors (6 MB), model "QM00001", serial "QEMU HARDDISK"
+hda1: 345 sectors (172 kB), Pintos OS kernel (20)
+hda2: 4,096 sectors (2 MB), Pintos file system (21)
+hda3: 185 sectors (92 kB), Pintos scratch (22)
+hda4: 8,192 sectors (4 MB), Pintos swap (23)
+filesys: using hda2
+scratch: using hda3
+swap: using hda4
+Formatting file system...done.
+CPU 1 is up
+Started 1 additional CPUs.
+Boot complete.
+Extracting ustar archive from hda3 into file system...
+Erasing ustar archive...
+Executing 'page-parallel':
+Execution of 'page-parallel' complete.
+Timer: 380 ticks
+CPU0: 301 idle ticks, 78 kernel ticks, 3 user ticks, 67 context switches
+CPU1: 158 idle ticks, 0 kernel ticks, 0 user ticks, 1 context switches
+hda2 (filesys): 20 reads, 6 writes
+hda3 (scratch): 1 reads, 2 writes
+hda4 (swap): 0 reads, 0 writes
+Console: 1388 characters output
+Keyboard: 0 keys pressed
+Exception: 0 page faults
+Powering off...

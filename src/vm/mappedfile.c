@@ -75,9 +75,9 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         
         if (!pagedir_is_dirty(cur->pagedir, page->uaddr)/* && !pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
         {
-            page_frame_freed(frame); // will unpin
-
             page->page_status = MUNMAP; // used in page fault
+
+            page_frame_freed(frame); // will unpin
 
             curr += PGSIZE;
             continue;
@@ -94,9 +94,9 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
 
         curr += PGSIZE;
 
-        page_frame_freed(frame); // will unpin the frames
-
         page->page_status = MUNMAP;
+
+        page_frame_freed(frame); // will unpin the frames
     }
 }
 

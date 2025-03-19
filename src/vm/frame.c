@@ -123,9 +123,6 @@ evict_frame()
             ASSERT(hash_find(&victim->thread->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
 
             pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
-
-            victim->thread = NULL;
-
             break;
         } else {
             ASSERT(curr->page->uaddr != NULL);
@@ -153,10 +150,12 @@ evict_frame()
             // victim page wrote out to swap, location is swap
             // victim page (uaddr) page faults
             // 
+            printf("check swap index cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
+
             ASSERT(victim->page->swap_index == UINT32_MAX);
 
             victim->page->swap_index = st_write_at(victim->kaddr);
-            // printf("alloc swap index %d\n", victim->page->swap_index);
+            printf("cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
 
             // hold vm lock throughout, shouldn't page fault
             // victim->page->swap_index = st_write_at(victim->page->uaddr);
@@ -182,7 +181,7 @@ evict_frame()
 
                 lock_release(&fs_lock);
                 lock_acquire(&vm_lock);
-                victim->page->page_status = MUNMAP;
+                // victim->page->page_status = MUNMAP;
             }
             break;
         default:
@@ -190,6 +189,7 @@ evict_frame()
     }
 
     ASSERT(victim->page != NULL);
+    victim->thread = NULL;
 
     // frame fields set after return
     return victim;

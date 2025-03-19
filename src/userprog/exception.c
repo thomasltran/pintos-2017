@@ -211,18 +211,19 @@ page_fault (struct intr_frame *f)
 
       if (fault_page == NULL)
       {
-         // printf("no page fail\n");
+         printf("tid %d no page fault addr %p fesp %p thread esp %p\n", thread_current()->tid, pg_round_down(fault_addr), f->esp, thread_current()->esp);
+         ASSERT(1 == 2);
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
 
-      if(fault_page->page_status == MUNMAP){
-         // printf("munmap fail\n");
-         lock_release(&vm_lock);
-         f->eax = -1;
-         exit(-1);
-      }
+      // if(fault_page->page_status == MUNMAP){
+      //    // printf("munmap fail\n");
+      //    lock_release(&vm_lock);
+      //    f->eax = -1;
+      //    exit(-1);
+      // }
 
       if(write && !fault_page->writable){
          // printf("write fail\n");
@@ -261,7 +262,7 @@ page_fault (struct intr_frame *f)
       if (!stack_growth)
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
-            // // printf("free swap index %d\n", fault_page->swap_index);
+            printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);
             st_read_at(kpage, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
          }
@@ -290,7 +291,9 @@ page_fault (struct intr_frame *f)
    }
    else
    {
-      // printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+      printf("krn fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+
+      ASSERT(1 == 2);
       // printf("exit\n");
       //   kill(f);
       f->eax = -1;

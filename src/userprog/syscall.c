@@ -865,9 +865,9 @@ syscall_handler(struct intr_frame *f)
 
         if (!pagedir_is_dirty(cur->pagedir, page->uaddr)/* && !pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
         {
-          page_frame_freed(frame); // will unpin
-
           page->page_status = MUNMAP; // used in page fault
+
+          page_frame_freed(frame); // will unpin
 
           curr += PGSIZE;
           continue;
@@ -884,9 +884,9 @@ syscall_handler(struct intr_frame *f)
 
         curr += PGSIZE;
 
-        page_frame_freed(frame); // will unpin the frames
-
         page->page_status = MUNMAP;
+
+        page_frame_freed(frame); // will unpin the frames
       }
 
       list_remove(&mapped_file->elem);
