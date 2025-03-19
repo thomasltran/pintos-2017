@@ -1055,18 +1055,20 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     if (stack_growth)
     {
-      struct page *page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
-      if (page == NULL)
+      fault_page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+      if (fault_page == NULL)
       {
         return false;
       }
 
        ASSERT(thread_current()->supp_pt != NULL)
-       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &fault_page->hash_elem);
        ASSERT(ret == NULL);
     }
-
-    fault_page = find_page(thread_cur->supp_pt, curr);
+    else
+    {
+      fault_page = find_page(thread_cur->supp_pt, curr);
+    }
 
     if (fault_page == NULL)
     {

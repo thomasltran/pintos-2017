@@ -194,8 +194,8 @@ page_fault (struct intr_frame *f)
 
       if (stack_growth)
       {
-         struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
-         if (page == NULL)
+         fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+         if (fault_page== NULL)
          {
             lock_release(&vm_lock);
             f->eax = -1;
@@ -203,7 +203,7 @@ page_fault (struct intr_frame *f)
          }
 
          ASSERT(thread_current()->supp_pt != NULL)
-         struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+         struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &fault_page->hash_elem);
          ASSERT(ret == NULL);
       }
 
@@ -255,7 +255,8 @@ page_fault (struct intr_frame *f)
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             ASSERT(fault_page->swap_index != UINT32_MAX);
 
-            st_read_at(fault_page->uaddr, fault_page->swap_index);
+            st_read_at(kpage, fault_page->swap_index);
+            // st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
          }
          else {
