@@ -272,8 +272,10 @@ page_fault (struct intr_frame *f)
       {
          lock_release(&vm_lock);
          lock_acquire(&fs_lock);
-         if((fault_page->page_status ==DATA_BSS || fault_page->page_status == STACK) && in_swap){
-            st_read_at(fault_page->uaddr,fault_page->map_id, fault_page->read_bytes, true);
+         if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
+            ASSERT(fault_page->swap_index != UINT32_MAX);
+            st_read_at(fault_page->uaddr, fault_page->map_id);
+            fault_page->swap_index = UINT32_MAX; // paged back in
          }
          else{
             file_seek(fault_page->file, fault_page->ofs);

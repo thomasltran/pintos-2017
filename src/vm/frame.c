@@ -201,7 +201,7 @@ evict_frame()
 
     // handle victim based on its type
 
-    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr) || pagedir_is_dirty(victim->thread->pagedir, victim->kaddr); 
+    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
 
     // why is this failing
     // if pageout and not pinned
@@ -217,7 +217,8 @@ evict_frame()
         case DATA_BSS:
         case STACK:
             // victim->page->swap_index = swap_out(victim->kaddr);
-            victim->page->swap_index = st_write_at(victim->page->uaddr, victim->page->read_bytes);
+            ASSERT(victim->page->swap_index == UINT32_MAX);
+            victim->page->swap_index = st_write_at(victim->page->uaddr);
             victim->page->page_location = SWAP; // update status to show in swap
             break;
         // MMAP: write back to file if dirty
