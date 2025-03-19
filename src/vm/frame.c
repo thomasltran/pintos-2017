@@ -144,7 +144,7 @@ evict_frame()
             ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
             // hold vm lock throughout, shouldn't page fault
-            victim->page->swap_index = st_write_at(victim->kaddr);
+            victim->page->swap_index = st_write_at(victim->page->uaddr);
             break;
         case MUNMAP:
             ASSERT(1 == 2);

@@ -255,7 +255,7 @@ page_fault (struct intr_frame *f)
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             ASSERT(fault_page->swap_index != UINT32_MAX);
 
-            st_read_at(kpage, fault_page->swap_index);
+            st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
          }
          else {
