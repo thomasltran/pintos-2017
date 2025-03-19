@@ -11,6 +11,7 @@ extern struct lock vm_lock;
 
 enum page_status {
     MMAP, // mapped to file
+    MUNMAP, // unmapped
     CODE, // ucode
     DATA_BSS, // data or bss
     STACK, // ustack
@@ -49,7 +50,6 @@ struct page {
     struct file * file; // segment in file
     size_t swap_index; // if page in swap space
     mapid_t map_id;
-    struct frame *frame;
 };
 
 // lock init

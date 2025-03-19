@@ -54,7 +54,7 @@
 #include "lib/kernel/x86.h"
 #include "lib/atomic-ops.h"
 #include "vm/frame.h"
-
+#include "vm/swap.h"
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
 #ifdef FILESYS
@@ -185,6 +185,7 @@ main (void)
   /* Intialize the frame table*/
 
   init_ft();
+  init_st();
 
   #endif
 

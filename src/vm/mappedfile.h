@@ -28,6 +28,7 @@ void free_mapped_file_table(struct mapped_file_table * mapped_file_table);
 
 mapid_t * mmap (int fd, void *addr);
 void free_mapped_file (mapid_t mapping, struct mapped_file_table * mapped_file_table);
+struct mapped_file *find_mapped_file(struct mapped_file_table *mapped_file_table, mapid_t map_id);
 extern mapid_t id;
 
 #endif

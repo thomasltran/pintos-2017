@@ -48,35 +48,37 @@ void free_mapped_file_table(struct mapped_file_table * mapped_file_table){
 void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_table){
     struct thread * cur = thread_current();
 
-    struct mapped_file *mapped_file = NULL;
-    for (struct list_elem *e = list_begin(&mapped_file_table->list); e != list_end(&mapped_file_table->list); e = list_next(e))
-    {
-        mapped_file = list_entry(e, struct mapped_file, elem);
-        if (mapped_file->map_id == mapping)
-        {
-            break;
-        }
-        mapped_file = NULL;
-    }
+    struct mapped_file *mapped_file = find_mapped_file(mapped_file_table, mapping);
 
     ASSERT(mapped_file != NULL);
+
+    if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
+    {
+      lock_release(&vm_lock);
+      ASSERT(1 == 2); // fail
+    }
 
     int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
     void *curr = mapped_file->addr;
 
     struct supp_pt *supp_pt = cur->supp_pt;
-
-    // we want to pin before
-    // we want to check both uaddr and kaddr dirty
     
     for (int i = 0; i < pages; i++)
     {
         struct page *page = find_page(supp_pt, curr); // continguous
         ASSERT(page != NULL);
+        ASSERT(page->page_location == PAGED_IN);
+        ASSERT(page->page_status == MMAP);
+
+        struct frame * frame = get_page_frame(page);
+        ASSERT(frame != NULL);
+        
         if (!pagedir_is_dirty(cur->pagedir, page->uaddr))
         {
-            hash_delete(&supp_pt->hash_map, &page->hash_elem);
-            free(page);
+            page_frame_freed(frame); // will unpin
+
+            page->page_status = MUNMAP; // used in page fault
+
             curr += PGSIZE;
             continue;
         }
@@ -89,9 +91,28 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
 
         lock_release(&fs_lock);
         lock_acquire(&vm_lock);
+
         curr += PGSIZE;
 
-        hash_delete(&supp_pt->hash_map, &page->hash_elem);
-        free(page);
+        page_frame_freed(frame); // will unpin the frames
+
+        page->page_status = MUNMAP;
     }
+}
+
+struct mapped_file *find_mapped_file(struct mapped_file_table *mapped_file_table, mapid_t map_id)
+{
+    struct mapped_file *mapped_file = NULL;
+
+    for (struct list_elem *e = list_begin(&mapped_file_table->list); e != list_end(&mapped_file_table->list); e = list_next(e))
+    {
+        mapped_file = list_entry(e, struct mapped_file, elem);
+
+        if (mapped_file->map_id == map_id)
+        {
+            break;
+        }
+        mapped_file = NULL;
+    }
+    return mapped_file;
 }

@@ -296,6 +296,7 @@ void process_exit(void)
 
 #ifdef VM
   lock_acquire(&vm_lock);
+  //free_mapped_file_table(cur->mapped_file_table);
   free_spt(cur->supp_pt);
 #endif
   /* Destroy the  current process's page directory and switch back
@@ -674,7 +675,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       ASSERT(thread_current()->supp_pt != NULL)
       lock_acquire(&vm_lock);
       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-      //// printf("inserted %p\n", pg_round_down((void *)upage));
 
       ASSERT(ret == NULL);
       lock_release(&vm_lock);
@@ -731,6 +731,8 @@ setup_stack(void **esp)
     return false;
   }
   struct frame *frame = ft_get_page_frame(thread_current(), page, true); //should stack frames be pinned? i think until end of this func after install
+  page->page_location = PAGED_IN; // be careful, i think we're fine
+
   kpage = frame->kaddr;
 
 #else
@@ -741,10 +743,8 @@ setup_stack(void **esp)
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
     if (success)
     {
-      *esp = PHYS_BASE; // when can we revert this?
+      *esp = PHYS_BASE;
 #ifdef VM
-      page->page_location = PAGED_IN;
-      page->frame = frame;
       ASSERT(thread_current()->supp_pt != NULL)
       struct hash_elem * ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
       ASSERT(ret == NULL);
@@ -752,7 +752,6 @@ setup_stack(void **esp)
     }
     else{
 #ifdef VM
-      page->frame = frame;
       page_frame_freed(frame);
       free(page);
 #else
@@ -761,6 +760,7 @@ setup_stack(void **esp)
     }
   }
 #ifdef VM
+  ASSERT(kpage != NULL);
   frame->pinned = false;
   lock_release(&vm_lock);
 #endif

@@ -13,6 +13,7 @@
 #include <stdbool.h>
 #include "threads/pte.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -167,7 +168,7 @@ page_fault (struct intr_frame *f)
 //           write ? "writing" : "reading",
 //           user ? "user" : "kernel");
 
-// printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+//printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 #ifdef VM
    if (fault_addr < PHYS_BASE)
    {
@@ -182,9 +183,6 @@ page_fault (struct intr_frame *f)
          esp = f->esp;
       }
 
-      // printf("fault addr %p fesp %p thread esp %p esp %p\n", fault_addr, f->esp, thread_current()->esp, esp);
-      // printf("minus %p\n", esp - 32);
-
       bool stack_growth = false;
     
       if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT)
@@ -196,9 +194,6 @@ page_fault (struct intr_frame *f)
 
       if (stack_growth)
       {
-         // printf("stack access\n");
-         //printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
-
          struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (page == NULL)
          {
@@ -210,22 +205,18 @@ page_fault (struct intr_frame *f)
          ASSERT(thread_current()->supp_pt != NULL)
          struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
          ASSERT(ret == NULL);
-
-         fault_page = find_page(thread_cur->supp_pt, fault_addr); // dont need this here, just temp
-
-         if (fault_page == NULL)
-         {  
-            // printf("pf couldn't find stack access\n");
-            lock_release(&vm_lock);
-            f->eax = -1;
-            exit(-1);
-         }
       }
 
       fault_page = find_page(thread_cur->supp_pt, fault_addr);
+
       if (fault_page == NULL)
       {
-         //printf("pf couldn't find\n");
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+
+      if(fault_page->page_status == MUNMAP){
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -241,26 +232,15 @@ page_fault (struct intr_frame *f)
 
       ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
-      // uint8_t *kpage = palloc_get_page(PAL_USER);
       struct frame * frame = ft_get_page_frame(thread_current(), fault_page, true);
       uint8_t *kpage = frame->kaddr;
-      // can get evicted here, i think we need to pin
-      // dont want eviction before file_read
 
-      if (kpage == NULL)
-      {
-         lock_release(&vm_lock);
-         f->eax = -1;
-         exit(-1);
-      }
-
-      /* Load this page. */
+      ASSERT(kpage != NULL);
 
       ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
 
-      fault_page->frame = frame;
-      fault_page->page_location = PAGED_IN; // if it exits in the chunk after, free_page needs to be able to free it
-      // pinned so it won't get evicted
+      bool in_swap = fault_page->page_location == SWAP;
+      fault_page->page_location = PAGED_IN;
 
       if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
       {
@@ -272,19 +252,30 @@ page_fault (struct intr_frame *f)
 
       if (!stack_growth)
       {
-         lock_release(&vm_lock);
-         lock_acquire(&fs_lock);
-         file_seek(fault_page->file, fault_page->ofs);
-         if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
-         {
-            lock_release(&fs_lock);
-            f->eax = -1;
-            exit(-1);
+         if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
+            ASSERT(fault_page->swap_index != UINT32_MAX);
+
+            st_read_at(fault_page->uaddr, fault_page->swap_index);
+            fault_page->swap_index = UINT32_MAX;
          }
-         lock_release(&fs_lock);
-         lock_acquire(&vm_lock);
+         else {
+            lock_release(&vm_lock);
+            lock_acquire(&fs_lock);
+            file_seek(fault_page->file, fault_page->ofs);
+            if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+            {
+               lock_release(&fs_lock);
+               f->eax = -1;
+               exit(-1);
+            }
+            lock_release(&fs_lock);
+            lock_acquire(&vm_lock);  
+         }
       }
-      memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+      if(!in_swap){
+         memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+      }
+
       frame->pinned = false;
 
       lock_release(&vm_lock);
