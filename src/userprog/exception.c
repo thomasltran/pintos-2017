@@ -271,15 +271,16 @@ page_fault (struct intr_frame *f)
 
       if (!stack_growth)
       {
-         lock_release(&vm_lock);
-         lock_acquire(&fs_lock);
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             ASSERT(fault_page->swap_index != UINT32_MAX);
 
             st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX; // paged back in
          }
+
          else{
+            lock_release(&vm_lock);
+            lock_acquire(&fs_lock);
             file_seek(fault_page->file, fault_page->ofs);
             if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
             {
@@ -288,10 +289,10 @@ page_fault (struct intr_frame *f)
                f->eax = -1;
                exit(-1);
             }   
-            
+            lock_release(&fs_lock);
+            lock_acquire(&vm_lock);  
          }
-         lock_release(&fs_lock);
-         lock_acquire(&vm_lock);
+
       }
       memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
       frame->pinned = false;

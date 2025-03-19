@@ -43,16 +43,18 @@ size_t st_write_at(void* uaddr){
     ASSERT(bitmap_test(st->bitmap, map_id) == true);
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
+    lock_release(&vm_lock);
+
+    // lock_acquire(&fs_lock);
+
     for(size_t i = 0; i < sector_in_page; i++){
-        lock_release(&vm_lock);
-        lock_acquire(&fs_lock);
-
         block_write(st->swap_block, (map_id * PGSIZE/BLOCK_SECTOR_SIZE)+i, uaddr + (i * BLOCK_SECTOR_SIZE));
-
-        lock_release(&fs_lock);
-        lock_acquire(&vm_lock);
-
     }
+    // lock_release(&fs_lock);
+
+
+    lock_acquire(&vm_lock);
+
     return map_id;
 }
 
@@ -66,6 +68,8 @@ void st_read_at(void* uaddr, size_t id){
     ASSERT(bitmap_test(st->bitmap,id) == true);
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
+    lock_release(&vm_lock);
+
     for(size_t i = 0; i < sector_in_page; i++){
         // lock_release(&vm_lock);
         // lock_acquire(&fs_lock);
@@ -76,5 +80,8 @@ void st_read_at(void* uaddr, size_t id){
         // lock_acquire(&vm_lock);
     }
 
+
     st_free_page(id);  
+    lock_acquire(&vm_lock);
+
 }

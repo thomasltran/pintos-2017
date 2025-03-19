@@ -158,6 +158,7 @@ evict_frame()
 
     // struct supp_pt *victim_spt = NULL;
     struct mapped_file_table *victim_mapped_file_table = NULL;
+    uint32_t * victim_pd = NULL;
 
     //check_used();
 
@@ -186,8 +187,10 @@ evict_frame()
             // victim_spt = victim->thread->supp_pt;
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim->pinned = true; // for write back if applicable
+            victim_pd = victim->thread->pagedir;
+            victim->thread = NULL;
             //     victim->thread = NULL; should we break mapping here?
-            ASSERT(victim->thread->pagedir != NULL);
+            ASSERT(victim_pd != NULL);
             ASSERT(victim->page != NULL);
             ASSERT(victim->page->page_location == PAGED_IN);
 
@@ -210,7 +213,7 @@ evict_frame()
 
     // handle victim based on its type
 
-    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
+    bool dirty = pagedir_is_dirty(victim_pd, victim->page->uaddr); 
 
     // why is this failing
     // if pageout and not pinned
@@ -227,9 +230,11 @@ evict_frame()
         case STACK:
             //printf("evict\n");
             // victim->page->swap_index = swap_out(victim->kaddr);
-            ASSERT(victim->page->swap_index == UINT32_MAX);
-            victim->page->swap_index = st_write_at(victim->page->uaddr);
-            victim->page->page_location = SWAP; // update status to show in swap
+            // ASSERT(victim->page->swap_index == UINT32_MAX);
+            // ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) != NULL);
+            // ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
+            // victim->page->swap_index = st_write_at(victim->page->uaddr);
+            // victim->page->page_location = SWAP; // update status to show in swap
             break;
         // MMAP: write back to file if dirty
         case MUNMAP:
@@ -258,7 +263,7 @@ evict_frame()
                 // printf("pre mmap check no fault %p\n", victim->page->uaddr);
                 ASSERT(mapped_file != NULL);
                 ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
-                ASSERT(pagedir_get_page(victim->thread->pagedir, victim->page->uaddr));
+                ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr));
                 ASSERT(pg_ofs(victim->page->uaddr) == 0);
                 //printf("post mmap check no fault %p\n", victim->page->uaddr);
 
@@ -292,14 +297,14 @@ evict_frame()
             break;
     } // end switch
 
-    pagedir_clear_page(victim->thread->pagedir, pg_round_down(victim->page->uaddr));
+    pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
 
     ASSERT(victim->page != NULL && victim->page->frame != NULL);
     struct page * page = victim->page;
     // location alr set before, pinned set in get_page_frame
     page->frame = NULL;
+
     victim->page = NULL;
-    victim->thread = NULL;
 
     return victim;
 }

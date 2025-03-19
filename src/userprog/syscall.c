@@ -849,8 +849,6 @@ syscall_handler(struct intr_frame *f)
         lock_release(&vm_lock);
         break;
       }
-      printf("munmap start sys\n");
-
 
       if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
       {
@@ -907,7 +905,6 @@ syscall_handler(struct intr_frame *f)
 
       list_remove(&mapped_file->elem);
       free(mapped_file);
-      printf("munmap end sys\n");
 
       lock_release(&vm_lock);
 
