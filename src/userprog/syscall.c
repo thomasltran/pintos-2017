@@ -14,6 +14,7 @@
 #include "vm/page.h"
 #include "vm/mappedfile.h"
 #include "userprog/exception.h"
+#include "vm/swap.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -709,7 +710,6 @@ syscall_handler(struct intr_frame *f)
         thread_current()->esp = NULL;
         break;
       }
-      // lazy loaded—no need to validate_buffer as it'll get faulted if applicable when buffer gets accessed
 
       struct thread *cur = thread_current();
 
@@ -832,16 +832,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&vm_lock);
 
-      struct mapped_file *mapped_file = NULL;
-      for (struct list_elem *e = list_begin(&cur->mapped_file_table->list); e != list_end(&cur->mapped_file_table->list); e = list_next(e))
-      {
-        mapped_file = list_entry(e, struct mapped_file, elem);
-        if (mapped_file->map_id == mapping)
-        {
-          break;
-        }
-        mapped_file = NULL;
-      }
+      struct mapped_file *mapped_file = find_mapped_file(cur->mapped_file_table, mapping);
 
       if (mapped_file == NULL)
       {
@@ -856,28 +847,28 @@ syscall_handler(struct intr_frame *f)
         lock_release(&vm_lock);
         break;
       }
-      // check if int pages are same for both
 
       int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
       void *curr = mapped_file->addr;
 
       struct supp_pt *supp_pt = cur->supp_pt;
 
-      // we want to pin before
-      // we want to check both uaddr and kaddr dirty
-      
       for (int i = 0; i < pages; i++)
       {
         struct page *page = find_page(supp_pt, curr); // continguous
         ASSERT(page != NULL);
-        if (!pagedir_is_dirty(cur->pagedir, page->uaddr)) // not dirty, nothing to write back
-        {
-          ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
-          page_frame_freed(page->frame); // will unpin the frames
+        ASSERT(page->page_location == PAGED_IN);
+        ASSERT(page->page_status == MMAP);
 
-          // hash_delete(&supp_pt->hash_map, &page->hash_elem);
-          // free(page);
-          page->page_status = MUNMAP;
+        struct frame *frame = get_page_frame(page);
+        ASSERT(frame != NULL);
+
+        if (!pagedir_is_dirty(cur->pagedir, page->uaddr))
+        {
+          page_frame_freed(frame); // will unpin
+
+          page->page_status = MUNMAP; // used in page fault
+
           curr += PGSIZE;
           continue;
         }
@@ -886,22 +877,17 @@ syscall_handler(struct intr_frame *f)
         lock_acquire(&fs_lock);
 
         off_t wrote = file_write_at(mapped_file->file, page->uaddr, page->read_bytes, page->ofs);
+        ASSERT((uint32_t)wrote == page->read_bytes);
 
         lock_release(&fs_lock);
         lock_acquire(&vm_lock);
-        ASSERT((uint32_t)wrote == page->read_bytes);
+
         curr += PGSIZE;
 
-        ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
-        page_frame_freed(page->frame); // will unpin the frames
+        page_frame_freed(frame); // will unpin the frames
 
         page->page_status = MUNMAP;
-        // hash_delete(&supp_pt->hash_map, &page->hash_elem);
-        // free(page);
       }
-      // struct page is freed atp, we should also unpin the frames?
-
-      // unpin_frames(mapped_file->addr, mapped_file->length);
 
       list_remove(&mapped_file->elem);
       free(mapped_file);
@@ -1015,7 +1001,12 @@ void unpin_frames(void *uaddr, size_t size)
   {
     struct page *page = find_page(supp_pt, curr);
     ASSERT(page != NULL && page->page_location == PAGED_IN)
-    page->frame->pinned = false;
+
+    struct frame *frame = get_page_frame(page);
+    ASSERT(frame != NULL);
+    ASSERT(frame->pinned == true);
+
+    frame->pinned = false;
     // printf("page unpin %p\n", page->uaddr);
     curr += PGSIZE;
   }
@@ -1038,16 +1029,17 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
   for (int i = 0; i < pages; i++)
   {
-    struct page *page = find_page(supp_pt, curr);
+    struct page *page = find_page(supp_pt, curr); // continguous
 
     if (page != NULL && page->page_location == PAGED_IN) // alr mapped/overlap
     {
-      page->frame->pinned = true;
+      struct frame *frame = get_page_frame(page);
+      ASSERT(frame != NULL);
+
+      frame->pinned = true;
       curr += PGSIZE;
       continue;
     }
-    //printf("page pin %p\n", page->uaddr);
-
 
     void *esp = NULL;
     struct thread *thread_cur = thread_current();
@@ -1069,13 +1061,19 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
         return false;
       }
 
-      ASSERT(thread_current()->supp_pt != NULL)
-      struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-      ASSERT(ret == NULL);
+       ASSERT(thread_current()->supp_pt != NULL)
+       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+       ASSERT(ret == NULL);
     }
 
     fault_page = find_page(thread_cur->supp_pt, curr);
+
     if (fault_page == NULL)
+    {
+      return false;
+    }
+
+    if (fault_page->page_status == MUNMAP)
     {
       return false;
     }
@@ -1092,12 +1090,11 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
     struct frame *frame = ft_get_page_frame(thread_current(), fault_page, true);
     uint8_t *kpage = frame->kaddr;
 
-    if (kpage == NULL)
-    {
-      return false;
-    }
+    ASSERT(kpage != NULL);
 
-    fault_page->frame = frame;
+    ASSERT(pg_round_down(curr) == pg_round_down(fault_page->uaddr));
+
+    bool in_swap = fault_page->page_location == SWAP;
     fault_page->page_location = PAGED_IN;
 
     if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
@@ -1108,20 +1105,33 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     if (!stack_growth)
     {
-      lock_release(&vm_lock);
-      lock_acquire(&fs_lock);
-      file_seek(fault_page->file, fault_page->ofs);
-      if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+      if ((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap)
       {
-        printf("failed\n"); // shoudl freed_frame too
-        lock_release(&fs_lock);
-        return false;
+        ASSERT(fault_page->swap_index != UINT32_MAX);
+
+        st_read_at(kpage, fault_page->swap_index);
+        fault_page->swap_index = UINT32_MAX;
       }
-      lock_release(&fs_lock);
-      lock_acquire(&vm_lock);
+      else
+      {
+        lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
+
+        file_seek(fault_page->file, fault_page->ofs);
+        if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
+        {
+          lock_release(&fs_lock);
+          return false;
+        }
+
+        lock_release(&fs_lock);
+        lock_acquire(&vm_lock);
+      }
     }
 
-    memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+    if(!in_swap){
+      memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
+    }
 
     ASSERT(fault_page->page_location == PAGED_IN);
     ASSERT(frame->pinned == true);

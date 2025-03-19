@@ -16,9 +16,7 @@ struct swap_table {
     struct lock lock;
 };
 
-
 static struct swap_table* st;
-
 
 void init_st(){
     st = malloc(sizeof(struct swap_table));
@@ -35,7 +33,7 @@ void init_st(){
     // lock_init(&st->lock);
 }
 
-// evict out to
+// page out
 size_t st_write_at(void* uaddr){
     size_t map_id = bitmap_scan_and_flip(st->bitmap, 0, 1, false);
     ASSERT(map_id != BITMAP_ERROR);
@@ -43,45 +41,25 @@ size_t st_write_at(void* uaddr){
     ASSERT(bitmap_test(st->bitmap, map_id) == true);
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
-    lock_release(&vm_lock);
-
-    // lock_acquire(&fs_lock);
-
     for(size_t i = 0; i < sector_in_page; i++){
         block_write(st->swap_block, (map_id * PGSIZE/BLOCK_SECTOR_SIZE)+i, uaddr + (i * BLOCK_SECTOR_SIZE));
     }
-    // lock_release(&fs_lock);
-
-
-    lock_acquire(&vm_lock);
 
     return map_id;
 }
-
 
 void st_free_page(size_t id){
     bitmap_reset(st->bitmap,id);
 }
 
-// bring into
+// page in
 void st_read_at(void* uaddr, size_t id){
     ASSERT(bitmap_test(st->bitmap,id) == true);
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
-    lock_release(&vm_lock);
-
     for(size_t i = 0; i < sector_in_page; i++){
-        // lock_release(&vm_lock);
-        // lock_acquire(&fs_lock);
-
         block_read(st->swap_block, (id * PGSIZE/BLOCK_SECTOR_SIZE) + i, uaddr+ (i *BLOCK_SECTOR_SIZE));
-
-        // lock_release(&fs_lock);
-        // lock_acquire(&vm_lock);
     }
 
-
     st_free_page(id);  
-    lock_acquire(&vm_lock);
-
 }

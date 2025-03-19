@@ -50,7 +50,6 @@ struct page {
     struct file * file; // segment in file
     size_t swap_index; // if page in swap space
     mapid_t map_id;
-    struct frame *frame;
 };
 
 // lock init
