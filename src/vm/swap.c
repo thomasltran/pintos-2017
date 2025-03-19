@@ -6,6 +6,8 @@
 #include "lib/debug.h"
 #include "threads/malloc.h"
 #include <stdio.h>
+#include "userprog/syscall.h"
+#include "threads/thread.h"
 #include "swap.h"
 // // tracks usage of swap slots.
 struct swap_table {
@@ -42,7 +44,13 @@ size_t st_write_at(void* uaddr){
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
     for(size_t i = 0; i < sector_in_page; i++){
+        lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
+
         block_write(st->swap_block, (map_id * PGSIZE/BLOCK_SECTOR_SIZE)+i, uaddr + (i * BLOCK_SECTOR_SIZE));
+
+        lock_release(&fs_lock);
+        lock_acquire(&vm_lock);
 
     }
     return map_id;
@@ -59,7 +67,13 @@ void st_read_at(void* uaddr, size_t id){
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
     for(size_t i = 0; i < sector_in_page; i++){
+        // lock_release(&vm_lock);
+        // lock_acquire(&fs_lock);
+
         block_read(st->swap_block, (id * PGSIZE/BLOCK_SECTOR_SIZE) + i, uaddr+ (i *BLOCK_SECTOR_SIZE));
+
+        // lock_release(&fs_lock);
+        // lock_acquire(&vm_lock);
     }
 
     st_free_page(id);  

@@ -674,7 +674,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       ASSERT(thread_current()->supp_pt != NULL)
       lock_acquire(&vm_lock);
       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
-      //// printf("inserted %p\n", pg_round_down((void *)upage));
 
       ASSERT(ret == NULL);
       lock_release(&vm_lock);

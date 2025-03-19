@@ -44,6 +44,7 @@ void init_ft(void) {
     while((kpage = palloc_get_page(PAL_USER | PAL_ZERO))){
         struct frame * frame_ptr = malloc(sizeof(struct frame));
         frame_ptr->kaddr = kpage;
+        frame_ptr->pinned = false;
         list_push_front(&ft->free_list, &frame_ptr->elem);
     }
 }
@@ -69,13 +70,20 @@ void page_frame_freed(struct frame * frame){
     list_push_front(&ft->free_list, &frame->elem);
 }
 
+void check_used(){
+    for(struct list_elem * e = list_begin(&ft->used_list); e != list_end(&ft->used_list); e = list_next(e)){
+        struct frame *frame = list_entry(e, struct frame, elem);
+        printf("frame %p pinned %d\n", frame->kaddr, frame->pinned);
+    }
+}
+
 struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, bool pinned)
 {
     struct frame * frame_ptr = NULL;
     // primitive implementation
     if(!list_empty(&ft->free_list)){
         struct list_elem * e = list_pop_front(&ft->free_list);
-        struct frame * frame_ptr = list_entry(e, struct frame, elem);
+        frame_ptr = list_entry(e, struct frame, elem);
         frame_ptr->thread = page_thread;
         frame_ptr->page = page;
         frame_ptr->pinned = pinned;
@@ -89,7 +97,6 @@ struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, 
     ASSERT(frame_ptr != NULL);
 
     if (frame_ptr != NULL) { // if we successfully evicted a frame
-        struct frame *frame_ptr = list_entry(list_next(list_begin(&ft->used_list)), struct frame, elem); // get the next frame in the clock hand order
         frame_ptr->thread = page_thread; // set the thread
         frame_ptr->page = page;
         frame_ptr->pinned = pinned; // set the pinned status
@@ -122,16 +129,14 @@ void destroy_frame_table(){
 /* - - - - - - - - - - Helper Functions For Eviction - - - - - - - - - - */
 
 // Get the next frame in the clock hand order
-static struct frame * 
+static struct frame *
 get_next_frame(struct frame *current) {
-
     struct list_elem *next = list_next(&current->elem);
     if (next == list_end(&ft->used_list)) {
         next = list_begin(&ft->used_list); // wrap around to the beginning of the list
     }
     return list_entry(next, struct frame, elem);
 }
-
 // Evict a frame from the frame table (using clock hand algorithm)
 // static void *
 // evict_frame(UNUSED struct thread *page_thread, UNUSED void *u_vaddr, UNUSED bool pinned) {
@@ -141,11 +146,11 @@ evict_frame()
     ASSERT(lock_held_by_current_thread(&vm_lock));
 
     // validation for clock hand
-    if(ft->clock_elem == NULL || 
-       ft->clock_elem == list_head(&ft->used_list) || 
-       ft->clock_elem == list_tail(&ft->used_list)) {
+    if (ft->clock_elem == NULL || ft->clock_elem == list_end(&ft->used_list)) {
         ft->clock_elem = list_begin(&ft->used_list);
     }
+    ft->clock_elem = list_begin(&ft->used_list);
+    
 
     struct frame *victim = NULL;
     struct frame *clock_start = list_entry(ft->clock_elem, struct frame, elem);
@@ -154,14 +159,19 @@ evict_frame()
     // struct supp_pt *victim_spt = NULL;
     struct mapped_file_table *victim_mapped_file_table = NULL;
 
+    //check_used();
+
     // loop through the frame table until victim is found
     while (victim == NULL) {
         // skip pinned frames
-        if (curr->pinned) {
+        ASSERT(curr->page != NULL);
+        ASSERT(curr->page->page_location == PAGED_IN);
+        //printf("stuck\n");
+        
+        if (curr->pinned == true) {
             curr = get_next_frame(curr);
             continue;
         }
-        
         // get the page table entries for user address
         ASSERT(curr->thread->pagedir != NULL);
         uint32_t *pd = curr->thread->pagedir;
@@ -177,8 +187,6 @@ evict_frame()
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim->pinned = true; // for write back if applicable
             //     victim->thread = NULL; should we break mapping here?
-            list_remove(&victim->elem);
-
             ASSERT(victim->thread->pagedir != NULL);
             ASSERT(victim->page != NULL);
             ASSERT(victim->page->page_location == PAGED_IN);
@@ -198,6 +206,7 @@ evict_frame()
 
     // update clock hand for next eviction
     ft->clock_elem = &get_next_frame(victim)->elem;
+    list_remove(&victim->elem);
 
     // handle victim based on its type
 
@@ -216,6 +225,7 @@ evict_frame()
         // DATA, BSS, STACK: write to swap if dirty
         case DATA_BSS:
         case STACK:
+            //printf("evict\n");
             // victim->page->swap_index = swap_out(victim->kaddr);
             ASSERT(victim->page->swap_index == UINT32_MAX);
             victim->page->swap_index = st_write_at(victim->page->uaddr);

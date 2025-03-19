@@ -168,7 +168,7 @@ page_fault (struct intr_frame *f)
 //           write ? "writing" : "reading",
 //           user ? "user" : "kernel");
 
-// printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+//printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 #ifdef VM
    if (fault_addr < PHYS_BASE)
    {
@@ -197,7 +197,6 @@ page_fault (struct intr_frame *f)
 
       if (stack_growth)
       {
-         // printf("stack access\n");
          //printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 
          struct page *page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
@@ -245,6 +244,7 @@ page_fault (struct intr_frame *f)
       ASSERT(kpage != NULL);
       if (kpage == NULL)
       {
+         printf("failed1\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -262,6 +262,7 @@ page_fault (struct intr_frame *f)
 
       if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
       {
+         printf("failed2\n");
          page_frame_freed(frame);
          lock_release(&vm_lock);
          f->eax = -1;
@@ -274,13 +275,15 @@ page_fault (struct intr_frame *f)
          lock_acquire(&fs_lock);
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             ASSERT(fault_page->swap_index != UINT32_MAX);
-            st_read_at(fault_page->uaddr, fault_page->map_id);
+
+            st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX; // paged back in
          }
          else{
             file_seek(fault_page->file, fault_page->ofs);
             if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
             {
+               printf("failed3\n");
                lock_release(&fs_lock);
                f->eax = -1;
                exit(-1);
@@ -292,6 +295,8 @@ page_fault (struct intr_frame *f)
       }
       memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
       frame->pinned = false;
+      //printf("made it past\n");
+      //check_used();
 
       lock_release(&vm_lock);
    }

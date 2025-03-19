@@ -1026,7 +1026,6 @@ void unpin_frames(void *uaddr, size_t size)
 
 bool get_pinned_frames(void *uaddr, bool write, size_t size)
 {
-  //printf("pinned no fault\n");
   const void *start = uaddr;
   const void *end = uaddr + size - 1;
   struct thread *cur = thread_current();

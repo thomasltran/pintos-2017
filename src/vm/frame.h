@@ -29,5 +29,6 @@ void init_ft(void);
 void destroy_frame_table(void);
 struct frame* ft_get_page_frame(struct thread*, struct page * page, bool);
 void page_frame_freed(struct frame * frame);
+void check_used(void);
 
 #endif
