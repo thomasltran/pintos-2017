@@ -116,13 +116,15 @@ evict_frame()
             victim->pinned = true;
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim_pd = victim->thread->pagedir;
-            victim->thread = NULL;
             list_remove(&victim->elem);
 
             ASSERT(victim_pd != NULL);
+            ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
+            ASSERT(hash_find(&victim->thread->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
 
-            // fails here
-            //ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
+            pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
+
+            victim->thread = NULL;
 
             break;
         } else {
@@ -135,8 +137,10 @@ evict_frame()
         //curr = get_next_frame(curr);
     }
 
-    pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
-
+/*
+    thread 1 is in eviction, picks a victim frame
+    while doing like write to swap or something, thread 2 frees its spt
+*/
     switch (victim->page->page_status) {
         case CODE:
             victim->page->page_location = PAGED_OUT;
@@ -145,11 +149,14 @@ evict_frame()
         case DATA_BSS:
         case STACK:
             victim->page->page_location = SWAP;
-
-            // ASSERT(victim->page->swap_index == UINT32_MAX);
-            //ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
+            // victim page originally paged in
+            // victim page wrote out to swap, location is swap
+            // victim page (uaddr) page faults
+            // 
+            ASSERT(victim->page->swap_index == UINT32_MAX);
 
             victim->page->swap_index = st_write_at(victim->kaddr);
+            // printf("alloc swap index %d\n", victim->page->swap_index);
 
             // hold vm lock throughout, shouldn't page fault
             // victim->page->swap_index = st_write_at(victim->page->uaddr);
@@ -214,7 +221,6 @@ void page_frame_freed(struct frame * frame){
     frame->thread = NULL;
 
     pagedir_clear_page(pd, pg_round_down(frame->page->uaddr));
-
     struct page * page = frame->page;
     page->page_location = PAGED_OUT;
     frame->page = NULL;

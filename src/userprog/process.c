@@ -243,8 +243,6 @@ void process_exit(void)
 
   free_mapped_file_table(cur->mapped_file_table);
 
-  cleanup_thread_frames(cur);
-
   free_spt(cur->supp_pt);
 
   lock_release(&vm_lock);

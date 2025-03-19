@@ -197,6 +197,7 @@ page_fault (struct intr_frame *f)
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (fault_page == NULL)
          {
+            // printf("stack growth fail\n");
             lock_release(&vm_lock);
             f->eax = -1;
             exit(-1);
@@ -205,24 +206,26 @@ page_fault (struct intr_frame *f)
          ASSERT(thread_current()->supp_pt != NULL)
          struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &fault_page->hash_elem);
 
-         // fails here
          ASSERT(ret == NULL);
       }
 
       if (fault_page == NULL)
       {
+         // printf("no page fail\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
 
       if(fault_page->page_status == MUNMAP){
+         // printf("munmap fail\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
 
       if(write && !fault_page->writable){
+         // printf("write fail\n");
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -240,10 +243,15 @@ page_fault (struct intr_frame *f)
       ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
 
       bool in_swap = fault_page->page_location == SWAP;
+      if(in_swap){
+         ASSERT(fault_page->swap_index != UINT32_MAX);
+      }
       fault_page->page_location = PAGED_IN;
 
       if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
       {
+         // printf("pagedir fail\n");
+
          page_frame_freed(frame);
          lock_release(&vm_lock);
          f->eax = -1;
@@ -253,10 +261,8 @@ page_fault (struct intr_frame *f)
       if (!stack_growth)
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
-            ASSERT(fault_page->swap_index != UINT32_MAX);
-            memset(kpage, 0, PGSIZE);
+            // // printf("free swap index %d\n", fault_page->swap_index);
             st_read_at(kpage, fault_page->swap_index);
-            // st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
          }
          else {
@@ -265,6 +271,7 @@ page_fault (struct intr_frame *f)
             file_seek(fault_page->file, fault_page->ofs);
             if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
             {
+               // printf("load fail\n");
                lock_release(&fs_lock);
                f->eax = -1;
                exit(-1);
@@ -283,6 +290,8 @@ page_fault (struct intr_frame *f)
    }
    else
    {
+      // printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
+      // printf("exit\n");
       //   kill(f);
       f->eax = -1;
       exit(-1);

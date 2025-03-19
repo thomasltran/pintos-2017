@@ -3,6 +3,7 @@
 #include "threads/vaddr.h"
 #include "threads/malloc.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 #include <stdio.h>
 
 struct lock vm_lock;
@@ -94,7 +95,28 @@ void free_spt(struct supp_pt *supp_pt){
 }
 
 static void free_page(struct hash_elem *e, void *aux UNUSED){
+    // free mapped fiel table is before
     struct page *page = hash_entry(e, struct page, hash_elem);
+
+    if(page->page_location == SWAP){
+        ASSERT(page->swap_index != UINT32_MAX);
+    }
+
+    if(page->swap_index == UINT32_MAX) {
+        ASSERT(page->page_location != SWAP);
+    }
+
+    if(page->swap_index != UINT32_MAX){
+        st_free_page(page->swap_index);
+    }
+
+    if(page->page_location == PAGED_IN){
+        struct frame * frame = get_page_frame(page);
+        ASSERT(frame != NULL);
+
+        page_frame_freed(frame);
+    }
+
     free(page);
 }
 

@@ -1049,32 +1049,31 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
     if (curr >= esp - 32 && curr > PHYS_BASE - STACK_LIMIT)
       stack_growth = true;
 
-    struct page *fault_page = find_page(thread_cur->supp_pt, curr);
-
-    if (stack_growth && fault_page == NULL)
+    if (stack_growth && page == NULL)
       {
-        fault_page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
-        if (fault_page == NULL)
+        page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+        if (page == NULL)
         {
           return false;
         }
 
         ASSERT(thread_current()->supp_pt != NULL)
-        struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &fault_page->hash_elem);
+        struct hash_elem *ret = hash_insert(&thread_cur->supp_pt->hash_map, &page->hash_elem);
+    
         ASSERT(ret == NULL);
     }
 
-    if (fault_page == NULL)
+    if (page == NULL)
     {
       return false;
     }
 
-    if (fault_page->page_status == MUNMAP)
+    if (page->page_status == MUNMAP)
     {
-      return false;
+      page->page_status = MMAP;
     }
 
-    if (write && !fault_page->writable)
+    if (write && !page->writable)
     {
       return false;
     }
@@ -1083,58 +1082,59 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
-    struct frame *frame = ft_get_page_frame(thread_current(), fault_page, true);
+    struct frame *frame = ft_get_page_frame(thread_current(), page, true);
 
     uint8_t *kpage = frame->kaddr;
 
     ASSERT(kpage != NULL);
 
-    ASSERT(pg_round_down(curr) == pg_round_down(fault_page->uaddr));
+    ASSERT(pg_round_down(curr) == pg_round_down(page->uaddr));
 
-    bool in_swap = fault_page->page_location == SWAP;
-    fault_page->page_location = PAGED_IN;
+    bool in_swap = page->page_location == SWAP;
+    page->page_location = PAGED_IN;
 
-    if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+    if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, page->writable) == false)
     {
       page_frame_freed(frame);
       return false;
     }
-    memset(kpage, 0, PGSIZE);
+    //memset(kpage, 0, PGSIZE);
 
-    // if (!stack_growth)
-    // {
-    //   if ((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap)
-    //   {
-    //     ASSERT(fault_page->swap_index != UINT32_MAX);
+    if (!stack_growth)
+    {
+      if ((page->page_status == DATA_BSS || page->page_status == STACK) && in_swap)
+      {
+        // printf("here\n");
+        ASSERT(page->swap_index != UINT32_MAX);
 
-    //     st_read_at(kpage, fault_page->swap_index);
-    //     fault_page->swap_index = UINT32_MAX;
-    //     ASSERT(frame->pinned == true);
+        st_read_at(kpage, page->swap_index);
+        page->swap_index = UINT32_MAX;
+        ASSERT(frame->pinned == true);
 
-    //   }
-    //   else
-    //   {
-    //     lock_release(&vm_lock);
-    //     lock_acquire(&fs_lock);
+      }
+      else
+      {
+        lock_release(&vm_lock);
+        lock_acquire(&fs_lock);
 
-    //     file_seek(fault_page->file, fault_page->ofs);
-    //     if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
-    //     {
-    //       lock_release(&fs_lock);
-    //       return false;
-    //     }
+        file_seek(page->file, page->ofs);
+        if (file_read(page->file, kpage, page->read_bytes) != (int)page->read_bytes)
+        {
+          lock_release(&fs_lock);
+          return false;
+        }
 
-    //     lock_release(&fs_lock);
-    //     lock_acquire(&vm_lock);
+        lock_release(&fs_lock);
+        lock_acquire(&vm_lock);
 
-    //   }
-    // }
+      }
+    }
 
-    // if(!in_swap){
-    //   memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
-    // }
+    if(!in_swap){
+      memset(kpage + page->read_bytes, 0, page->zero_bytes);
+    }
 
-    ASSERT(fault_page->page_location == PAGED_IN);
+    ASSERT(page->page_location == PAGED_IN);
     ASSERT(frame->pinned == true); // this fails for merge par
     ASSERT(frame->thread == cur);
 
