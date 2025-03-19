@@ -11,6 +11,7 @@
 #include "vm/mappedfile.h"
 #include <stdio.h>
 #include "userprog/syscall.h"
+#include "vm/swap.h"
 //frame table
 //static because frame.c should use it directly while other compilation units should utilzie frame table functions
 struct frame_table {
@@ -211,6 +212,7 @@ evict_frame()
         case DATA_BSS:
         case STACK:
             // victim->page->swap_index = swap_out(victim->kaddr);
+            victim->page->swap_index = st_write_at(victim->page->uaddr, victim->page->read_bytes);
             victim->page->page_location = SWAP; // update status to show in swap
             break;
         // MMAP: write back to file if dirty
