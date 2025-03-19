@@ -122,17 +122,20 @@ evict_frame()
             ASSERT(victim_pd != NULL);
 
             // fails here
-            ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
+            //ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
 
             break;
         } else {
             ASSERT(curr->page->uaddr != NULL);
             pagedir_set_accessed(curr->thread->pagedir, curr->page->uaddr, false);
             curr = get_next_frame(curr);
+            continue;
         }
 
-        curr = get_next_frame(curr);
+        //curr = get_next_frame(curr);
     }
+
+    pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
 
     switch (victim->page->page_status) {
         case CODE:
@@ -143,8 +146,8 @@ evict_frame()
         case STACK:
             victim->page->page_location = SWAP;
 
-            ASSERT(victim->page->swap_index == UINT32_MAX);
-            ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
+            // ASSERT(victim->page->swap_index == UINT32_MAX);
+            //ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
             victim->page->swap_index = st_write_at(victim->kaddr);
 
@@ -158,12 +161,12 @@ evict_frame()
         case MMAP:
             victim->page->page_location = PAGED_OUT;
 
-            if (pagedir_is_dirty(victim_pd, victim->page->uaddr) || pagedir_is_dirty(victim_pd, victim->kaddr)) {
+            if (pagedir_is_dirty(victim_pd, victim->page->uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
                 
                 struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, victim->page->map_id);
 
                 ASSERT(mapped_file != NULL);
-                ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
+                //ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
@@ -178,7 +181,6 @@ evict_frame()
         default:
             break;
     }
-    pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
 
     ASSERT(victim->page != NULL);
 

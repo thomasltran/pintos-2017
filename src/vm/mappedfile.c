@@ -73,7 +73,7 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         struct frame * frame = get_page_frame(page);
         ASSERT(frame != NULL);
         
-        if (!pagedir_is_dirty(cur->pagedir, page->uaddr) && !pagedir_is_dirty(cur->pagedir, frame->kaddr))
+        if (!pagedir_is_dirty(cur->pagedir, page->uaddr)/* && !pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
         {
             page_frame_freed(frame); // will unpin
 
