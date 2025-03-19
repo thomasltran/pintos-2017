@@ -761,6 +761,7 @@ setup_stack(void **esp)
     }
   }
 #ifdef VM
+  ASSERT(kpage != NULL);
   frame->pinned = false;
   lock_release(&vm_lock);
 #endif

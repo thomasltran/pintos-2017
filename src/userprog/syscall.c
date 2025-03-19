@@ -849,6 +849,16 @@ syscall_handler(struct intr_frame *f)
         lock_release(&vm_lock);
         break;
       }
+      printf("munmap start sys\n");
+
+
+      if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
+      {
+        f->eax = -1;
+        lock_release(&vm_lock);
+        break;
+      }
+      // check if int pages are same for both
 
       int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
       void *curr = mapped_file->addr;
@@ -864,8 +874,12 @@ syscall_handler(struct intr_frame *f)
         ASSERT(page != NULL);
         if (!pagedir_is_dirty(cur->pagedir, page->uaddr)) // not dirty, nothing to write back
         {
-          hash_delete(&supp_pt->hash_map, &page->hash_elem);
-          free(page);
+          ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
+          page_frame_freed(page->frame); // will unpin the frames
+
+          // hash_delete(&supp_pt->hash_map, &page->hash_elem);
+          // free(page);
+          page->page_status = MUNMAP;
           curr += PGSIZE;
           continue;
         }
@@ -880,15 +894,25 @@ syscall_handler(struct intr_frame *f)
         ASSERT((uint32_t)wrote == page->read_bytes);
         curr += PGSIZE;
 
-        hash_delete(&supp_pt->hash_map, &page->hash_elem);
-        free(page);
+        ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
+        page_frame_freed(page->frame); // will unpin the frames
+
+        page->page_status = MUNMAP;
+        // hash_delete(&supp_pt->hash_map, &page->hash_elem);
+        // free(page);
       }
+      // struct page is freed atp, we should also unpin the frames?
+
+      // unpin_frames(mapped_file->addr, mapped_file->length);
+
       list_remove(&mapped_file->elem);
       free(mapped_file);
+      printf("munmap end sys\n");
 
       lock_release(&vm_lock);
 
       thread_current()->esp = NULL;
+
       break;
     }
 #endif
@@ -995,12 +1019,14 @@ void unpin_frames(void *uaddr, size_t size)
     struct page *page = find_page(supp_pt, curr);
     ASSERT(page != NULL && page->page_location == PAGED_IN)
     page->frame->pinned = false;
+    // printf("page unpin %p\n", page->uaddr);
     curr += PGSIZE;
   }
 }
 
 bool get_pinned_frames(void *uaddr, bool write, size_t size)
 {
+  //printf("pinned no fault\n");
   const void *start = uaddr;
   const void *end = uaddr + size - 1;
   struct thread *cur = thread_current();
@@ -1017,12 +1043,15 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
   for (int i = 0; i < pages; i++)
   {
     struct page *page = find_page(supp_pt, curr);
+
     if (page != NULL && page->page_location == PAGED_IN) // alr mapped/overlap
     {
       page->frame->pinned = true;
       curr += PGSIZE;
       continue;
     }
+    //printf("page pin %p\n", page->uaddr);
+
 
     void *esp = NULL;
     struct thread *thread_cur = thread_current();
@@ -1047,13 +1076,6 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
       ASSERT(thread_current()->supp_pt != NULL)
       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
       ASSERT(ret == NULL);
-
-      fault_page = find_page(thread_cur->supp_pt, curr); // dont need this here, just temp
-
-      if (fault_page == NULL)
-      {
-        return false;
-      }
     }
 
     fault_page = find_page(thread_cur->supp_pt, curr);
@@ -1095,6 +1117,7 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
       file_seek(fault_page->file, fault_page->ofs);
       if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
       {
+        printf("failed\n"); // shoudl freed_frame too
         lock_release(&fs_lock);
         return false;
       }
@@ -1104,7 +1127,9 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
 
-    ASSERT(fault_page->page_location == PAGED_IN && frame->pinned == true && frame->thread == cur);
+    ASSERT(fault_page->page_location == PAGED_IN);
+    ASSERT(frame->pinned == true);
+    ASSERT(frame->thread == cur);
 
     curr += PGSIZE;
   }

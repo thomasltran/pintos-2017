@@ -11,6 +11,7 @@ extern struct lock vm_lock;
 
 enum page_status {
     MMAP, // mapped to file
+    MUNMAP, // unmapped
     CODE, // ucode
     DATA_BSS, // data or bss
     STACK, // ustack

@@ -211,22 +211,17 @@ page_fault (struct intr_frame *f)
          ASSERT(thread_current()->supp_pt != NULL)
          struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
          ASSERT(ret == NULL);
-
-         fault_page = find_page(thread_cur->supp_pt, fault_addr); // dont need this here, just temp
-
-         if (fault_page == NULL)
-         {  
-            // printf("pf couldn't find stack access\n");
-            lock_release(&vm_lock);
-            f->eax = -1;
-            exit(-1);
-         }
       }
 
       fault_page = find_page(thread_cur->supp_pt, fault_addr);
       if (fault_page == NULL)
       {
          //printf("pf couldn't find\n");
+         lock_release(&vm_lock);
+         f->eax = -1;
+         exit(-1);
+      }
+      if(fault_page->page_status == MUNMAP){
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
@@ -247,13 +242,14 @@ page_fault (struct intr_frame *f)
       uint8_t *kpage = frame->kaddr;
       // can get evicted here, i think we need to pin
       // dont want eviction before file_read
-
+      ASSERT(kpage != NULL);
       if (kpage == NULL)
       {
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
+      // evict (file write) -> pf -> get_frame
 
       /* Load this page. */
 

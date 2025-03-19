@@ -61,6 +61,15 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
 
     ASSERT(mapped_file != NULL);
 
+    // printf("munmap start func\n");
+
+    if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
+    {
+      lock_release(&vm_lock);
+      ASSERT(1 == 2); // fail
+    }
+    // in the process of getting pinned frames have to evict other mmaps
+
     int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
     void *curr = mapped_file->addr;
 
@@ -73,10 +82,15 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
     {
         struct page *page = find_page(supp_pt, curr); // continguous
         ASSERT(page != NULL);
+        ASSERT(page->page_status == MMAP);
         if (!pagedir_is_dirty(cur->pagedir, page->uaddr))
         {
-            hash_delete(&supp_pt->hash_map, &page->hash_elem);
-            free(page);
+            ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
+            page_frame_freed(page->frame); // will unpin the frames
+
+            // hash_delete(&supp_pt->hash_map, &page->hash_elem);
+            // free(page);
+            page->page_status = MUNMAP;
             curr += PGSIZE;
             continue;
         }
@@ -91,7 +105,14 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         lock_acquire(&vm_lock);
         curr += PGSIZE;
 
-        hash_delete(&supp_pt->hash_map, &page->hash_elem);
-        free(page);
+        ASSERT(page->frame != NULL && page->frame->pinned == true && page->page_location == PAGED_IN);
+        page_frame_freed(page->frame); // will unpin the frames
+
+        page->page_status = MUNMAP;
+
+        // hash_delete(&supp_pt->hash_map, &page->hash_elem);
+        // free(page);
     }
+    // printf("munmap end func\n");
+
 }

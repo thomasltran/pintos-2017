@@ -49,22 +49,24 @@ void init_ft(void) {
 }
 
 void page_frame_freed(struct frame * frame){
+    list_remove(&frame->elem);
     ASSERT(frame->thread->pagedir != NULL);
     pagedir_clear_page(frame->thread->pagedir, pg_round_down(frame->page->uaddr)); // do we need this?
     // pagedir_set_accessed(frame->thread->pagedir, frame->kaddr, false);
     // pagedir_set_dirty(frame->thread->pagedir, frame->kaddr, false);
 
     frame->thread = NULL;
-    list_remove(&frame->elem);
-    list_push_front(&ft->free_list, &frame->elem);
-
+    
     ASSERT(frame->page != NULL && frame->page->frame != NULL);
     struct page * page = frame->page;
+    // printf("unpin %p\n", page->uaddr);
+
     page->page_location = PAGED_OUT;
     page->frame = NULL;
 
     frame->page = NULL;
     frame->pinned = false;
+    list_push_front(&ft->free_list, &frame->elem);
 }
 
 struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, bool pinned)
@@ -176,6 +178,11 @@ evict_frame()
             victim->pinned = true; // for write back if applicable
             //     victim->thread = NULL; should we break mapping here?
             list_remove(&victim->elem);
+
+            ASSERT(victim->thread->pagedir != NULL);
+            ASSERT(victim->page != NULL);
+            ASSERT(victim->page->page_location == PAGED_IN);
+
             break;
         } else {
             // clear the accessed bit and move to next frame
@@ -194,13 +201,11 @@ evict_frame()
 
     // handle victim based on its type
 
-    ASSERT(victim->thread->pagedir != NULL);
-    ASSERT(victim->page != NULL);
-    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr); 
+    bool dirty = pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr) || pagedir_is_dirty(victim->thread->pagedir, victim->kaddr); 
 
     // why is this failing
     // if pageout and not pinned
-    ASSERT(victim->page->page_location == PAGED_IN);
+    // why would pageout page be added/in in the used list
     switch (victim->page->page_status) {
 
         // TODO: Might have to add more cases here
@@ -216,6 +221,9 @@ evict_frame()
             victim->page->page_location = SWAP; // update status to show in swap
             break;
         // MMAP: write back to file if dirty
+        case MUNMAP:
+            ASSERT(1 == 2);
+            break;
         case MMAP:
             if (dirty) {
                 // write back to file if dirty
@@ -236,33 +244,49 @@ evict_frame()
                     mapped_file = NULL;
                 }
 
+                // printf("pre mmap check no fault %p\n", victim->page->uaddr);
                 ASSERT(mapped_file != NULL);
+                ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
+                ASSERT(pagedir_get_page(victim->thread->pagedir, victim->page->uaddr));
+                ASSERT(pg_ofs(victim->page->uaddr) == 0);
+                //printf("post mmap check no fault %p\n", victim->page->uaddr);
+
+                // victim->page is freed
+                // only wb 1 page at time here, munmap assert will fial
+
+                // if (!get_pinned_frames(victim->page->uaddr, true, PGSIZE))
+                // {
+                //   ASSERT(1 == 2); // fail
+                //   break;
+                // }
+
+                //printf("uaddr %p size %d\n", victim->page->uaddr, victim->page->read_bytes);
 
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
+                //printf("pre write %p\n", victim->page->uaddr);
 
                 file_write_at(mapped_file->file, victim->page->uaddr, victim->page->read_bytes, victim->page->ofs);
+
+                //printf("post write %p\n", victim->page->uaddr);
+
 
                 lock_release(&fs_lock);
                 lock_acquire(&vm_lock);
             }
             break;
         default:
+            // check munmap
+            // check page int
             break;
     } // end switch
 
-
-    // Reset bits before clearing page
-    // pagedir_set_accessed(victim->thread->pagedir, victim->page->uaddr, false);
-    // pagedir_set_dirty(victim->thread->pagedir, victim->page->uaddr, false);
-
-    // then clear the page
     pagedir_clear_page(victim->thread->pagedir, pg_round_down(victim->page->uaddr));
 
-    // clear frame data but keep the frame sturcture
     ASSERT(victim->page != NULL && victim->page->frame != NULL);
-    victim->page->frame = NULL;
-
+    struct page * page = victim->page;
+    // location alr set before, pinned set in get_page_frame
+    page->frame = NULL;
     victim->page = NULL;
     victim->thread = NULL;
 

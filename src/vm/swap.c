@@ -15,7 +15,7 @@ struct swap_table {
 };
 
 
-struct swap_table* st;
+static struct swap_table* st;
 
 
 void init_st(){
