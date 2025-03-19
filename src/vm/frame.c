@@ -87,7 +87,7 @@ struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, 
     ASSERT(frame_ptr != NULL);
 
     if (frame_ptr != NULL) { // if we successfully evicted a frame
-        struct frame *frame_ptr = list_entry(list_next(list_begin(&ft->used_list)), struct frame, elem); // get the next frame in the clock hand order
+        // struct frame *frame_ptr = list_entry(list_next(list_begin(&ft->used_list)), struct frame, elem); // get the next frame in the clock hand order
         frame_ptr->thread = page_thread; // set the thread
         frame_ptr->page = page;
         frame_ptr->pinned = pinned; // set the pinned status

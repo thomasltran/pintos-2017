@@ -28,12 +28,12 @@ void init_st(){
 }
 
 size_t st_write_at(void* uaddr, uint32_t write_bytes){
-    size_t page_cnt = DIV_ROUND_UP(write_bytes, PGSIZE);
-    size_t map_id = bitmap_scan_and_flip(st->bitmap, 0, page_cnt, false);
+    // size_t page_cnt = DIV_ROUND_UP(write_bytes, PGSIZE);
+    size_t map_id = bitmap_scan_and_flip(st->bitmap, 0, 1, false);
     ASSERT(map_id != BITMAP_ERROR);
-    if(write_bytes==0){
-        bitmap_mark(st->bitmap, map_id);
-    }
+    // if(write_bytes==0){
+    //     bitmap_mark(st->bitmap, map_id);
+    // }
 
     // printf("map id: %zu\n", map_id);
     // printf("%d\n", bitmap_test(st->bitmap, map_id));
