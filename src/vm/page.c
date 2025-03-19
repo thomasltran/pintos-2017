@@ -89,7 +89,6 @@ page_less(const struct hash_elem *a_, const struct hash_elem *b_,
 }
 
 void free_spt(struct supp_pt *supp_pt){
-    cleanup_thread_frames(thread_current());
     hash_destroy(&supp_pt->hash_map, free_page); // or clear?
     free(supp_pt);
 }

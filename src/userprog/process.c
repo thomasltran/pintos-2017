@@ -243,7 +243,9 @@ void process_exit(void)
 
   free_mapped_file_table(cur->mapped_file_table);
 
-  // free_spt(cur->supp_pt);
+  cleanup_thread_frames(cur);
+
+  free_spt(cur->supp_pt);
 
   lock_release(&vm_lock);
 #endif
@@ -293,12 +295,6 @@ void process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
-
-#ifdef VM
-  lock_acquire(&vm_lock);
-  //free_mapped_file_table(cur->mapped_file_table);
-  free_spt(cur->supp_pt);
-#endif
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
 
@@ -317,9 +313,6 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
-#ifdef VM
-  lock_release(&vm_lock);
-#endif
 }
 
 /* Sets up the CPU for running user code in the current

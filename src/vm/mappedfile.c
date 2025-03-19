@@ -73,7 +73,7 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         struct frame * frame = get_page_frame(page);
         ASSERT(frame != NULL);
         
-        if (!pagedir_is_dirty(cur->pagedir, page->uaddr))
+        if (!pagedir_is_dirty(cur->pagedir, page->uaddr) && !pagedir_is_dirty(cur->pagedir, frame->kaddr))
         {
             page_frame_freed(frame); // will unpin
 
@@ -86,7 +86,7 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         lock_release(&vm_lock);
         lock_acquire(&fs_lock);
 
-        off_t wrote = file_write_at(mapped_file->file, page->uaddr, page->read_bytes, page->ofs);
+        off_t wrote = file_write_at(mapped_file->file, frame->kaddr, page->read_bytes, page->ofs);
         ASSERT((uint32_t)wrote == page->read_bytes);
 
         lock_release(&fs_lock);

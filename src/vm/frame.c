@@ -120,10 +120,13 @@ evict_frame()
             list_remove(&victim->elem);
 
             ASSERT(victim_pd != NULL);
+
+            // fails here
             ASSERT(hash_find(&thread_current()->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
 
             break;
         } else {
+            ASSERT(curr->page->uaddr != NULL);
             pagedir_set_accessed(curr->thread->pagedir, curr->page->uaddr, false);
             curr = get_next_frame(curr);
         }
@@ -155,19 +158,21 @@ evict_frame()
         case MMAP:
             victim->page->page_location = PAGED_OUT;
 
-            if (pagedir_is_dirty(victim_pd, victim->page->uaddr)) {
+            if (pagedir_is_dirty(victim_pd, victim->page->uaddr) || pagedir_is_dirty(victim_pd, victim->kaddr)) {
                 
                 struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, victim->page->map_id);
 
                 ASSERT(mapped_file != NULL);
+                ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
 
-                file_write_at(mapped_file->file, victim->page->uaddr, victim->page->read_bytes, victim->page->ofs); // shouldn't page fault
+                file_write_at(mapped_file->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs); // shouldn't page fault
 
                 lock_release(&fs_lock);
                 lock_acquire(&vm_lock);
+                victim->page->page_status = MUNMAP;
             }
             break;
         default:
@@ -185,6 +190,7 @@ void cleanup_thread_frames(struct thread * cur){
     for (struct list_elem *e = list_begin(&ft->used_list); e != list_end(&ft->used_list);){
         struct frame *frame = list_entry(e, struct frame, elem);
         e = list_next(&frame->elem);
+        frame->pinned = true;
 
         ASSERT(frame->page != NULL);
         ASSERT(frame->page->page_location == PAGED_IN);
@@ -193,21 +199,22 @@ void cleanup_thread_frames(struct thread * cur){
             page_frame_freed(frame);
             continue;
         }
+        frame->pinned = false;
     }
 }
 
 void page_frame_freed(struct frame * frame){
     list_remove(&frame->elem);
     ASSERT(frame->thread->pagedir != NULL);
-    pagedir_clear_page(frame->thread->pagedir, pg_round_down(frame->page->uaddr));
+    ASSERT(frame->page != NULL);
 
+    uint32_t * pd = frame->thread->pagedir;
     frame->thread = NULL;
 
-    ASSERT(frame->page != NULL);
+    pagedir_clear_page(pd, pg_round_down(frame->page->uaddr));
 
     struct page * page = frame->page;
     page->page_location = PAGED_OUT;
-
     frame->page = NULL;
     frame->pinned = false;
     list_push_front(&ft->free_list, &frame->elem);

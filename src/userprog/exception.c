@@ -190,12 +190,12 @@ page_fault (struct intr_frame *f)
 
       lock_acquire(&vm_lock);
 
-      struct page *fault_page = NULL;
+      struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
 
-      if (stack_growth)
+      if (stack_growth && fault_page == NULL)
       {
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
-         if (fault_page== NULL)
+         if (fault_page == NULL)
          {
             lock_release(&vm_lock);
             f->eax = -1;
@@ -204,10 +204,10 @@ page_fault (struct intr_frame *f)
 
          ASSERT(thread_current()->supp_pt != NULL)
          struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &fault_page->hash_elem);
+
+         // fails here
          ASSERT(ret == NULL);
       }
-
-      fault_page = find_page(thread_cur->supp_pt, fault_addr);
 
       if (fault_page == NULL)
       {
@@ -254,7 +254,7 @@ page_fault (struct intr_frame *f)
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             ASSERT(fault_page->swap_index != UINT32_MAX);
-
+            memset(kpage, 0, PGSIZE);
             st_read_at(kpage, fault_page->swap_index);
             // st_read_at(fault_page->uaddr, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
