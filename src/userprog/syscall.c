@@ -1045,44 +1045,46 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
     esp = thread_cur->esp;
 
     bool stack_growth = false;
-
-    if (curr >= esp - 32 && curr > PHYS_BASE - STACK_LIMIT)
-      stack_growth = true;
+    if (curr >= esp - 32 && curr > PHYS_BASE - STACK_LIMIT && page == NULL)
+        stack_growth = true;
 
     if (stack_growth && page == NULL)
-      {
-        page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
-        if (page == NULL)
-        {
+    {
+       page = create_page(curr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+       if (page == NULL)
+       {
           return false;
-        }
+       }
 
-        ASSERT(thread_current()->supp_pt != NULL)
-        struct hash_elem *ret = hash_insert(&thread_cur->supp_pt->hash_map, &page->hash_elem);
-    
-        ASSERT(ret == NULL);
+       ASSERT(thread_current()->supp_pt != NULL)
+       struct hash_elem *ret = hash_insert(&thread_current()->supp_pt->hash_map, &page->hash_elem);
+
+       ASSERT(ret == NULL);
     }
 
     if (page == NULL)
     {
-      return false;
+       // printf("tid %d no page fault addr %p fesp %p thread esp %p\n", thread_current()->tid, pg_round_down(curr), f->esp, thread_current()->esp);
+       // ASSERT(1 == 2);
+       return false;
+
     }
 
-    if (page->page_status == MUNMAP)
-    {
-      page->page_status = MMAP;
+    if(page->page_status == MUNMAP){
+       page->page_status = MMAP;
+
     }
 
-    if (write && !page->writable)
-    {
+    if(write && !page->writable){
       return false;
+
     }
 
     void *upage = pg_round_down(curr);
 
     ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
-    struct frame *frame = ft_get_page_frame(thread_current(), page, true);
+    struct frame * frame = ft_get_page_frame(thread_current(), page, true);
 
     uint8_t *kpage = frame->kaddr;
 
@@ -1091,47 +1093,43 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
     ASSERT(pg_round_down(curr) == pg_round_down(page->uaddr));
 
     bool in_swap = page->page_location == SWAP;
+    if(in_swap){
+       ASSERT(page->swap_index != UINT32_MAX);
+    }
     page->page_location = PAGED_IN;
 
     if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, page->writable) == false)
     {
-      page_frame_freed(frame);
-      return false;
+       // printf("pagedir fail\n");
+
+       page_frame_freed(frame);
+       return false;
+
     }
-    //memset(kpage, 0, PGSIZE);
 
     if (!stack_growth)
     {
-      if ((page->page_status == DATA_BSS || page->page_status == STACK) && in_swap)
-      {
-        // printf("here\n");
-        ASSERT(page->swap_index != UINT32_MAX);
+       if((page->page_status == DATA_BSS || page->page_status == STACK) && in_swap){
+          // printf("cur_t %d free swap index %d\n", thread_cur->tid, page->swap_index);
+          st_read_at(kpage, page->swap_index);
+          page->swap_index = UINT32_MAX;
+       }
+       else {
+          lock_release(&vm_lock);
+          lock_acquire(&fs_lock);
+          file_seek(page->file, page->ofs);
+          if (file_read(page->file, kpage, page->read_bytes) != (int)page->read_bytes)
+          {
+             // printf("load fail\n");
+             return false;
 
-        st_read_at(kpage, page->swap_index);
-        page->swap_index = UINT32_MAX;
-        ASSERT(frame->pinned == true);
-
-      }
-      else
-      {
-        lock_release(&vm_lock);
-        lock_acquire(&fs_lock);
-
-        file_seek(page->file, page->ofs);
-        if (file_read(page->file, kpage, page->read_bytes) != (int)page->read_bytes)
-        {
+          }
           lock_release(&fs_lock);
-          return false;
-        }
-
-        lock_release(&fs_lock);
-        lock_acquire(&vm_lock);
-
-      }
+          lock_acquire(&vm_lock);  
+       }
     }
-
     if(!in_swap){
-      memset(kpage + page->read_bytes, 0, page->zero_bytes);
+       memset(kpage + page->read_bytes, 0, page->zero_bytes);
     }
 
     ASSERT(page->page_location == PAGED_IN);

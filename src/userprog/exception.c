@@ -183,17 +183,15 @@ page_fault (struct intr_frame *f)
          esp = f->esp;
       }
 
+      struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
       bool stack_growth = false;
-      if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT)
+      if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT && fault_page == NULL)
           stack_growth = true;
 
       lock_acquire(&vm_lock);
 
-      struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
-      bool new_stack_page = false;
       if (stack_growth && fault_page == NULL)
       {
-         new_stack_page = true;
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (fault_page == NULL)
          {
@@ -238,13 +236,6 @@ page_fault (struct intr_frame *f)
 
       struct frame * frame = ft_get_page_frame(thread_current(), fault_page, true);
 
-      // if((uint32_t*)fault_addr >= (uint32_t*)0xbffff000){
-      //    printf("HERE: address:%p, page: %p, frame: %p=====================\n", fault_addr, fault_page, frame);
-      //    printf("stack growth: %s, create new page: %s", stack_growth? "true": "false", first?"true":"false");
-      //    ASSERT(pagedir_get_page(thread_current()->pagedir, fault_addr) == NULL);
-
-      // }
-
       uint8_t *kpage = frame->kaddr;
 
       ASSERT(kpage != NULL);
@@ -267,7 +258,7 @@ page_fault (struct intr_frame *f)
          exit(-1);
       }
 
-      if (!stack_growth || (stack_growth && !new_stack_page))
+      if (!stack_growth)
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             // printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);

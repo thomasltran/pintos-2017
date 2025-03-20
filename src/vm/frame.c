@@ -162,9 +162,6 @@ evict_frame()
             // victim->page->swap_index = st_write_at(victim->page->uaddr);
             break;
         case MUNMAP:
-            // ASSERT(1 == 2);
-            break;
-        // MMAP: write back to file if dirty
         case MMAP:
             victim->page->page_location = PAGED_OUT;
 
