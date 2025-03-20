@@ -190,10 +190,10 @@ page_fault (struct intr_frame *f)
       lock_acquire(&vm_lock);
 
       struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
-      bool first = false;
+      bool new_stack_page = false;
       if (stack_growth && fault_page == NULL)
       {
-         first = true;
+         new_stack_page = true;
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (fault_page == NULL)
          {
@@ -267,7 +267,7 @@ page_fault (struct intr_frame *f)
          exit(-1);
       }
 
-      if (!stack_growth || (stack_growth && !first))
+      if (!stack_growth || (stack_growth && !new_stack_page))
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
             // printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);
