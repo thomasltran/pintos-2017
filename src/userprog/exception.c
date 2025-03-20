@@ -184,16 +184,16 @@ page_fault (struct intr_frame *f)
       }
 
       bool stack_growth = false;
-    
       if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT)
           stack_growth = true;
 
       lock_acquire(&vm_lock);
 
       struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
-
+      bool first = false;
       if (stack_growth && fault_page == NULL)
       {
+         first = true;
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (fault_page == NULL)
          {
@@ -211,7 +211,7 @@ page_fault (struct intr_frame *f)
 
       if (fault_page == NULL)
       {
-         printf("tid %d no page fault addr %p fesp %p thread esp %p\n", thread_current()->tid, pg_round_down(fault_addr), f->esp, thread_current()->esp);
+         // printf("tid %d no page fault addr %p fesp %p thread esp %p\n", thread_current()->tid, pg_round_down(fault_addr), f->esp, thread_current()->esp);
          ASSERT(1 == 2);
          lock_release(&vm_lock);
          f->eax = -1;
@@ -237,6 +237,14 @@ page_fault (struct intr_frame *f)
       ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
       struct frame * frame = ft_get_page_frame(thread_current(), fault_page, true);
+
+      // if((uint32_t*)fault_addr >= (uint32_t*)0xbffff000){
+      //    printf("HERE: address:%p, page: %p, frame: %p=====================\n", fault_addr, fault_page, frame);
+      //    printf("stack growth: %s, create new page: %s", stack_growth? "true": "false", first?"true":"false");
+      //    ASSERT(pagedir_get_page(thread_current()->pagedir, fault_addr) == NULL);
+
+      // }
+
       uint8_t *kpage = frame->kaddr;
 
       ASSERT(kpage != NULL);
@@ -259,10 +267,10 @@ page_fault (struct intr_frame *f)
          exit(-1);
       }
 
-      if (!stack_growth)
+      if (!stack_growth /*|| (stack_growth && !first)*/)
       {
          if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
-            printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);
+            // printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);
             st_read_at(kpage, fault_page->swap_index);
             fault_page->swap_index = UINT32_MAX;
          }

@@ -715,7 +715,7 @@ setup_stack(void **esp)
 #ifdef VM
   lock_acquire(&vm_lock);
 
-  struct page *page = create_page(PHYS_BASE - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
+  struct page *page = create_page(((uint8_t *)PHYS_BASE) - PGSIZE, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
   if (page == NULL)
   {
     lock_release(&vm_lock);
@@ -732,6 +732,9 @@ setup_stack(void **esp)
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+    // printf("STACK SETUP HERE: thread: %d, address: %p, page: %p, frame: %p\n", thread_current()->tid,((uint8_t *)PHYS_BASE) - PGSIZE, page, frame);
+    ASSERT(((uint8_t *)PHYS_BASE) - PGSIZE == PHYS_BASE - PGSIZE);
+    ASSERT(pagedir_get_page(thread_current()->pagedir, ((uint8_t *)PHYS_BASE)-PGSIZE) != NULL);
     if (success)
     {
       *esp = PHYS_BASE;

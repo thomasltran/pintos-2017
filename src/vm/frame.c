@@ -145,17 +145,18 @@ evict_frame()
         // DATA, BSS, STACK: write to swap if dirty
         case DATA_BSS:
         case STACK:
+            ASSERT(victim->page->page_location != SWAP);
             victim->page->page_location = SWAP;
             // victim page originally paged in
             // victim page wrote out to swap, location is swap
             // victim page (uaddr) page faults
             // 
-            printf("check swap index cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
-
+            // printf("check swap index cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
+            // printf("victim frame: %p, victim page: %p, victim page address %p\n", victim, victim->page, victim->page->uaddr);
             ASSERT(victim->page->swap_index == UINT32_MAX);
 
             victim->page->swap_index = st_write_at(victim->kaddr);
-            printf("cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
+            // printf("cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
 
             // hold vm lock throughout, shouldn't page fault
             // victim->page->swap_index = st_write_at(victim->page->uaddr);
