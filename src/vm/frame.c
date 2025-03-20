@@ -172,14 +172,19 @@ evict_frame()
                 ASSERT(mapped_file != NULL);
                 //ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
+                // Keep frame pinned during file write
+                victim->pinned = true;
+
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
-
-                file_write_at(mapped_file->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs); // shouldn't page fault
-
+                
+                // Write full page instead of just read_bytes
+                file_write_at(mapped_file->file, victim->kaddr, PGSIZE, victim->page->ofs);
+                
                 lock_release(&fs_lock);
                 lock_acquire(&vm_lock);
                 // victim->page->page_status = MUNMAP;
+                victim->pinned = false;
             }
             break;
         default:

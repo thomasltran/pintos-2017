@@ -22,6 +22,12 @@ struct mapped_file {
     mapid_t map_id;
 };
 
+// Used to invalidate all mappings to a file region
+struct invalidation_data {
+    struct inode *inode;
+    off_t ofs;
+};
+
 struct mapped_file_table *create_mapped_file_table(void);
 struct mapped_file * create_mapped_file(struct file * file, void * addr, off_t length);
 void free_mapped_file_table(struct mapped_file_table * mapped_file_table);

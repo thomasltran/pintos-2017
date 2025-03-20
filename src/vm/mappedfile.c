@@ -44,6 +44,25 @@ void free_mapped_file_table(struct mapped_file_table * mapped_file_table){
     free(mapped_file_table);
 }
 
+// Invalidates all mappings to a file region
+static void invalidate_mappings(struct thread *t, void *aux) {
+    struct invalidation_data *data = aux; // data to invalidate
+    if (t->pagedir) { // thread has a pagedir
+        struct page *p; // page to invalidate
+        struct hash_iterator i;
+        hash_first(&i, &t->supp_pt->hash_map);
+        while (hash_next(&i)) {
+            p = hash_entry(hash_cur(&i), struct page, hash_elem);
+            // page is mapped to the same file and offset
+            if (p->file && file_get_inode(p->file) == data->inode &&
+                p->ofs == data->ofs) {
+                // clear the page
+                pagedir_clear_page(t->pagedir, pg_round_down(p->uaddr));
+            }
+        }
+    }
+}
+
 // assumes vm lock already held
 void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_table){
     struct thread * cur = thread_current();
@@ -54,7 +73,6 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
 
     if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
     {
-      lock_release(&vm_lock);
       ASSERT(1 == 2); // fail
     }
 
@@ -73,30 +91,30 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         struct frame * frame = get_page_frame(page);
         ASSERT(frame != NULL);
         
-        if (!pagedir_is_dirty(cur->pagedir, page->uaddr)/* && !pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
+        if (pagedir_is_dirty(cur->pagedir, page->uaddr)/* && pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
         {
-            page->page_status = MUNMAP; // used in page fault
+            lock_acquire(&fs_lock);
 
-            page_frame_freed(frame); // will unpin
+            off_t wrote = file_write_at(mapped_file->file, frame->kaddr, PGSIZE, page->ofs);
+            ASSERT((uint32_t)wrote == PGSIZE);
 
-            curr += PGSIZE;
-            continue;
+            lock_release(&fs_lock);
+            
+            // Invalidate ALL mappings to this file region
+            struct invalidation_data data = {
+                .inode = file_get_inode(page->file), 
+                .ofs = page->ofs
+            };
+            // cross thread invalidation
+            thread_foreach(invalidate_mappings, &data);
         }
 
-        lock_release(&vm_lock);
-        lock_acquire(&fs_lock);
+        page->page_status = MUNMAP; // used in page fault
 
-        off_t wrote = file_write_at(mapped_file->file, frame->kaddr, page->read_bytes, page->ofs);
-        ASSERT((uint32_t)wrote == page->read_bytes);
-
-        lock_release(&fs_lock);
-        lock_acquire(&vm_lock);
+        page_frame_freed(frame); // will unpin
 
         curr += PGSIZE;
-
-        page->page_status = MUNMAP;
-
-        page_frame_freed(frame); // will unpin the frames
+        continue;
     }
 }
 
