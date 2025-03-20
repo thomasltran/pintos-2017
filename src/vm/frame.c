@@ -35,9 +35,8 @@ void init_ft(void) {
     }
     list_init(&ft->used_list);
     list_init(&ft->free_list);
-    // lock_init(&ft->lock);
-    // Initialize clock element to head of used list
-    ft->clock_elem = list_head(&ft->used_list);
+
+    ft->clock_elem = NULL;
 
     uint32_t* kpage;
 
@@ -91,7 +90,9 @@ evict_frame()
 {
     ASSERT(lock_held_by_current_thread(&vm_lock));
 
-    ft->clock_elem = list_begin(&ft->used_list);
+    if(ft->clock_elem == NULL){
+        ft->clock_elem = list_begin(&ft->used_list);
+    }
 
     struct frame *victim = NULL;
     struct frame *curr = list_entry(ft->clock_elem, struct frame, elem);
@@ -116,13 +117,16 @@ evict_frame()
             victim->pinned = true;
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim_pd = victim->thread->pagedir;
-            list_remove(&victim->elem);
 
             ASSERT(victim_pd != NULL);
             ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
             ASSERT(hash_find(&victim->thread->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
 
             pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
+
+            ft->clock_elem = &get_next_frame(victim)->elem;
+            list_remove(&victim->elem);
+
             break;
         } else {
             ASSERT(curr->page->uaddr != NULL);
@@ -130,37 +134,24 @@ evict_frame()
             curr = get_next_frame(curr);
             continue;
         }
-
-        //curr = get_next_frame(curr);
     }
 
-/*
-    thread 1 is in eviction, picks a victim frame
-    while doing like write to swap or something, thread 2 frees its spt
-*/
     switch (victim->page->page_status) {
+        // no need to write back code pages (just a read-only page)
         case CODE:
             victim->page->page_location = PAGED_OUT;
-            break; // no need to write back code pages (just a read-only page)
+            break;
+
         // DATA, BSS, STACK: write to swap if dirty
         case DATA_BSS:
         case STACK:
             ASSERT(victim->page->page_location != SWAP);
             victim->page->page_location = SWAP;
-            // victim page originally paged in
-            // victim page wrote out to swap, location is swap
-            // victim page (uaddr) page faults
-            // 
-            // printf("check swap index cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
-            // printf("victim frame: %p, victim page: %p, victim page address %p\n", victim, victim->page, victim->page->uaddr);
             ASSERT(victim->page->swap_index == UINT32_MAX);
 
             victim->page->swap_index = st_write_at(victim->kaddr);
-            // printf("cur_t %d vic_t %d alloc swap index %d\n", thread_current()->tid, victim->thread->tid, victim->page->swap_index);
-
-            // hold vm lock throughout, shouldn't page fault
-            // victim->page->swap_index = st_write_at(victim->page->uaddr);
             break;
+
         case MUNMAP:
         case MMAP:
             victim->page->page_location = PAGED_OUT;
@@ -168,23 +159,17 @@ evict_frame()
             if (pagedir_is_dirty(victim_pd, victim->page->uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
                 
                 struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, victim->page->map_id);
-
                 ASSERT(mapped_file != NULL);
-                //ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
 
-                // Keep frame pinned during file write
                 victim->pinned = true;
 
-                lock_release(&vm_lock);
+                // lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
                 
-                // Write full page instead of just read_bytes
-                file_write_at(mapped_file->file, victim->kaddr, PGSIZE, victim->page->ofs);
+                file_write_at(mapped_file->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs);
                 
                 lock_release(&fs_lock);
-                lock_acquire(&vm_lock);
-                // victim->page->page_status = MUNMAP;
-                victim->pinned = false;
+                // lock_acquire(&vm_lock);
             }
             break;
         default:
@@ -196,23 +181,6 @@ evict_frame()
 
     // frame fields set after return
     return victim;
-}
-
-void cleanup_thread_frames(struct thread * cur){
-    for (struct list_elem *e = list_begin(&ft->used_list); e != list_end(&ft->used_list);){
-        struct frame *frame = list_entry(e, struct frame, elem);
-        e = list_next(&frame->elem);
-        frame->pinned = true;
-
-        ASSERT(frame->page != NULL);
-        ASSERT(frame->page->page_location == PAGED_IN);
-
-        if(frame->thread == cur){
-            page_frame_freed(frame);
-            continue;
-        }
-        frame->pinned = false;
-    }
 }
 
 void page_frame_freed(struct frame * frame){

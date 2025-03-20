@@ -28,7 +28,6 @@ struct frame {
 void init_ft(void);
 struct frame* ft_get_page_frame(struct thread*, struct page * page, bool);
 void page_frame_freed(struct frame * frame);
-void cleanup_thread_frames(struct thread * cur);
 struct frame * get_page_frame(struct page * page);
 
 
