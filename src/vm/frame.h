@@ -22,6 +22,7 @@ struct frame {
     struct page * page; // back pointer to page in SPT //given by caller
     struct list_elem elem; //list elem
     bool pinned; // eviction, pinning //given by caller
+    struct condition frame_pinned;
 };
 
 

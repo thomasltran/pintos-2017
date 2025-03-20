@@ -22,7 +22,9 @@ enum page_status {
 enum page_location {
     PAGED_IN,
     PAGED_OUT,
-    SWAP
+    SWAP,
+    IN_TRANSIT
+
 };
 
 // code or data/bss pages in it are virtually allocated (which

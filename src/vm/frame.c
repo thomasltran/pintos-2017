@@ -44,6 +44,7 @@ void init_ft(void) {
         struct frame * frame_ptr = malloc(sizeof(struct frame));
         frame_ptr->kaddr = kpage;
         frame_ptr->pinned = false;
+        cond_init(&frame_ptr->frame_pinned);
         list_push_front(&ft->free_list, &frame_ptr->elem);
     }
 }
@@ -97,6 +98,7 @@ evict_frame()
     struct frame *victim = NULL;
     struct frame *curr = list_entry(ft->clock_elem, struct frame, elem);
     ASSERT(curr != NULL);
+    struct page * victim_page_ptr = NULL;
 
     struct mapped_file_table *victim_mapped_file_table = NULL;
     uint32_t * victim_pd = NULL;
@@ -117,6 +119,8 @@ evict_frame()
             victim->pinned = true;
             victim_mapped_file_table = victim->thread->mapped_file_table;
             victim_pd = victim->thread->pagedir;
+            victim_page_ptr = victim->page;
+            victim->page->page_location = IN_TRANSIT;
 
             ASSERT(victim_pd != NULL);
             ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
@@ -145,7 +149,6 @@ evict_frame()
         // DATA, BSS, STACK: write to swap if dirty
         case DATA_BSS:
         case STACK:
-            ASSERT(victim->page->page_location != SWAP);
             victim->page->page_location = SWAP;
             ASSERT(victim->page->swap_index == UINT32_MAX);
 
@@ -154,30 +157,53 @@ evict_frame()
 
         case MUNMAP:
         case MMAP:
-            victim->page->page_location = PAGED_OUT;
 
-            if (pagedir_is_dirty(victim_pd, victim->page->uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
+            off_t read_bytes = victim->page->read_bytes;
+            off_t ofs = victim->page->ofs;
+            void * uaddr = victim->page->uaddr;
+            mapid_t map_id = victim->page->map_id;
+            
+            victim->page = NULL;
+
+            if (pagedir_is_dirty(victim_pd, uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
                 
-                struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, victim->page->map_id);
+                struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, map_id);
                 ASSERT(mapped_file != NULL);
 
-                victim->pinned = true;
 
-                // lock_release(&vm_lock);
+                
+                lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
                 
-                file_write_at(mapped_file->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs);
+                file_write_at(mapped_file->file, victim->kaddr, read_bytes, ofs);
                 
                 lock_release(&fs_lock);
-                // lock_acquire(&vm_lock);
+                lock_acquire(&vm_lock);
             }
+
+            if(victim->page != NULL){
+                printf("location if not transit %d\n", victim->page->page_location);
+                printf("victim uaddr %p\n", victim->page->uaddr);
+                printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
+            }
+
+            if(victim_page_ptr->page_location != IN_TRANSIT){
+                printf("location if not transit %d\n", victim_page_ptr->page_location);
+                printf("victim uaddr %p\n", victim_page_ptr->uaddr);
+                printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
+            }
+
+            victim_page_ptr->page_location = PAGED_OUT;
+
             break;
         default:
+            victim->page->page_location = PAGED_OUT;
             break;
     }
+    cond_broadcast(&victim->frame_pinned, &vm_lock);
 
-    ASSERT(victim->page != NULL);
     victim->thread = NULL;
+    victim->page = NULL;
 
     // frame fields set after return
     return victim;
@@ -204,7 +230,7 @@ struct frame * get_page_frame(struct page * page){
         struct frame *frame = list_entry(e, struct frame, elem);
 
         ASSERT(frame->page != NULL);
-        ASSERT(frame->page->page_location == PAGED_IN);
+        // ASSERT(frame->page->page_location == PAGED_IN);
 
         if(frame->page == page){
             return frame;

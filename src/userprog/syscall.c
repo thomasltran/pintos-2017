@@ -1028,6 +1028,14 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
   for (int i = 0; i < pages; i++)
   {
     struct page *page = find_page(supp_pt, curr); // continguous
+    ASSERT(page != NULL);
+
+    struct frame *temp_frame = get_page_frame(page);
+
+    while(page->page_location == IN_TRANSIT){
+      ASSERT(temp_frame != NULL);
+      cond_wait(&temp_frame->frame_pinned, &vm_lock);
+    }
 
     if (page != NULL && page->page_location == PAGED_IN) // alr mapped/overlap
     {
@@ -1038,6 +1046,14 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
       curr += PGSIZE;
       continue;
     }
+    
+    temp_frame = get_page_frame(page);
+    if(temp_frame != NULL){
+      ASSERT(page->page_location != PAGED_IN);
+      page_frame_freed(temp_frame);
+    }
+
+    ASSERT(pagedir_get_page(thread_current()->pagedir, page->uaddr) == NULL);
 
     void *esp = NULL;
     struct thread *thread_cur = thread_current();
@@ -1082,7 +1098,6 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
 
     void *upage = pg_round_down(curr);
 
-    ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
 
     struct frame * frame = ft_get_page_frame(thread_current(), page, true);
 

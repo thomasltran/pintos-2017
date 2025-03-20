@@ -213,6 +213,16 @@ void process_exit(void)
   uint32_t *pd;
   int tid = cur->tid;
 
+#ifdef VM
+lock_acquire(&vm_lock);
+
+free_mapped_file_table(cur->mapped_file_table);
+
+free_spt(cur->supp_pt);
+
+lock_release(&vm_lock);
+#endif
+
   for (struct list_elem *e = list_begin(&cur->ps_list);
        e != list_end(&cur->ps_list);)
   {
@@ -237,16 +247,6 @@ void process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
-
-#ifdef VM
-  lock_acquire(&vm_lock);
-
-  free_mapped_file_table(cur->mapped_file_table);
-
-  free_spt(cur->supp_pt);
-
-  lock_release(&vm_lock);
-#endif
 
   // clean up fd's when a thread exits
   lock_acquire(&fs_lock);
