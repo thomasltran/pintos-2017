@@ -1,6 +1,6 @@
 Copying tests/vm/page-merge-mm to scratch partition...
 Copying tests/vm/child-qsort-mm to scratch partition...
-qemu -drive file=/tmp/z9zLzocWfq.dsk,format=raw,index=0,media=disk -m 4 -smp 8 -net none -nographic -monitor null
+qemu -drive file=/tmp/9y6XNyOmLE.dsk,format=raw,index=0,media=disk -m 4 -smp 8 -net none -nographic -monitor null
 c[?7l[2J[0mSeaBIOS (version rel-1.14.0-0-g155821a1990b-prebuilt.qemu.org)
 Booting from Hard Disk...
 PPiiLLoo  hhddaa1
@@ -19,7 +19,7 @@ Initializing EHCI
 Initializing UHCI
 ide0: unexpected interrupt
 hda: 13,104 sectors (6 MB), model "QM00001", serial "QEMU HARDDISK"
-hda1: 345 sectors (172 kB), Pintos OS kernel (20)
+hda1: 337 sectors (168 kB), Pintos OS kernel (20)
 hda2: 4,096 sectors (2 MB), Pintos file system (21)
 hda3: 193 sectors (96 kB), Pintos scratch (22)
 hda4: 8,192 sectors (4 MB), Pintos swap (23)
@@ -48,33 +48,44 @@ Executing 'page-merge-mm':
 (page-merge-mm) sort chunk 2
 (page-merge-mm) sort chunk 3
 (page-merge-mm) sort chunk 4
-fault addr 0x1001a000 fesp 0xbffffef4 thread esp 0 page status 0
-Kernel PANIC from CPU 1 at ../../userprog/exception.c:240 in page_fault(): assertion `temp_frame != NULL' failed.
-Call stack: 0xc0033043 0xc00330fd 0xc00377f4 0xc0022a94 0xc0022e92 0x80481d1 0x80482df 0x80483cd 0x8048161 0x8048a5b.
-The `backtrace' program can make call stacks useful.
-Read "Backtraces" in the "Debugging Tools" chapter
-of the Pintos documentation for more information.
-
-Printing a backtrace of all CPUs
-Call stack: 0xc0033043Printing a backtrace of all threads
- 0xc0025b87 0xc0022a94Call stack of thread 'initial' (status BLOCKED, CPU6): 0xc0022e92 0xc00222e5 0xc0021d6b 0xc0021895 0xc0021e3f 0xc0023dc4.
- 0xc0035bfbCall stack: 0xc0033043 0xc0020eaf 0xc0025b87 0xc0020f8e 0xc0022a94 0xc00205dd 0xc0022e92.
- 0xc0021d6bCall stack of thread 'idle_cpu0' (status RUNNING, CPU0): 0xc0021e3fthread appears currently running on another CPU, skipping.
-.
-Call stack of thread 'idle_cpu1' (status BLOCKED, CPU1):Call stack: 0xc0033043 0xc00222e5 0xc0025b87 0xc0021895 0xc0022a94 0xc0021d66 0xc0022e92 0xc0021e3f 0xc0021d6b.
- 0xc0021e3fCall stack of thread 'idle_cpu2' (status RUNNING, CPU2):.
-thread appears currently running on another CPU, skipping.
-Call stack: 0xc0033043Call stack of thread 'idle_cpu3' (status RUNNING, CPU3): 0xc0025b87thread appears currently running on another CPU, skipping.
- 0xc0022a94Call stack of thread 'idle_cpu4' (status RUNNING, CPU4): 0xc0022e92thread appears currently running on another CPU, skipping.
- 0xc0021d6bCall stack of thread 'idle_cpu5' (status RUNNING, CPU5): 0xc0021e3fthread appears currently running on another CPU, skipping.
-.
-Call stack of thread 'idle_cpu6' (status RUNNING, CPU6):Call stack: 0xc0033043thread appears currently running on another CPU, skipping.
- 0xc0025b87Call stack of thread 'idle_cpu7' (status RUNNING, CPU7): 0xc0022a94thread appears currently running on another CPU, skipping.
- 0xc0022e92Call stack of thread 'page-merge-mm' (status BLOCKED, CPU6): 0xc0021d6b 0xc00222e5 0xc0021e3f 0xc0021895.
- 0xc0023dc4Call stack: 0xc0033043 0xc0035883 0xc0025b87 0xc0038cd6 0xc0022a94 0xc0022a94 0xc0022e92 0xc0022e92 0xc0021d6b 0x804ad53 0xc0021e3f.
-.
-Call stack of thread 'child-qsort-mm ' (status RUNNING, CPU1):Call stack: 0xc0033043 0xc0021cec 0xc0025b87 0xc00332f4 0xc0022a94 0xc0033138 0xc0022e92 0xc00377f4 0xc0021d6b 0xc0022a94 0xc0021e3f 0xc0022e92.
- 0x80481d1 0x80482df 0x80483cd 0x8048161 0x8048a5b.
-Call stack of thread 'child-qsort-mm ' (status BLOCKED, CPU0): 0xc00222e5 0xc0021895 0xc0023dc4 0xc00240e1 0xc0037bdf 0xc0037ff5 0xc0022a94 0xc0022e92 0x804aa12.
-Call stack of thread 'child-qsort-mm ' (status BLOCKED, CPU2): 0xc00222e5 0xc0021895 0xc0023dc4 0xc00240e1 0xc003c86b 0xc003c35c 0xc0037874 0xc0022a94 0xc0022e92 0x80482a8 0x80483cd 0x8048161 0x8048a5b.
-Call stack of thread 'child-qsort-mm ' (status BLOCKED, CPU4): 0xc00222e5 0xc0021895 0xc0023dc4 0xc00240e1 0xc003c86b 0xc003c35c 0xc0037874 0xc0022a94 0xc0022e92 0x8048354 0x20000 0x64b3435eKernel PANIC recursion at ../../threads/thread.c:761 in schedule().
+child-qsort-mm: exit(80)
+(page-merge-mm) sort chunk 5
+(page-merge-mm) sort chunk 6
+(page-merge-mm) sort chunk 7
+child-qsort-mm: exit(80)
+child-qsort-mm: exit(80)
+(page-merge-mm) wait for child 0
+child-qsort-mm: exit(80)
+child-qsort-mm: exit(80)
+child-qsort-mm: exit(80)
+child-qsort-mm: exit(80)
+child-qsort-mm: exit(80)
+(page-merge-mm) wait for child 1
+(page-merge-mm) wait for child 2
+(page-merge-mm) wait for child 3
+(page-merge-mm) wait for child 4
+(page-merge-mm) wait for child 5
+(page-merge-mm) wait for child 6
+(page-merge-mm) wait for child 7
+(page-merge-mm) merge
+(page-merge-mm) verify
+(page-merge-mm) success, buf_idx=1,048,576
+(page-merge-mm) end
+page-merge-mm: exit(0)
+Execution of 'page-merge-mm' complete.
+Timer: 20820 ticks
+CPU0: 2662 idle ticks, 331 kernel ticks, 17829 user ticks, 52466 context switches
+CPU1: 20364 idle ticks, 0 kernel ticks, 214 user ticks, 2339 context switches
+CPU2: 20227 idle ticks, 2 kernel ticks, 331 user ticks, 2888 context switches
+CPU3: 20367 idle ticks, 0 kernel ticks, 210 user ticks, 1816 context switches
+CPU4: 20360 idle ticks, 0 kernel ticks, 213 user ticks, 1787 context switches
+CPU5: 20389 idle ticks, 0 kernel ticks, 185 user ticks, 2075 context switches
+CPU6: 18871 idle ticks, 26 kernel ticks, 1688 user ticks, 1751 context switches
+CPU7: 20460 idle ticks, 2 kernel ticks, 117 user ticks, 1705 context switches
+hda2 (filesys): 12176 reads, 11872 writes
+hda3 (scratch): 192 reads, 2 writes
+hda4 (swap): 2592 reads, 3928 writes
+Console: 2929 characters output
+Keyboard: 0 keys pressed
+Exception: 1031 page faults
+Powering off...

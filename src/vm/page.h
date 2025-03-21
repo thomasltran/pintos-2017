@@ -6,6 +6,7 @@
 #include "filesys/file.h"
 #include "vm/mappedfile.h"
 #include "vm/frame.h"
+#include "threads/synch.h"
 
 extern struct lock vm_lock;
 
@@ -52,6 +53,7 @@ struct page {
     struct file * file; // segment in file
     size_t swap_index; // if page in swap space
     mapid_t map_id;
+    struct condition transit;
 };
 
 // lock init

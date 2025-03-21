@@ -51,6 +51,8 @@ struct page *create_page(void *uaddr, struct file *file, off_t ofs, uint32_t rea
     page->page_location = page_location;
     page->map_id = -1;
     page->swap_index = UINT32_MAX;
+    cond_init(&page->transit);
+
     // printf("tid %d inserted %p\n", thread_current()->tid, pg_round_down(uaddr));
 
     return page;

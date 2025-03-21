@@ -44,7 +44,6 @@ void init_ft(void) {
         struct frame * frame_ptr = malloc(sizeof(struct frame));
         frame_ptr->kaddr = kpage;
         frame_ptr->pinned = false;
-        cond_init(&frame_ptr->frame_pinned);
         list_push_front(&ft->free_list, &frame_ptr->elem);
     }
 }
@@ -110,6 +109,8 @@ evict_frame()
             curr = get_next_frame(curr);
             continue;
         }
+
+
 
         // check if the frame has been accessed
         bool accessed = pagedir_is_accessed(curr->thread->pagedir, curr->page->uaddr);
@@ -181,17 +182,17 @@ evict_frame()
                 lock_acquire(&vm_lock);
             }
 
-            if(victim->page != NULL){
-                printf("location if not transit %d\n", victim->page->page_location);
-                printf("victim uaddr %p\n", victim->page->uaddr);
-                printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
-            }
+            // if(victim->page != NULL){
+            //     printf("location if not transit %d\n", victim->page->page_location);
+            //     printf("victim uaddr %p\n", victim->page->uaddr);
+            //     printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
+            // }
 
-            if(victim_page_ptr->page_location != IN_TRANSIT){
-                printf("location if not transit %d\n", victim_page_ptr->page_location);
-                printf("victim uaddr %p\n", victim_page_ptr->uaddr);
-                printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
-            }
+            // if(victim_page_ptr->page_location != IN_TRANSIT){
+            //     printf("location if not transit %d\n", victim_page_ptr->page_location);
+            //     printf("victim uaddr %p\n", victim_page_ptr->uaddr);
+            //     printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
+            // }
 
             victim_page_ptr->page_location = PAGED_OUT;
 
@@ -200,7 +201,7 @@ evict_frame()
             victim->page->page_location = PAGED_OUT;
             break;
     }
-    cond_broadcast(&victim->frame_pinned, &vm_lock);
+    cond_broadcast(&victim_page_ptr->transit, &vm_lock);
 
     victim->thread = NULL;
     victim->page = NULL;

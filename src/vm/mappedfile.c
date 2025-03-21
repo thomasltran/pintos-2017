@@ -48,7 +48,6 @@ void free_mapped_file_table(struct mapped_file_table * mapped_file_table){
 // assumes vm lock already held
 void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_table){
     struct thread * cur = thread_current();
-    printf("before pin\n");
 
     struct mapped_file *mapped_file = find_mapped_file(mapped_file_table, mapping);
 
@@ -58,7 +57,6 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
     {
       ASSERT(1 == 2); // fail
     }
-    printf("after pin\n");
 
     int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
     void *curr = mapped_file->addr;

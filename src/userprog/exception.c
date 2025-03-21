@@ -216,7 +216,6 @@ page_fault (struct intr_frame *f)
          exit(-1);
       }
 
-      ASSERT(fault_page->page_location != PAGED_IN);
 
       if(fault_page->page_status == MUNMAP){
          // printf("munmap fail\n");
@@ -236,9 +235,8 @@ page_fault (struct intr_frame *f)
       struct frame *temp_frame = get_page_frame(fault_page);
 
       while(fault_page->page_location == IN_TRANSIT){
-printf("fault addr %p fesp %p thread esp %p page status %d\n", fault_addr, f->esp, thread_current()->esp, fault_page->page_status);
-        ASSERT(temp_frame != NULL);
-        cond_wait(&temp_frame->frame_pinned, &vm_lock);
+// printf("fault addr %p fesp %p thread esp %p page status %d\n", fault_addr, f->esp, thread_current()->esp, fault_page->page_status);
+         cond_wait(&fault_page->transit, &vm_lock);
       }
   
 
