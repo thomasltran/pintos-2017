@@ -55,6 +55,7 @@ void st_free_page(size_t id){
 // page in
 void st_read_at(void* uaddr, size_t id){
     ASSERT(bitmap_test(st->bitmap,id) == true);
+    
     size_t sector_in_page = PGSIZE / BLOCK_SECTOR_SIZE;
 
     for(size_t i = 0; i < sector_in_page; i++){

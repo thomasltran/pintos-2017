@@ -164,15 +164,13 @@ evict_frame()
             void * uaddr = victim->page->uaddr;
             mapid_t map_id = victim->page->map_id;
             
-            victim->page = NULL;
+            // victim->page = NULL;
 
             if (pagedir_is_dirty(victim_pd, uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
                 
                 struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, map_id);
                 ASSERT(mapped_file != NULL);
 
-
-                
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
                 
@@ -194,7 +192,7 @@ evict_frame()
             //     printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
             // }
 
-            victim_page_ptr->page_location = PAGED_OUT;
+            victim_page_ptr->page_location = PAGED_OUT; // break the IN_TRANSIT
 
             break;
         default:

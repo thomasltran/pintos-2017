@@ -1071,15 +1071,16 @@ bool get_pinned_frames(void *uaddr, bool write, size_t size)
     }
 
     // move 78
-    while(page->page_location == IN_TRANSIT){
+    while(page->page_location == IN_TRANSIT){ // try and not paged in?
       cond_wait(&page->transit, &vm_lock);
     }
     
-    // struct frame * temp_frame = get_page_frame(page);
-    // if(temp_frame != NULL){
-    //   ASSERT(page->page_location != PAGED_IN);
-    //   page_frame_freed(temp_frame);
-    // }
+    // no paged out in a frame check
+    struct frame * temp_frame = get_page_frame(page);
+    if(temp_frame != NULL){
+      ASSERT(page->page_location != PAGED_IN);
+      page_frame_freed(temp_frame);
+    }
 
     ASSERT(pagedir_get_page(thread_current()->pagedir, page->uaddr) == NULL);
 
