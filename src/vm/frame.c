@@ -115,7 +115,7 @@ evict_frame()
         // check if the frame has been accessed
         bool accessed = pagedir_is_accessed(curr->thread->pagedir, curr->page->uaddr);
 
-        // trail is dirty, get our victim to evict
+        // trail is clean, get our victim to evict
         if (!accessed) {
             victim = curr;
             victim->pinned = true;
