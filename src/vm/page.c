@@ -135,14 +135,6 @@ bool install_page_in_frame(struct page *page, struct thread *thread_cur, bool st
         cond_wait(&page->transit, &vm_lock);
     }
 
-    // final check, shouldn't hit here but just in case
-    struct frame *temp_frame = get_page_frame(page);
-    if (temp_frame != NULL)
-    {
-        ASSERT(page->page_location != PAGED_IN);
-        page_frame_freed(temp_frame);
-    }
-    
     // if munmap'ed or ps exit (implicitly closed)
     if (page_fault && page->page_status == MUNMAP)
     {
@@ -158,6 +150,14 @@ bool install_page_in_frame(struct page *page, struct thread *thread_cur, bool st
     if (write && !page->writable)
     {
         return false;
+    }
+
+    // final check, shouldn't hit here but just in case
+    struct frame *temp_frame = get_page_frame(page);
+    if (temp_frame != NULL)
+    {
+        ASSERT(page->page_location != PAGED_IN);
+        page_frame_freed(temp_frame);
     }
 
     ASSERT(pagedir_get_page(thread_cur->pagedir, pg_round_down(page->uaddr)) == NULL);
