@@ -384,7 +384,7 @@ syscall_handler(struct intr_frame *f)
 
 #ifdef VM
       lock_acquire(&vm_lock);
-      if (!get_pinned_frames((void *)buffer, false, size))
+      if (!get_pinned_frames((void *)buffer, true, size))
       {
         lock_release(&vm_lock);
         f->eax = -1;
