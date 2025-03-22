@@ -168,14 +168,13 @@ page_fault (struct intr_frame *f)
 //           write ? "writing" : "reading",
 //           user ? "user" : "kernel");
 
-//printf("fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
 #ifdef VM
    if (fault_addr < PHYS_BASE)
    {
       void * esp = NULL;
       struct thread *thread_cur = thread_current();
 
-      // saved thread_cur->esp at the beginning of syscall, null at the end or exit
+      // saved thread_cur->esp at the beginning of syscall, null at the end or exit()
       if(thread_cur->esp != NULL){
          esp = thread_cur->esp;
       }
@@ -184,6 +183,11 @@ page_fault (struct intr_frame *f)
       }
 
       struct page *fault_page = find_page(thread_cur->supp_pt, fault_addr);
+
+      // stack growth logic
+      // not exceed more than 8 mb
+      // not more than 32 bytes below esp (PUSHAL)
+      // page not already present in spt
       bool stack_growth = false;
       if (fault_addr >= esp - 32 && fault_addr > PHYS_BASE - STACK_LIMIT && fault_page == NULL)
           stack_growth = true;
@@ -195,7 +199,6 @@ page_fault (struct intr_frame *f)
          fault_page = create_page(fault_addr, NULL, 0, 0, PGSIZE, true, STACK, PAGED_OUT);
          if (fault_page == NULL)
          {
-            // printf("stack growth fail\n");
             lock_release(&vm_lock);
             f->eax = -1;
             exit(-1);
@@ -209,102 +212,22 @@ page_fault (struct intr_frame *f)
 
       if (fault_page == NULL)
       {
-         // printf("tid %d no page fault addr %p fesp %p thread esp %p\n", thread_current()->tid, pg_round_down(fault_addr), f->esp, thread_current()->esp);
-         // ASSERT(1 == 2);
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
 
-
-      if(fault_page->page_status == MUNMAP){
-         // printf("munmap fail\n");
-         lock_release(&vm_lock);
-         f->eax = -1;
-         exit(-1);
-      }
-
-      if(write && !fault_page->writable){
-         // printf("write fail\n");
-         lock_release(&vm_lock);
-         f->eax = -1;
-         exit(-1);
-      }
-
-
-      struct frame *temp_frame = get_page_frame(fault_page);
-
-      while(fault_page->page_location == IN_TRANSIT){
-// printf("fault addr %p fesp %p thread esp %p page status %d\n", fault_addr, f->esp, thread_current()->esp, fault_page->page_status);
-         cond_wait(&fault_page->transit, &vm_lock);
-      }
-  
-
-      void *upage = pg_round_down(fault_addr);
-
-      ASSERT(pagedir_get_page(thread_cur->pagedir, upage) == NULL);
-
-      struct frame * frame = ft_get_page_frame(thread_current(), fault_page, true);
-
-      uint8_t *kpage = frame->kaddr;
-
-      ASSERT(kpage != NULL);
-
-      ASSERT(pg_round_down(fault_addr) == pg_round_down(fault_page->uaddr));
-
-      bool in_swap = fault_page->page_location == SWAP;
-      if(in_swap){
-         ASSERT(fault_page->swap_index != UINT32_MAX);
-      }
-      fault_page->page_location = PAGED_IN;
-
-      if (pagedir_get_page(thread_cur->pagedir, upage) != NULL || pagedir_set_page(thread_cur->pagedir, upage, kpage, fault_page->writable) == false)
+      if (!install_page_in_frame(fault_page, thread_cur, stack_growth, write, false, true))
       {
-         // printf("pagedir fail\n");
-
-         page_frame_freed(frame);
          lock_release(&vm_lock);
          f->eax = -1;
          exit(-1);
       }
-
-      if (!stack_growth)
-      {
-         if((fault_page->page_status == DATA_BSS || fault_page->page_status == STACK) && in_swap){
-            // printf("cur_t %d free swap index %d\n", thread_cur->tid, fault_page->swap_index);
-            st_read_at(kpage, fault_page->swap_index);
-            fault_page->swap_index = UINT32_MAX;
-         }
-         else {
-            lock_release(&vm_lock);
-            lock_acquire(&fs_lock);
-            file_seek(fault_page->file, fault_page->ofs);
-            if (file_read(fault_page->file, kpage, fault_page->read_bytes) != (int)fault_page->read_bytes)
-            {
-               // printf("load fail\n");
-               lock_release(&fs_lock);
-               f->eax = -1;
-               exit(-1);
-            }
-            lock_release(&fs_lock);
-            lock_acquire(&vm_lock);  
-         }
-      }
-      if(!in_swap){
-         memset(kpage + fault_page->read_bytes, 0, fault_page->zero_bytes);
-      }
-
-      frame->pinned = false;
 
       lock_release(&vm_lock);
    }
    else
    {
-      // printf("krn fault addr %p fesp %p thread esp %p\n", fault_addr, f->esp, thread_current()->esp);
-
-      // ASSERT(1 == 2);
-      // printf("exit\n");
-      //   kill(f);
       f->eax = -1;
       exit(-1);
    }

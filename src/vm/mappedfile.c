@@ -8,6 +8,7 @@
 
 mapid_t id;
 
+// init mapped_file_table
 struct mapped_file_table *create_mapped_file_table()
 {
     struct mapped_file_table * mapped_file_table = malloc(sizeof(struct mapped_file_table));
@@ -20,6 +21,7 @@ struct mapped_file_table *create_mapped_file_table()
     return mapped_file_table;
 }
 
+// create mapped file
 struct mapped_file * create_mapped_file(struct file * file, void * addr, off_t length)
 {
     struct mapped_file * mapped_file = malloc(sizeof(struct mapped_file));
@@ -29,24 +31,26 @@ struct mapped_file * create_mapped_file(struct file * file, void * addr, off_t l
     mapped_file->file = file; // call reopen before, use that ref
     mapped_file->addr = addr;
     mapped_file->length = length;
-    mapped_file->map_id = ++id;
+    mapped_file->map_id = ++id; // ids are unique
 
     return mapped_file;
 }
 
+// writeback and free any mapped files still in the table for process exit
 void free_mapped_file_table(struct mapped_file_table * mapped_file_table){  
     for (struct list_elem *e = list_begin(&mapped_file_table->list); e != list_end(&mapped_file_table->list);){
       struct mapped_file * mapped_file = list_entry(e, struct mapped_file, elem);
-      free_mapped_file(mapped_file->map_id, mapped_file_table);
+      if(!free_mapped_file(mapped_file->map_id, mapped_file_table)){
+        exit(-1); // never hits here for cleanup
+      }
       e = list_remove(&mapped_file->elem);
       free(mapped_file);
     }
     free(mapped_file_table);
 }
 
-
-// assumes vm lock already held
-void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_table){
+// writeback the mapped file
+bool free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_table){
     struct thread * cur = thread_current();
 
     struct mapped_file *mapped_file = find_mapped_file(mapped_file_table, mapping);
@@ -55,7 +59,7 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
 
     if (!get_pinned_frames(mapped_file->addr, true, mapped_file->length))
     {
-      ASSERT(1 == 2); // fail
+      return false;
     }
 
     int pages = (mapped_file->length + PGSIZE - 1) / PGSIZE; // round up formula
@@ -73,25 +77,28 @@ void free_mapped_file(mapid_t mapping, struct mapped_file_table * mapped_file_ta
         struct frame * frame = get_page_frame(page);
         ASSERT(frame != NULL);
         
-        if (pagedir_is_dirty(cur->pagedir, page->uaddr)/* && pagedir_is_dirty(cur->pagedir, frame->kaddr)*/)
+        if (pagedir_is_dirty(cur->pagedir, page->uaddr))
         {
             lock_release(&vm_lock);
             lock_acquire(&fs_lock);
 
-            off_t wrote = file_write_at(mapped_file->file, frame->kaddr, page->read_bytes, page->ofs);
+            // writeback
+            file_write_at(mapped_file->file, frame->kaddr, page->read_bytes, page->ofs);
 
             lock_release(&fs_lock);
             lock_acquire(&vm_lock);
         }
 
         page->page_status = MUNMAP; // used in page fault
-        page_frame_freed(frame); // will unpin
+        page_frame_freed(frame);
         curr += PGSIZE;
 
         continue;
     }
+    return true;
 }
 
+// find mapped file corresponding to map_id in the table
 struct mapped_file *find_mapped_file(struct mapped_file_table *mapped_file_table, mapid_t map_id)
 {
     struct mapped_file *mapped_file = NULL;

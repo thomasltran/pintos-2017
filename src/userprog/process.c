@@ -214,6 +214,7 @@ void process_exit(void)
   int tid = cur->tid;
 
 #ifdef VM
+// free/wb info before sema up
 lock_acquire(&vm_lock);
 
 free_mapped_file_table(cur->mapped_file_table);
@@ -265,6 +266,7 @@ lock_release(&vm_lock);
 
   struct process *ps = cur->ps;
 
+  // exe kept open whole way until ps exit
   if (ps != NULL && ps->exe_file != NULL)
   {
     file_close(ps->exe_file);
@@ -565,7 +567,6 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
  done:
   /* We arrive here whether the load is successful or not. */
   // file_close(file);
-  //// printf("done with setup\n");
   return success;
  }
 
@@ -649,13 +650,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-      // add to spt here
-
-      /* Advance. */
-      // be careful of implicit advance?
 #ifdef VM
-    // struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, UNKNOWN);
-
+      // add to spt here
       enum page_status page_status = writable == true ? DATA_BSS : CODE;
       struct page *page = create_page((void *)upage, file, ofs, page_read_bytes, page_zero_bytes, writable, page_status, PAGED_OUT);
 
@@ -697,6 +693,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
 #ifdef VM
+    // be careful of implicit advance
     ofs += page_read_bytes;
 #endif
     upage += PGSIZE;
@@ -732,7 +729,6 @@ setup_stack(void **esp)
   if (kpage != NULL)
   {
     success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-    // printf("STACK SETUP HERE: thread: %d, address: %p, page: %p, frame: %p\n", thread_current()->tid,((uint8_t *)PHYS_BASE) - PGSIZE, page, frame);
     ASSERT(((uint8_t *)PHYS_BASE) - PGSIZE == PHYS_BASE - PGSIZE);
     ASSERT(pagedir_get_page(thread_current()->pagedir, ((uint8_t *)PHYS_BASE)-PGSIZE) != NULL);
     if (success)

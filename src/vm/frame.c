@@ -12,22 +12,22 @@
 #include <stdio.h>
 #include "userprog/syscall.h"
 #include "vm/swap.h"
-//frame table
-//static because frame.c should use it directly while other compilation units should utilzie frame table functions
+
+// frame table
 struct frame_table {
     struct list used_list; // used pages
     struct list free_list; // free pages
-    // struct lock lock; //lock to protect lists
 
     struct list_elem* clock_elem; // clock hand
 };
 
+// global frame table
 static struct frame_table * ft;
 
 static struct frame * get_next_frame(struct frame *);
-// static void * evict_frame(struct thread *, void *, bool);
 static struct frame *evict_frame(void);
 
+// init frame table
 void init_ft(void) {
     ft = malloc(sizeof(struct frame_table));
     if(ft == NULL){
@@ -40,6 +40,7 @@ void init_ft(void) {
 
     uint32_t* kpage;
 
+    // pre-fetch all the pages from user pool
     while((kpage = palloc_get_page(PAL_USER | PAL_ZERO))){
         struct frame * frame_ptr = malloc(sizeof(struct frame));
         frame_ptr->kaddr = kpage;
@@ -48,10 +49,12 @@ void init_ft(void) {
     }
 }
 
+// get a page frame
 struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, bool pinned)
 {
     struct frame * frame_ptr = NULL;
 
+    // get from free list if we can
     if(!list_empty(&ft->free_list)){
         struct list_elem * e = list_pop_front(&ft->free_list);
         frame_ptr = list_entry(e, struct frame, elem);
@@ -62,6 +65,7 @@ struct frame *ft_get_page_frame(struct thread *page_thread, struct page * page, 
         return frame_ptr;
     }
 
+    // need to evict a page frame
     frame_ptr = evict_frame();
     ASSERT(frame_ptr != NULL);
 
@@ -90,6 +94,7 @@ evict_frame()
 {
     ASSERT(lock_held_by_current_thread(&vm_lock));
 
+    // first time we evict
     if(ft->clock_elem == NULL){
         ft->clock_elem = list_begin(&ft->used_list);
     }
@@ -97,44 +102,37 @@ evict_frame()
     struct frame *victim = NULL;
     struct frame *curr = list_entry(ft->clock_elem, struct frame, elem);
     ASSERT(curr != NULL);
-    struct page * victim_page_ptr = NULL;
-
-    struct mapped_file_table *victim_mapped_file_table = NULL;
-    uint32_t * victim_pd = NULL;
 
     while (victim == NULL) {
         ASSERT(curr->page != NULL && curr->page->page_location == PAGED_IN && curr->thread->pagedir != NULL); // used list attributes
         
+        // skip if pinned
         if (curr->pinned == true) {
             curr = get_next_frame(curr);
             continue;
         }
 
-
-
         // check if the frame has been accessed
         bool accessed = pagedir_is_accessed(curr->thread->pagedir, curr->page->uaddr);
 
+        // trail is dirty, get our victim to evict
         if (!accessed) {
             victim = curr;
             victim->pinned = true;
-            victim_mapped_file_table = victim->thread->mapped_file_table;
-            victim_pd = victim->thread->pagedir;
-            victim_page_ptr = victim->page;
             victim->page->page_location = IN_TRANSIT;
 
-            ASSERT(victim_pd != NULL);
-            ASSERT(pagedir_get_page(victim_pd, victim->page->uaddr) == victim->kaddr);
-            ASSERT(hash_find(&victim->thread->supp_pt->hash_map, &victim->page->hash_elem) != NULL);
+            ASSERT(victim->thread->pagedir != NULL);
 
-            pagedir_clear_page(victim_pd, pg_round_down(victim->page->uaddr));
+            // clear the accessed bit, not present
+            pagedir_clear_page(victim->thread->pagedir, pg_round_down(victim->page->uaddr));
 
+            // set clock hand
             ft->clock_elem = &get_next_frame(victim)->elem;
             list_remove(&victim->elem);
 
             break;
         } else {
-            ASSERT(curr->page->uaddr != NULL);
+            // rake the trail
             pagedir_set_accessed(curr->thread->pagedir, curr->page->uaddr, false);
             curr = get_next_frame(curr);
             continue;
@@ -156,50 +154,29 @@ evict_frame()
             victim->page->swap_index = st_write_at(victim->kaddr);
             break;
 
-        case MUNMAP:
+        // MMAP: wb to file if dirty
+        case MUNMAP: // won't hit here
         case MMAP:
-
-            off_t read_bytes = victim->page->read_bytes;
-            off_t ofs = victim->page->ofs;
-            void * uaddr = victim->page->uaddr;
-            mapid_t map_id = victim->page->map_id;
-            
-            // victim->page = NULL;
-
-            if (pagedir_is_dirty(victim_pd, uaddr)/* || pagedir_is_dirty(victim_pd, victim->kaddr)*/) {
-                
-                struct mapped_file * mapped_file = find_mapped_file(victim_mapped_file_table, map_id);
+            if (pagedir_is_dirty(victim->thread->pagedir, victim->page->uaddr)) {
+                struct mapped_file * mapped_file = find_mapped_file(victim->thread->mapped_file_table, victim->page->map_id);
                 ASSERT(mapped_file != NULL);
 
                 lock_release(&vm_lock);
                 lock_acquire(&fs_lock);
                 
-                file_write_at(mapped_file->file, victim->kaddr, read_bytes, ofs);
+                file_write_at(mapped_file->file, victim->kaddr, victim->page->read_bytes, victim->page->ofs);
                 
                 lock_release(&fs_lock);
                 lock_acquire(&vm_lock);
             }
-
-            // if(victim->page != NULL){
-            //     printf("location if not transit %d\n", victim->page->page_location);
-            //     printf("victim uaddr %p\n", victim->page->uaddr);
-            //     printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
-            // }
-
-            // if(victim_page_ptr->page_location != IN_TRANSIT){
-            //     printf("location if not transit %d\n", victim_page_ptr->page_location);
-            //     printf("victim uaddr %p\n", victim_page_ptr->uaddr);
-            //     printf("frame victim was supposed to be eviction from %p\n", victim->kaddr);
-            // }
-
-            victim_page_ptr->page_location = PAGED_OUT; // break the IN_TRANSIT
+            victim->page->page_location = PAGED_OUT;
 
             break;
         default:
             victim->page->page_location = PAGED_OUT;
             break;
     }
-    cond_broadcast(&victim_page_ptr->transit, &vm_lock);
+    cond_broadcast(&victim->page->transit, &vm_lock); // for eviction
 
     victim->thread = NULL;
     victim->page = NULL;
@@ -208,6 +185,7 @@ evict_frame()
     return victim;
 }
 
+// used page frame added to free list
 void page_frame_freed(struct frame * frame){
     list_remove(&frame->elem);
     ASSERT(frame->thread->pagedir != NULL);
@@ -224,12 +202,12 @@ void page_frame_freed(struct frame * frame){
     list_push_front(&ft->free_list, &frame->elem);
 }
 
+// get page frame corresponding to a page
 struct frame * get_page_frame(struct page * page){
     for (struct list_elem *e = list_begin(&ft->used_list); e != list_end(&ft->used_list); e = list_next(e)){
         struct frame *frame = list_entry(e, struct frame, elem);
 
         ASSERT(frame->page != NULL);
-        // ASSERT(frame->page->page_location == PAGED_IN);
 
         if(frame->page == page){
             return frame;
