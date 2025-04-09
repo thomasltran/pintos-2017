@@ -182,25 +182,34 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 // pass in the value of an error (ex: 0 for false, -1, etc.) in the int
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
-  char filename[NAME_MAX + 1]; // Kernel buffer
-
-  bool valid = validate_user_buffer(f->esp + 4, NAME_MAX + 1);
-  if (!valid)
+  char *filename = malloc(128); // Kernel buffer, set size for now
+  if (filename == NULL)
   {
     f->eax = set_eax_err;
     exit(-1);
   }
+
   const char *cmd_line = *((char **)(f->esp + 4));
-  valid = copy_user_string(cmd_line, filename, sizeof(filename));
+
+  bool valid = validate_user_buffer(f->esp + 4, 128);
+  if (!valid)
+  {
+    free(filename);
+    f->eax = set_eax_err;
+    exit(-1);
+  }
+  valid = copy_user_string(cmd_line, filename, 128);
 
   /* Check if filename is valid */
   if (!valid)
   {
+    free(filename);
     f->eax = set_eax_err;
     exit(-1);
   }
-  return cmd_line;
+  return filename;
 }
+
 
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
 
@@ -406,6 +415,7 @@ syscall_handler(struct intr_frame *f)
         f->eax = filesys_create(filename, initial_size) ? 1 : 0;
         lock_release(&fs_lock);
       }
+      free((char*)filename);
       break;
     }
 
@@ -422,6 +432,7 @@ syscall_handler(struct intr_frame *f)
       /* Open file */
       lock_acquire(&fs_lock);
       struct file *file = filesys_open(filename);
+      free((char*)filename);
 
       /* Check if file exists */
       if (file == NULL) {
@@ -480,6 +491,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
       f->eax = filesys_remove(file) ? 1 : 0;
+      free((char*)file);
       lock_release(&fs_lock);
 
       break;
@@ -552,6 +564,7 @@ syscall_handler(struct intr_frame *f)
       }
       const char *cmd_line = buffer_check(f, -1);
       f->eax = process_execute(cmd_line);
+      free((char*)cmd_line);
       break;
 
     // close
