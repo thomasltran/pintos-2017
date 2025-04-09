@@ -11,6 +11,7 @@
 #include "lib/string.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
+#include "devices/block.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -274,40 +275,6 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      if (fd == 0)
-      {
-        bytes_read = 0;
-        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-        {
-          uint8_t key_input = input_getc();
-          if (key_input > 0)
-          {
-            void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
-            *(uint8_t *)ptr = key_input;
-          }
-          else
-          {
-            break;
-          }
-        }
-        if (bytes_read > 0)
-        {
-          void *ptr = (void *)buffer + bytes_read;
-          *(uint8_t *)ptr = '\0';
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) ||
-              !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
-          {
-            f->eax = -1;
-            lock_release(&fs_lock);
-            exit(-1);
-          }
-        }
-        lock_release(&fs_lock);
-        f->eax = bytes_read;
-        break;
-      }
-
       /* Validate FD */
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
       {
@@ -320,7 +287,7 @@ syscall_handler(struct intr_frame *f)
       struct file *file = cur->fd_table[fd];
 
       /* Allocate kernel buffer and read from file */
-      uint8_t *kern_buf = malloc(size);
+      uint8_t *kern_buf = malloc(BLOCK_SECTOR_SIZE);
       if (kern_buf == NULL)
       {
         f->eax = -1;
@@ -328,19 +295,27 @@ syscall_handler(struct intr_frame *f)
         exit(-1);
       }
 
-      bytes_read = file_read(file, kern_buf, size);
-
-      /* Copy to user buffer if read succeeded */
-      if (bytes_read > 0) {
+      unsigned count = 0;
+      while (count < size)
+      {
+        off_t bytes_left = BLOCK_SECTOR_SIZE < (size - count) ? BLOCK_SECTOR_SIZE : size - count;
+        int temp_bytes_read = file_read(file, kern_buf, bytes_left);
+        /* Copy to user buffer if read succeeded */
+        if (temp_bytes_read > 0)
+        {
           /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) || 
-              !memcpy_to_user((void*)buffer, kern_buf, bytes_read)) {
-            f->eax = -1;
+          if (!validate_user_buffer(buffer + count, temp_bytes_read) ||
+              !memcpy_to_user((void *)(buffer + count), kern_buf, temp_bytes_read))
+          {
             lock_release(&fs_lock);
+            f->eax = -1;
             exit(-1);
           }
+        }
+        count += temp_bytes_read;
       }
-      
+      bytes_read = count;
+
       free(kern_buf);
       lock_release(&fs_lock);
       f->eax = bytes_read;
@@ -647,7 +622,7 @@ static int write(int fd, const void * buffer, unsigned size){
     unsigned count = 0;
     void *pos = (void *)buffer;
     while(count < size){
-      int buffer_size = (size-count) > 200 ? 200 : size-count;
+      int buffer_size = (size-count) > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size-count;
 
       putbuf(pos, buffer_size);
       count += buffer_size;
@@ -669,7 +644,7 @@ static int write(int fd, const void * buffer, unsigned size){
 
     unsigned count = 0;
     while(count < size){
-      int buffer_size = (size-count) > 207 ? 207 : size-count;
+      int buffer_size = (size-count) > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size-count;
 
       off_t bytes = file_write(cur_file, buffer+count, buffer_size);
       if (bytes <= 0)
@@ -682,6 +657,7 @@ static int write(int fd, const void * buffer, unsigned size){
     return count;
   }
 }
+
 
 /* Exit system call
    Prints process name and exit code when user process terminates.
