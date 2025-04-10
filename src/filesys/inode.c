@@ -855,3 +855,11 @@ static void install_l2_indirect_block(struct inode* inode){
   //PUT BACK INODE DISK'S CACHE BLOCK
   cache_put_block(id_cb);
 }
+
+bool is_dir(struct inode * inode){
+  struct cache_block* cb = cache_get_block(inode->sector, false);
+  struct inode_disk* data = (struct inode_disk*)cache_read_block(cb);
+  bool isdir = data->isdir;
+  cache_put_block(cb);
+  return isdir;
+}

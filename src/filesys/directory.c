@@ -5,6 +5,8 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
+#include "lib/string.h"
 
 /* A directory. */
 struct dir 
@@ -23,11 +25,35 @@ struct dir_entry
 
 /* Creates a directory with space for ENTRY_CNT entries in the
    given SECTOR.  Returns true if successful, false on failure. */
-bool
-dir_create (block_sector_t sector, size_t entry_cnt)
-{
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
-}
+  bool
+  dir_create(block_sector_t sector, size_t entry_cnt, block_sector_t parent_sector)
+  {
+     if (!inode_create(sector, entry_cnt * sizeof(struct dir_entry), true))
+     {
+        return false;
+     }
+
+     struct dir *dir = dir_open(inode_open(sector));
+     if (dir == NULL)
+     {
+        return false;
+     }
+
+     if (!dir_add(dir, "..", parent_sector))
+     {
+        dir_close(dir);
+        return false;
+     }
+
+     if (!dir_add(dir, ".", sector))
+     {
+        dir_close(dir);
+        return false;
+     }
+
+     dir_close(dir);
+     return true;
+  }
 
 /* Opens and returns the directory for the given INODE, of which
    it takes ownership.  Returns a null pointer on failure. */
@@ -235,6 +261,135 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   return false;
 }
 
-// void resolve_path(char name[NAME_MAX + 1]) {
+char *resolve_path(char * path)
+{
+   char *cpy = malloc(PATH_MAX + 1);
+   if (cpy == NULL)
+   {
+      return NULL;
+   }
 
-// }
+   strlcpy(cpy, path, PATH_MAX + 1);
+   struct dir *curr_dir = NULL;
+   struct thread *cur = thread_current();
+
+   if (cpy[0] == '/')
+   {
+      curr_dir = dir_open_root();
+   }
+   else
+   {
+      curr_dir = dir_reopen(cur->curr_dir);
+   }
+
+   ASSERT(curr_dir != NULL);
+
+   char *token, *save_ptr;
+   char *filename = NULL;
+
+   token = strtok_r(cpy, "/", &save_ptr);
+   while (token != NULL)
+   {
+      while (*token == ' ')
+         token++;
+
+      char *next = strtok_r(NULL, "/", &save_ptr);
+      if (next == NULL)
+      {
+         filename = token;
+         break;
+      }
+
+      struct inode *inode = NULL;
+
+      if (strcmp(token, ".") != 0) // .
+      {
+         if (strcmp(token, "..") == 0) // ..
+         {
+            if (!dir_lookup(curr_dir, "..", &inode))
+            {
+               dir_close(curr_dir);
+               free(cpy);
+               return NULL;
+            }
+
+            dir_close(curr_dir);
+            curr_dir = dir_open(inode);
+            if (curr_dir == NULL)
+            {
+               free(cpy);
+               return NULL;
+            }
+         }
+         else // regular
+         {
+            if (!dir_lookup(curr_dir, token, &inode))
+            {
+               dir_close(curr_dir);
+               free(cpy);
+               return NULL;
+            }
+
+            if (!is_dir(inode)) // file, but not at the end of path
+            {
+               inode_close(inode);
+               dir_close(curr_dir);
+               free(cpy);
+               return NULL;
+            }
+
+            dir_close(curr_dir);
+            curr_dir = dir_open(inode);
+            if (curr_dir == NULL)
+            {
+               free(cpy);
+               return NULL;
+            }
+         }
+      }
+
+      token = next;
+   }
+
+   char *filename_cpy = NULL;
+
+   ASSERT(filename != NULL);
+   ASSERT(strlen(filename) <= NAME_MAX + 1);
+
+   filename_cpy = malloc(NAME_MAX + 1);
+   if (filename_cpy == NULL)
+   {
+      dir_close(curr_dir);
+      free(cpy);
+      return NULL;
+   }
+   strlcpy(filename_cpy, filename, NAME_MAX + 1);
+
+   dir_close(curr_dir);
+   free(cpy);
+   return filename_cpy;
+}
+/*
+/usr/bin/ls
+subdir/ls
+../subdir/ls
+./subdir/ls
+ls
+
+subcategories
+absolute (start with /) and relative pathnames (don’t start with /)
+
+“/usr/bin/ls”
+tokenize → usr bin ls
+ls -ld /usr has subdir usr
+
+start at root dir → is there entry usr? if so → make sure entry is dir? if so → (before you open it, close usr) open up dir, look up bin, is there entry bin? → etc.
+
+54
+traversing through fs, open, etc.
+as we go to next one should close prev
+all calls have common component
+if given long path name, work for n-1 components always the same
+differs for very last one
+create, rename, execute checks etc.
+*/

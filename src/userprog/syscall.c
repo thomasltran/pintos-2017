@@ -12,6 +12,8 @@
 #include "devices/shutdown.h"
 #include "devices/input.h"
 #include "devices/block.h"
+#include "filesys/directory.h"
+#include "filesys/inode.h"
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -183,23 +185,23 @@ memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
 // pass in the value of an error (ex: 0 for false, -1, etc.) in the int
 static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 {
-  char *filename = malloc(128); // Kernel buffer, set size for now
-  if (filename == NULL)
-  {
-    f->eax = set_eax_err;
-    exit(-1);
-  }
+   char *filename = malloc(PATH_MAX + 1); // Kernel buffer, set size for now
+   if (filename == NULL)
+   {
+      f->eax = set_eax_err;
+      exit(-1);
+   }
 
   const char *cmd_line = *((char **)(f->esp + 4));
 
-  bool valid = validate_user_buffer(f->esp + 4, 128);
+  bool valid = validate_user_buffer(f->esp + 4, PATH_MAX + 1);
   if (!valid)
   {
     free(filename);
     f->eax = set_eax_err;
     exit(-1);
   }
-  valid = copy_user_string(cmd_line, filename, 128);
+  valid = copy_user_string(cmd_line, filename, PATH_MAX + 1);
 
   /* Check if filename is valid */
   if (!valid)
@@ -598,6 +600,75 @@ syscall_handler(struct intr_frame *f)
       shutdown_power_off();
       break;
 
+    case SYS_CHDIR:
+       break;
+
+    case SYS_MKDIR:
+       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+       {
+          f->eax = 0;
+          exit(0);
+       }
+       const char *file = buffer_check(f, 0);
+       // free;
+       break;
+
+    case SYS_READDIR:
+       break;
+
+    case SYS_ISDIR:
+    {
+       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+       {
+          f->eax = 0;
+          exit(0);
+       }
+
+       int fd = *((int *)(f->esp + 4));
+       struct thread *cur = thread_current();
+
+       lock_acquire(&fs_lock);
+
+       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+       {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+       }
+
+       struct inode *inode = file_get_inode(cur->fd_table[fd]);
+       ASSERT(inode != NULL);
+       f->eax = is_dir(inode);
+       lock_release(&fs_lock);
+       break;
+    }
+
+    case SYS_INUMBER:
+    {
+       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+       {
+          f->eax = 0;
+          exit(0);
+       }
+
+       int fd = *((int *)(f->esp + 4));
+       struct thread *cur = thread_current();
+
+       lock_acquire(&fs_lock);
+
+       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+       {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+       }
+
+       struct inode *inode = file_get_inode(cur->fd_table[fd]);
+       ASSERT(inode != NULL);
+       f->eax = inode_get_inumber(inode);
+       lock_release(&fs_lock);
+       break;
+    }
     default:
       f->eax = -1;
       exit(-1);
