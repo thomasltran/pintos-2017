@@ -15,12 +15,24 @@
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
-  {
-    block_sector_t start;               /* First data sector. */
-    off_t length;                       /* File size in bytes. */
-    unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
-  };
+{
+  bool is_dir;
+  uint8_t unused[3];
+  off_t length;   /* File size in bytes. */
+  unsigned magic; /* Magic number. */
+
+  block_sector_t direct[123];
+  // support for 123 blocks
+  // 123 * 512 = 62976 bytes
+
+  block_sector_t indirect;
+  // support for 128 (from 512/4 = 128) blocks
+  // 128 * 512 = 65536 bytes
+
+  block_sector_t doubly_indirect;
+  // support for 128*128 (from 512/4 = 128 indirect indices, times 128 blocks within each one = 16384) blocks
+  // 16384 * 512 = 8388608 bytes
+};
 
 /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
@@ -38,7 +50,6 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct inode_disk data;             /* Inode content. */
   };
 
 /* Returns the block device sector that contains byte offset POS
@@ -48,18 +59,53 @@ struct inode
 static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
-  ASSERT (inode != NULL);
-  off_t length = -1;
-  block_sector_t start = UINT32_MAX;
-  struct cache_block* cb = cache_get_block(inode->sector, false);
-  struct inode_disk* data = (struct inode_disk*)cache_read_block(cb);
-  length = data->length;
-  start = data->start;
+  ASSERT(inode != NULL);
+
+  struct cache_block *cb = cache_get_block(inode->sector, false);
+  struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
+
+  off_t length = data->length;
+  block_sector_t * direct_ref = data->direct;
+  block_sector_t indirect_ref = data->indirect;
+  block_sector_t doubly_indirect_ref = data->doubly_indirect;
+
   cache_put_block(cb);
-  if (pos < length)
-    return start + pos / BLOCK_SECTOR_SIZE;
-  else
+
+  if (pos >= length){
     return -1;
+  }
+    
+  off_t file_sector = pos / BLOCK_SECTOR_SIZE;
+
+  if (file_sector < 123) // 0 - 122 is direct
+  {
+    return direct_ref[file_sector];
+  }
+  else if (file_sector < 123 + 128) // 123 - 250 is indirect
+  {
+    cb = cache_get_block(indirect_ref, false);
+    block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
+    block_sector_t sector = indirect_block[file_sector - 123]; // remove direct overhead from equation
+    cache_put_block(cb);
+    return sector;
+  }
+
+  // doubly_indirect -> index within the doubly_indirect block (indirect) -> index within the indirect block (sector)
+  off_t doubly_indirect = file_sector - 123 - 128; // remove direct and indirect overhead from equation
+  off_t doubly_indirect_index = doubly_indirect / 128;
+  off_t indirect_index = doubly_indirect % 128;
+
+  cb = cache_get_block(doubly_indirect_ref, false);
+  block_sector_t *doubly_indirect_block = (block_sector_t *)cache_read_block(cb);
+  block_sector_t indirect_sector = doubly_indirect_block[doubly_indirect_index];
+  cache_put_block(cb);
+
+  cb = cache_get_block(indirect_sector, false);
+  block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
+  block_sector_t sector = indirect_block[indirect_index];
+  cache_put_block(cb);
+
+  return sector;
 }
    
 /* List of open inodes, so that opening a single inode twice

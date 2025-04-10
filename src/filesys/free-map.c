@@ -77,3 +77,7 @@ free_map_create (void)
   if (!bitmap_write (free_map, free_map_file))
     PANIC ("can't write free map");
 }
+
+bool check_alloc(block_sector_t sector){
+  return bitmap_test (free_map, sector);
+}
