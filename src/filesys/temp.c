@@ -1,1072 +1,1013 @@
-#include "filesys/inode.h"
-#include <list.h>
-#include <debug.h>
-#include <round.h>
-#include <string.h>
-#include "filesys/filesys.h"
-#include "filesys/free-map.h"
-#include "threads/malloc.h"
-#include "filesys/cache.h"
+#include "userprog/syscall.h"
 #include <stdio.h>
+#include <syscall-nr.h>
+#include "threads/interrupt.h"
+#include "threads/thread.h"
+#include "threads/vaddr.h"
+#include "threads/malloc.h"
+#include "userprog/pagedir.h"
+#include "userprog/process.h"
+#include "filesys/filesys.h"
+#include "lib/string.h"
+#include "devices/shutdown.h"
+#include "devices/input.h"
+#include "devices/block.h"
+#include "filesys/directory.h"
+#include "filesys/inode.h"
+#include "filesys/free-map.h"
+#include "filesys/inode.h"
 
-/* Identifies an inode. */
-#define INODE_MAGIC 0x494e4f44
+/* Function declarations */
+static void syscall_handler (struct intr_frame *);
+static int write(int fd, const void * buffer, unsigned size);
+static bool is_valid_user_ptr(const void *ptr);
+static bool validate_user_buffer(const void *uaddr, size_t size);
+static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
+static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
+static const char *buffer_check(struct intr_frame *f, int set_eax_err);
 
-/* On-disk inode.
-   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
+/* Initialize the system call handler */
+void
+syscall_init (void) 
 {
-  bool is_dir;
-  uint8_t unused[3];
-  off_t length;   /* File size in bytes. */
-  unsigned magic; /* Magic number. */
-
-  block_sector_t direct[123];
-  // support for 123 blocks
-  // 123 * 512 = 62976 bytes
-
-  block_sector_t indirect;
-  // support for 128 (from 512/4 = 128) blocks
-  // 128 * 512 = 65536 bytes
-
-  block_sector_t doubly_indirect;
-  // support for 128*128 (from 512/4 = 128 indirect indices, times 128 blocks within each one = 16384) blocks
-  // 16384 * 512 = 8388608 bytes
-};
-
-/* Returns the number of sectors to allocate for an inode SIZE
-   bytes long. */
-static inline size_t
-bytes_to_sectors (off_t size)
-{
-  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-/* In-memory inode. */
-struct inode 
-  {
-    struct list_elem elem;              /* Element in inode list. */
-    block_sector_t sector;              /* Sector number of disk location. */
-    int open_cnt;                       /* Number of openers. */
-    bool removed;                       /* True if deleted, false otherwise. */
-    int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-  };
-
-/* Returns the block device sector that contains byte offset POS
-   within INODE.
-   Returns -1 if INODE does not contain data for a byte at offset
-   POS. */
-static block_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
+/* Validates that a user pointer is valid by checking that:
+   - It is not NULL
+   - Points to user virtual address space (below PHYS_BASE)
+   - Has a valid page mapping
+   Parameters:
+     - ptr: Pointer to validate
+   Returns true if valid, false otherwise.
+*/
+static bool
+is_valid_user_ptr(const void *ptr)
 {
-  ASSERT(inode != NULL);
+    struct thread *t = thread_current();
+    return ptr != NULL 
+        && is_user_vaddr(ptr)
+        && pagedir_get_page(t->pagedir, ptr) != NULL;
+} 
 
-  struct cache_block *cb = cache_get_block(inode->sector, false);
-  struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
+/* Validate a buffer in user memory
+   Parameters:
+     - uaddr: User virtual address to validate
+     - size: Size of buffer to validate
+   Returns true if valid, false otherwise.
+*/
+bool validate_user_buffer(const void *uaddr, size_t size)
+{
+    /* if size is 0, return true */
+    if (size == 0) 
+      return true;
 
-  off_t length = data->length;
-  block_sector_t * direct_ref = data->direct;
-  block_sector_t indirect_ref = data->indirect;
-  block_sector_t doubly_indirect_ref = data->doubly_indirect;
+    if (uaddr == NULL || !is_user_vaddr(uaddr))
+      return false;
 
-  cache_put_block(cb);
-
-  if (pos >= length){
-    return -1;
-  }
+    /* Check start and end addresses */
+    const void *start = uaddr;
+    const void *end = uaddr + size - 1;
     
-  off_t file_sector = pos / BLOCK_SECTOR_SIZE;
+    if (start >= PHYS_BASE || end >= PHYS_BASE)
+      return false;
 
-  if (file_sector < 123) // 0 - 122 is direct
-  {
-    return direct_ref[file_sector];
+    /* Check page directory entries */
+    struct thread *t = thread_current();
+    uint32_t *pd = t->pagedir;
+    
+    /* Handle single page case */
+    if (pg_no(start) == pg_no(end))
+      // check if page is mapped; if not, return false
+      return pagedir_get_page(pd, start) != NULL;
+
+    /* Check each page in multi page buffer */
+    for (void *page = pg_round_down(start); page <= end; page += PGSIZE) 
+    {
+        // check if page is mapped; if not, return false
+        if (pagedir_get_page(pd, page) == NULL)
+          return false;
+    }
+    
+    return true;
+}
+
+/* Copies a byte from user memory into kernel memory.
+   Parameters:
+     - uaddr: User virtual address to copy from
+     - kaddr: Kernel address to copy to
+   Returns true if successful, false if invalid user pointer 
+*/
+static bool
+get_user_byte(const uint8_t *uaddr, uint8_t *kaddr)
+{
+    if (!is_valid_user_ptr(uaddr))
+        return false;
+    
+    *kaddr = *uaddr;
+    return true;
+}
+
+/* Copy a string from user memory (similar to strlcpy)
+   Parameters:
+     - usrc: User source string
+     - kdst: Kernel destination buffer
+     - max_len: Maximum length to copy
+   Returns true if successful, false if invalid user pointer or buffer overflow
+*/
+static bool
+copy_user_string(const char *usrc, char *kdst, size_t max_len)
+{
+    /* Handle minimum buffer size */
+    if (max_len == 0)
+      return true;
+
+    /* Loop string until max len or null terminator */
+    for (size_t i = 0; i < max_len; i++) {
+      // // printf("count %d\n", i);
+      uint8_t byte;
+      const uint8_t *src = (const uint8_t *)usrc + i;
+      int result = get_user_byte(src, &byte);
+
+      if (!result)
+      {
+        return false;
+      }
+      kdst[i] = byte;
+      if (byte == '\0'){
+        return true;
+      }
+    }
+    /* Null terminate if we hit max length */
+    kdst[max_len-1] = '\0';
+    return true;
+}
+
+/* Writes a byte from kernel memory to user memory.
+   Parameters:
+     - uaddr: User virtual address to write to
+     - kbyte: Kernel byte to copy
+   Returns true if successful, false if invalid user pointer
+*/
+static bool
+put_user_byte(uint8_t *uaddr, uint8_t kbyte)
+{
+    /* Check if user pointer is valid */
+    if (!is_valid_user_ptr(uaddr))
+        return false;
+
+    /* Write byte to user memory */
+    *uaddr = kbyte;
+    return true; // if byte copied successfully (no page faults)
+}
+
+/* Copies data from kernel memory to user memory.
+   Parameters:
+     - udst: User destination buffer
+     - ksrc: Kernel source buffer
+     - max_len: Maximum length to copy
+   Returns true if successful, false if invalid user pointer or buffer overflow
+*/
+static bool
+memcpy_to_user(void *udst, const void *ksrc, size_t max_len)
+{
+  /* user destination & kernel source pointers */
+  uint8_t *udst_ptr = udst;
+  const uint8_t *ksrc_ptr = ksrc;
+
+  /* Copy each byte from kernel to user */
+  for (size_t i = 0; i < max_len; i++) {
+    if (!put_user_byte(udst_ptr + i, ksrc_ptr[i])) {
+      return false; // if any byte fails to copy
+    }
   }
-  else if (file_sector < 123 + 128) // 123 - 250 is indirect
+  return true; // if all byte(s) copied successfully (no page faults)
+}
+
+// checks the program name/file name, returns it if good; filename at esp + 4
+// pass in the value of an error (ex: 0 for false, -1, etc.) in the int
+static const char *buffer_check(struct intr_frame *f, int set_eax_err)
+{
+   char *filename = malloc(PATH_MAX + 1); // Kernel buffer, set size for now
+   if (filename == NULL)
+   {
+      f->eax = set_eax_err;
+      exit(-1);
+   }
+
+  const char *cmd_line = *((char **)(f->esp + 4));
+
+  bool valid = validate_user_buffer(f->esp + 4, PATH_MAX + 1);
+  if (!valid)
   {
-    cb = cache_get_block(indirect_ref, false);
-    block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
-    block_sector_t sector = indirect_block[file_sector - 123]; // remove direct overhead from equation
-    cache_put_block(cb);
-    return sector;
+    free(filename);
+    f->eax = set_eax_err;
+    exit(-1);
+  }
+  valid = copy_user_string(cmd_line, filename, PATH_MAX + 1);
+
+  /* Check if filename is valid */
+  if (!valid)
+  {
+    free(filename);
+    f->eax = set_eax_err;
+    exit(-1);
   }
 
-  // doubly_indirect -> index within the doubly_indirect block (indirect) -> index within the indirect block (sector)
-  off_t doubly_indirect = file_sector - 123 - 128; // remove direct and indirect overhead from equation
-  off_t doubly_indirect_index = doubly_indirect / 128;
-  off_t indirect_index = doubly_indirect % 128;
-
-  cb = cache_get_block(doubly_indirect_ref, false);
-  block_sector_t *doubly_indirect_block = (block_sector_t *)cache_read_block(cb);
-  block_sector_t indirect_sector = doubly_indirect_block[doubly_indirect_index];
-  cache_put_block(cb);
-
-  cb = cache_get_block(indirect_sector, false);
-  block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
-  block_sector_t sector = indirect_block[indirect_index];
-  cache_put_block(cb);
-
-  return sector;
-}
-   
-/* List of open inodes, so that opening a single inode twice
-   returns the same `struct inode'. */
-static struct list open_inodes;
-
-/* Initializes the inode module. */
-void
-inode_init (void) 
-{
-  list_init (&open_inodes);
+  return filename;
 }
 
-/* Initializes an inode with LENGTH bytes of data and
-   writes the new inode to sector SECTOR on the file system
-   device.
-   Returns true if successful.
-   Returns false if memory or disk allocation fails. */
-bool
-inode_create (block_sector_t sector, off_t length)
+
+/* - - - - - - - - - - System Call Handler - - - - - - - - - - */
+
+/* System call handler 
+Parameters:
+  - f: The interrupt frame for the system call
+*/
+static void
+syscall_handler(struct intr_frame *f)
 {
-  struct inode_disk *disk_inode = NULL;
-  bool success = false;
+  // Check if user pointer is valid (i.e. is in user space)
+  if (f->esp >= PHYS_BASE || !is_valid_user_ptr(f->esp))
+  {
+    exit(-1);
+  }
 
-  ASSERT (length >= 0);
-
-  /* If this assertion fails, the inode structure is not exactly
-     one sector in size, and you should fix that. */
-  ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
-  disk_inode = calloc (1, sizeof *disk_inode);
-  if (disk_inode != NULL)
+  for (int i = 0; i < 4; i++)
+  {
+    uint8_t *temp = (uint8_t *)(f->esp + i); // check byte by byte for sc-boundary-3
+    if (!is_valid_user_ptr(temp + i))
     {
-      size_t sectors = bytes_to_sectors (length);
-      disk_inode->length = length;
-      disk_inode->magic = INODE_MAGIC;
-      if (free_map_allocate (sectors, &disk_inode->start)) 
-        {
-          struct cache_block * cb = cache_get_block(sector, true); // same as start, what about memcpy
-          uint8_t * data_ptr = cache_zero_block(cb);
-          memcpy(data_ptr, disk_inode, BLOCK_SECTOR_SIZE);
-          cache_mark_dirty(cb);
-          
-          cache_put_block(cb);
-          
-          if (sectors > 0) 
-            {
-              size_t i;
-              
-              for (i = 0; i < sectors; i++) {
-                cb = cache_get_block(disk_inode->start + i, true);
-                cache_zero_block(cb);
-                cache_mark_dirty(cb);
-                cache_put_block(cb);
-              }
-            }
-          success = true; 
-        } 
-      free (disk_inode);
+      exit(-1);
     }
-  return success;
-}
+  }
 
-/* Reads an inode from SECTOR
-   and returns a `struct inode' that contains it.
-   Returns a null pointer if memory allocation fails. */
-struct inode *
-inode_open (block_sector_t sector)
-{
-  struct list_elem *e;
-  struct inode *inode;
+  // Get the syscall number
+  uint32_t sc_num = *((uint32_t *)(f->esp));
 
-  /* Check whether this inode is already open. */
-  for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
-       e = list_next (e)) 
-    {
-      inode = list_entry (e, struct inode, elem);
-      if (inode->sector == sector) 
-        {
-          inode_reopen (inode);
-          return inode; 
-        }
-    }
+  // Syscalls Handled Via Switch Cases
+  switch (sc_num) {
 
-  /* Allocate memory. */
-  inode = malloc (sizeof *inode);
-  if (inode == NULL)
-    return NULL;
+    /* comments here that checks ptrs, buffers, fd, extract func params etc. mostly applies to the other syscall cases as well */
+    // read
+    case SYS_READ: {
+      // check ptrs
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
 
-  /* Initialize. */
-  list_push_front (&open_inodes, &inode->elem);
-  inode->sector = sector;
-  inode->open_cnt = 1;
-  inode->deny_write_cnt = 0;
-  inode->removed = false;
+      // extract func params
+      int fd = *((int *)(f->esp + 4));
+      const void *buffer = *((void **)(f->esp + 8));
+      unsigned size = *((unsigned *)(f->esp + 12));
+      int bytes_read = -1; // default return value (if error when reading)
 
-  struct cache_block* cb = cache_get_block(sector, false);
-  cache_read_block(cb); //memcpy?
-  cache_put_block(cb);
-
-  return inode;
-}
-
-/* Reopens and returns INODE. */
-struct inode *
-inode_reopen (struct inode *inode)
-{
-  if (inode != NULL)
-    inode->open_cnt++;
-  return inode;
-}
-
-/* Returns INODE's inode number. */
-block_sector_t
-inode_get_inumber (const struct inode *inode)
-{
-  return inode->sector;
-}
-
-/* Closes INODE and writes it to disk.
-   If this was the last reference to INODE, frees its memory.
-   If INODE was also a removed inode, frees its blocks. */
-void
-inode_close (struct inode *inode) 
-{
-  /* Ignore null pointer. */
-  if (inode == NULL)
-    return;
-
-  /* Release resources if this was the last opener. */
-  if (--inode->open_cnt == 0)
-    {
-      /* Remove from inode list and release lock. */
-      list_remove (&inode->elem);
- 
-      /* Deallocate blocks if removed. */
-      if (inode->removed) 
-        {
-          struct cache_block* cb = cache_get_block(inode->sector, false);
-          struct inode_disk* data = (struct inode_disk *)cache_read_block(cb);
-          int length = data->length; 
-          int start = data->start;
-          cache_put_block(cb);
-
-          free_map_release (inode->sector, 1);
-          free_map_release (start,
-                            bytes_to_sectors (length)); 
-        }
-
-      free (inode); 
-    }
-}
-
-/* Marks INODE to be deleted when it is closed by the last caller who
-   has it open. */
-void
-inode_remove (struct inode *inode) 
-{
-  ASSERT (inode != NULL);
-  inode->removed = true;
-}
-
-/* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
-   Returns the number of bytes actually read, which may be less
-   than SIZE if an error occurs or end of file is reached. */
-off_t
-inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
-{
-  uint8_t *buffer = buffer_;
-  off_t bytes_read = 0;
-  uint8_t *bounce = NULL;
-
-  while (size > 0) 
-    {
-      /* Disk sector to read, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      int sector_ofs = offset % BLOCK_SECTOR_SIZE;
-
-      /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      off_t inode_left = inode_length (inode) - offset;
-      int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      int min_left = inode_left < sector_left ? inode_left : sector_left;
-
-      /* Number of bytes to actually copy out of this sector. */
-      int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0)
+      if (size == 0)
+      {
+        f->eax = 0;
         break;
+      }
 
-      struct cache_block* cb = cache_get_block(sector_idx, false);
-      void* data = cache_read_block(cb);
+      /* Validate buffer */
+      if (!validate_user_buffer(buffer, size))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
 
-      memcpy(buffer + bytes_read, data+sector_ofs, chunk_size);
-      cache_put_block(cb);
-      
-      /* Advance. */
-      size -= chunk_size;
-      offset += chunk_size;
-      bytes_read += chunk_size;
-    }
-  free (bounce);
+      struct thread *cur = thread_current();
 
-  return bytes_read;
-}
+      lock_acquire(&fs_lock);
 
-/* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
-   Returns the number of bytes actually written, which may be
-   less than SIZE if end of file is reached or an error occurs.
-   (Normally a write at end of file would extend the inode, but
-   growth is not yet implemented.) */
-off_t
-inode_write_at (struct inode *inode, const void *buffer_, off_t size,
-                off_t offset) 
-{
-  const uint8_t *buffer = buffer_;
-  off_t bytes_written = 0;
+      /* Validate FD */
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
 
-  if (inode->deny_write_cnt)
-    return 0;
+      /* Perform read operation */
+      struct file *file = cur->fd_table[fd];
 
-  while (size > 0) 
-    {
-      /* Sector to write, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      int sector_ofs = offset % BLOCK_SECTOR_SIZE;
+      /* Allocate kernel buffer and read from file */
+      uint8_t *kern_buf = malloc(BLOCK_SECTOR_SIZE);
+      if (kern_buf == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
 
-      /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      off_t inode_left = inode_length (inode) - offset;
-      int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      int min_left = inode_left < sector_left ? inode_left : sector_left;
-
-      /* Number of bytes to actually write into this sector. */
-      int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0)
-        break;
-
-      struct cache_block * cb = cache_get_block(sector_idx, true);
-      // write is excl
-      uint8_t * data_ptr; // returned from zero or read
-
-      if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
+      unsigned count = 0;
+      while (count < size)
+      {
+        off_t bytes_left = BLOCK_SECTOR_SIZE < (size - count) ? BLOCK_SECTOR_SIZE : size - count;
+        int temp_bytes_read = file_read(file, kern_buf, bytes_left);
+        /* Copy to user buffer if read succeeded */
+        if (temp_bytes_read > 0)
         {
-          /* fully overwritten */
-          data_ptr = cache_zero_block(cb);
-        }
-      else 
-        {
-          /* partial write */
-          data_ptr = cache_read_block(cb);
-        }
-
-      memcpy (data_ptr + sector_ofs, buffer + bytes_written, chunk_size);
-
-      cache_mark_dirty(cb);
-      cache_put_block(cb);
-
-      /* Advance. */
-      size -= chunk_size;
-      offset += chunk_size;
-      bytes_written += chunk_size;
-    }
-
-  return bytes_written;
-}
-
-/* Disables writes to INODE.
-   May be called at most once per inode opener. */
-void
-inode_deny_write (struct inode *inode) 
-{
-  inode->deny_write_cnt++;
-  ASSERT (inode->deny_write_cnt <= inode->open_cnt);
-}
-
-/* Re-enables writes to INODE.
-   Must be called once by each inode opener who has called
-   inode_deny_write() on the inode, before closing the inode. */
-void
-inode_allow_write (struct inode *inode) 
-{
-  ASSERT (inode->deny_write_cnt > 0);
-  ASSERT (inode->deny_write_cnt <= inode->open_cnt);
-  inode->deny_write_cnt--;
-}
-
-/* Returns the length, in bytes, of INODE's data. */
-off_t
-inode_length (const struct inode *inode)
-{
-  struct cache_block * cb = cache_get_block(inode->sector, false);
-  struct inode_disk * data = (struct inode_disk*)cache_read_block(cb);
-  off_t length = data->length;
-  cache_put_block(cb);
-  return length;
-}
-
-
-
-
-
-
-
-----------
-
-#include "filesys/inode.h"
-#include "filesys/cache.h"
-#include <list.h>
-#include <debug.h>
-#include <round.h>
-#include <string.h>
-#include "filesys/filesys.h"
-#include "filesys/free-map.h"
-#include "threads/malloc.h"
-#include <stdio.h>
-
-/* Identifies an inode. */
-#define INODE_MAGIC 0x494e4f44
-#define DIRECT_BLOCK_COUNT 123
-#define INDIRECT_BLOCK_COUNT 128
-#define GAP_MARKER (UINT32_MAX - 1)
-
-/* On-disk inode.
-Must be exactly BLOCK_SECTOR_SIZE bytes long. */
-struct inode_disk
-{
-  bool is_dir;
-  uint8_t unused[3];
-  off_t length;   /* File size in bytes. */
-  unsigned magic; /* Magic number. */
-
-  block_sector_t direct[DIRECT_BLOCK_COUNT];
-  // support for 123 blocks
-  // 123 * 512 = 62976 bytes
-
-  block_sector_t indirect;
-  // support for 128 (from 512/4 = 128) blocks
-  // 128 * 512 = 65536 bytes
-
-  block_sector_t doubly_indirect;
-  // support for 128*128 (from 512/4 = 128 indirect indices, times 128 blocks within each one = 16384) blocks
-  // 16384 * 512 = 8388608 bytes
-};
-   
-/* Returns the number of sectors to allocate for an inode SIZE
-  bytes long. */
-static inline size_t
-bytes_to_sectors (off_t size)
-{
-  return DIV_ROUND_UP (size, BLOCK_SECTOR_SIZE);
-}
-
-/* In-memory inode. */
-struct inode 
-{
-  struct list_elem elem;              /* Element in inode list. */
-  block_sector_t sector;              /* Sector number of disk location. */
-  int open_cnt;                       /* Number of openers. */
-  bool removed;                       /* True if deleted, false otherwise. */
-  int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-};
-
-static void init_inode_disk(struct inode_disk *data, off_t length);
-static void install_file_sector(struct inode *inode, off_t offset);
-static void install_l1_indirect_block(struct inode *inode, UNUSED off_t offset);
-static void install_l2_indirect_block(struct inode *inode);
-
-/* Returns the block device sector that contains byte offset POS
-   within INODE.
-   Returns -1 if INODE does not contain data for a byte at offset
-   POS. */
-static block_sector_t
-byte_to_sector (const struct inode *inode, off_t pos) 
-{
-  ASSERT(inode != NULL);
-
-  struct cache_block *cb = cache_get_block(inode->sector, false);
-  struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
-
-  off_t length = data->length;
-  block_sector_t * direct_ref = data->direct;
-  block_sector_t indirect_ref = data->indirect;
-  block_sector_t doubly_indirect_ref = data->doubly_indirect;
-
-  cache_put_block(cb);
-
-  if (pos >= length){
-    return -1;
-  }
-
-  off_t file_sector = pos / BLOCK_SECTOR_SIZE;
-
-  // direct
-  if (file_sector < DIRECT_BLOCK_COUNT)
-  {
-    return direct_ref[file_sector];
-  }
-
-  // indirect
-  else if (file_sector < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT)
-  {
-    // sparsely allocated
-    if (data->indirect == GAP_MARKER)
-    {
-      return GAP_MARKER;
-    }
-
-    cb = cache_get_block(indirect_ref, false);
-    block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
-    block_sector_t sector = indirect_block[file_sector - DIRECT_BLOCK_COUNT];
-    cache_put_block(cb);
-    return sector;
-  }
-
-  // doubly indirect
-  // sparsely allocated
-  if (data->doubly_indirect == GAP_MARKER)
-  {
-    return GAP_MARKER;
-  }
-
-  // doubly_indirect -> index within the doubly_indirect block (indirect) -> index within the indirect block (sector)
-  off_t doubly_indirect = file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT; // remove direct and indirect overhead from equation
-  off_t doubly_indirect_index = doubly_indirect / INDIRECT_BLOCK_COUNT;
-  off_t indirect_index = doubly_indirect % INDIRECT_BLOCK_COUNT;
-
-  cb = cache_get_block(doubly_indirect_ref, false);
-  block_sector_t *doubly_indirect_block = (block_sector_t *)cache_read_block(cb);
-  block_sector_t indirect_sector = doubly_indirect_block[doubly_indirect_index];
-
-  // sparsely allocated
-  if (indirect_sector == GAP_MARKER)
-  {
-    cache_put_block(cb);
-    return GAP_MARKER;
-  }
-  cache_put_block(cb);
-
-  cb = cache_get_block(indirect_sector, false);
-  block_sector_t *indirect_block = (block_sector_t *)cache_read_block(cb);
-  block_sector_t sector = indirect_block[indirect_index];
-  cache_put_block(cb);
-
-  return sector;
-}
-
-/* List of open inodes, so that opening a single inode twice
-   returns the same `struct inode'. */
-static struct list open_inodes;
-
-/* Initializes the inode module. */
-void
-inode_init (void) 
-{
-  list_init (&open_inodes);
-}
-
-/* Initializes an inode with LENGTH bytes of data and
-   writes the new inode to sector SECTOR on the file system
-   device.
-   Returns true if successful.
-   Returns false if memory or disk allocation fails. */
-bool
-inode_create (block_sector_t sector, off_t length)
-{
-  struct inode_disk *disk_inode = NULL;
-  bool success = false;
-
-  ASSERT (length >= 0);
-
-  /* If this assertion fails, the inode structure is not exactly
-     one sector in size, and you should fix that. */
-  ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
-
-  disk_inode = calloc (1, sizeof *disk_inode);
-  if (disk_inode != NULL)
-  {
-    init_inode_disk(disk_inode, length);
-
-    struct cache_block *cb = cache_get_block(sector, true);
-    cache_zero_block(cb);
-    cache_mark_dirty(cb);
-    void *data = cache_read_block(cb);
-
-    memcpy(data, disk_inode, BLOCK_SECTOR_SIZE);
-    cache_put_block(cb);
-
-    free(disk_inode);
-    success = true;
-  }
-  return success;
-}
-
-/* Reads an inode from SECTOR
-   and returns a `struct inode' that contains it.
-   Returns a null pointer if memory allocation fails. */
-struct inode *
-inode_open (block_sector_t sector)
-{
-  struct list_elem *e;
-  struct inode *inode;
-
-  /* Check whether this inode is already open. */
-  for (e = list_begin (&open_inodes); e != list_end (&open_inodes);
-       e = list_next (e)) 
-    {
-      inode = list_entry (e, struct inode, elem);
-      if (inode->sector == sector) 
-        {
-          inode_reopen (inode);
-          return inode; 
-        }
-    }
-
-  /* Allocate memory. */
-  inode = malloc (sizeof *inode);
-  if (inode == NULL)
-    return NULL;
-
-  /* Initialize. */
-  list_push_front (&open_inodes, &inode->elem);
-  inode->sector = sector;
-  inode->open_cnt = 1;
-  inode->deny_write_cnt = 0;
-  inode->removed = false;
-
-  struct cache_block* cb = cache_get_block(sector, false);
-  cache_read_block(cb);
-  cache_put_block(cb);
-  return inode;
-}
-
-/* Reopens and returns INODE. */
-struct inode *
-inode_reopen (struct inode *inode)
-{
-  if (inode != NULL)
-    inode->open_cnt++;
-  return inode;
-}
-
-/* Returns INODE's inode number. */
-block_sector_t
-inode_get_inumber (const struct inode *inode)
-{
-  return inode->sector;
-}
-
-/* Closes INODE and writes it to disk.
-   If this was the last reference to INODE, frees its memory.
-   If INODE was also a removed inode, frees its blocks. */
-void
-inode_close (struct inode *inode) 
-{
-  /* Ignore null pointer. */
-  if (inode == NULL)
-    return;
-
-  /* Release resources if this was the last opener. */
-  if (--inode->open_cnt == 0)
-    {
-      /* Remove from inode list and release lock. */
-      list_remove (&inode->elem);
- 
-      /* Deallocate blocks if removed. */
-      if (inode->removed) 
-        {
-          struct cache_block* cb = cache_get_block(inode->sector, false);
-          struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
-          int length = data->length;
-          cache_put_block(cb);
-          for (size_t i = 0; i < bytes_to_sectors(length); ++i)
+          /* Re-validate buffer since page status might have changed */
+          if (!validate_user_buffer(buffer + count, temp_bytes_read) ||
+              !memcpy_to_user((void *)(buffer + count), kern_buf, temp_bytes_read))
           {
-            block_sector_t curr_sector = byte_to_sector(inode, i * BLOCK_SECTOR_SIZE);
-            ASSERT(curr_sector != (block_sector_t)-1);
-            if (curr_sector == GAP_MARKER)
-            {
-              continue;
-            }
-            else
-            {
-              free_map_release(curr_sector, 1);
-            }
+            lock_release(&fs_lock);
+            f->eax = -1;
+            exit(-1);
           }
-          free_map_release(inode->sector, 1);
         }
-
-      free (inode); 
-    }
-}
-
-/* Marks INODE to be deleted when it is closed by the last caller who
-   has it open. */
-void
-inode_remove (struct inode *inode) 
-{
-  ASSERT (inode != NULL);
-  inode->removed = true;
-}
-
-/* Reads SIZE bytes from INODE into BUFFER, starting at position OFFSET.
-   Returns the number of bytes actually read, which may be less
-   than SIZE if an error occurs or end of file is reached. */
-off_t
-inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
-{
-  uint8_t *buffer = buffer_;
-  off_t bytes_read = 0;
-  uint8_t *bounce = NULL;
-
-  while (size > 0) 
-    {
-      /* Disk sector to read, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      if (sector_idx == (block_sector_t)-1)
-      {
-        return 0;
+        count += temp_bytes_read;
       }
-      int sector_ofs = offset % BLOCK_SECTOR_SIZE;
+      bytes_read = count;
 
-      /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      off_t inode_left = inode_length (inode) - offset;
-      int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      int min_left = inode_left < sector_left ? inode_left : sector_left;
+      free(kern_buf);
+      lock_release(&fs_lock);
+      f->eax = bytes_read;
+      break;
+    }
 
-      /* Number of bytes to actually copy out of this sector. */
-      int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0)
-        break;
-      if (sector_idx == GAP_MARKER)
+    // write
+    case SYS_WRITE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8) || !is_valid_user_ptr(f->esp + 12))
       {
-        static char zeros[BLOCK_SECTOR_SIZE];
-        memcpy(buffer + bytes_read, zeros, chunk_size);
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      const void *buffer = *((void **)(f->esp + 8));
+      unsigned size = *((unsigned *)(f->esp + 12));
+
+      /* Validation using buffer range check */
+      if (!validate_user_buffer(buffer, size)) {
+        f->eax = -1;
+        exit(-1);
+      }
+      off_t bytes = write(fd, buffer, size);
+      f->eax = bytes;
+      break;
+    }
+
+    case SYS_SEEK:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        exit(-1);
+      }
+
+      int fd = *(int *)(f->esp + 4);
+      unsigned position = *(unsigned *)(f->esp + 8);
+
+      struct thread *cur = thread_current();
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      struct file *cur_file = cur->fd_table[fd];
+      file_seek(cur_file, position);
+
+      lock_release(&fs_lock);
+      break;
+    }
+
+    // create
+    case SYS_CREATE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        f->eax = 0;
+        exit(0);
+      }
+
+      const char *filename = buffer_check(f, 0); // called in other syscalls with a filename buffer too, but checks byte by byte for validity
+      unsigned initial_size = *(unsigned *)(f->esp + 8);
+
+      char *resolved_path = NULL;
+      struct dir *resolved_path_cwd = NULL;
+      // fs lock before maybe?
+
+      if (!resolve_path((char *)filename, &resolved_path, &resolved_path_cwd))
+      {
+        free((char *)filename);
+        f->eax = 0;
+        // printf("no hit create\n");
+        break;
+      }
+
+      free((char *)filename);
+
+      // printf("resolved path: %s\n", resolved_path);
+
+      if (strlen(resolved_path) > NAME_MAX + 1)
+      {
+        f->eax = 0;
       }
       else
       {
-        struct cache_block *cb = cache_get_block(sector_idx, false);
-        void *data = cache_read_block(cb);
-
-        memcpy(buffer + bytes_read, data + sector_ofs, chunk_size);
-        cache_put_block(cb);
+        lock_acquire(&fs_lock);
+        f->eax = filesys_create(resolved_path, initial_size) ? 1 : 0;
+        lock_release(&fs_lock);
       }
-      /* Advance. */
-      size -= chunk_size;
-      offset += chunk_size;
-      bytes_read += chunk_size;
+      free((char *)resolved_path);
+      dir_close(resolved_path_cwd);
+      break;
     }
-  free (bounce);
 
-  return bytes_read;
-}
-
-/* Writes SIZE bytes from BUFFER into INODE, starting at OFFSET.
-   Returns the number of bytes actually written, which may be
-   less than SIZE if end of file is reached or an error occurs.
-   (Normally a write at end of file would extend the inode, but
-   growth is not yet implemented.) */
-off_t
-inode_write_at (struct inode *inode, const void *buffer_, off_t size,
-                off_t offset) 
-{
-  const uint8_t *buffer = buffer_;
-  off_t bytes_written = 0;
-  uint8_t *bounce = NULL;
-
-  if (inode->deny_write_cnt)
-    return 0;
-
-  while (size > 0) 
+    // open
+    case SYS_OPEN:
     {
-      /* Sector to write, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
-      int sector_ofs = offset % BLOCK_SECTOR_SIZE;
-
-      /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      off_t inode_left = inode_length (inode) - offset;
-      int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      int min_left = inode_left < sector_left ? inode_left : sector_left;
-
-      /* Number of bytes to actually write into this sector. */
-      int chunk_size = size < min_left ? size : min_left;
-      if (chunk_size <= 0)
-        break;
-
-      if (sector_idx == (block_sector_t)-1)
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
       {
-        struct cache_block *id_cb = cache_get_block(inode->sector, true);
-        struct inode_disk *id_data = cache_read_block(id_cb);
-        ASSERT(id_data->length < offset + size)
-        id_data->length = offset + size;
-        cache_mark_dirty(id_cb);
-        cache_put_block(id_cb);
-
-        install_file_sector(inode, offset);
-        sector_idx = byte_to_sector(inode, offset);
-        ASSERT(sector_idx != GAP_MARKER && sector_idx != (block_sector_t)-1);
-        struct cache_block *cb = cache_get_block(sector_idx, true);
-        void *data = cache_read_block(cb);
-        memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
-        cache_mark_dirty(cb);
-        cache_put_block(cb);
+        f->eax = -1;
+        exit(-1);
       }
-      else if (sector_idx == GAP_MARKER)
+      const char *filename = buffer_check(f, -1);
+
+      char *resolved_path = NULL;
+      struct dir *resolved_path_cwd = NULL;
+
+      if (!resolve_path((char *)filename, &resolved_path, &resolved_path_cwd))
       {
-        install_file_sector(inode, offset);
-        sector_idx = byte_to_sector(inode, offset);
-        ASSERT(sector_idx != GAP_MARKER && sector_idx != (block_sector_t)-1);
-        struct cache_block *cb = cache_get_block(sector_idx, true);
-        void *data = cache_read_block(cb);
-        memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
-        cache_mark_dirty(cb);
-        cache_put_block(cb);
+        free((char *)filename);
+        f->eax = 0;
+        // printf("no hit create\n");
+        break;
+      }
+
+      free((char *)filename);
+
+      struct inode *inode = NULL;
+      if (!dir_lookup(resolved_path_cwd, resolved_path, &inode))
+      {
+        dir_close(resolved_path_cwd);
+        free(resolved_path);
+        f->eax = 0;
+        break;
+      }
+
+      struct dir *dir = NULL;
+
+      // additional inode from lookup only used for dir
+      if (!is_dir(inode))
+      {
+        inode_close(inode);
       }
       else
       {
-        struct cache_block *cb = cache_get_block(sector_idx, true);
-        void *data = cache_read_block(cb);
-        memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
-        cache_mark_dirty(cb);
-        cache_put_block(cb);
+        dir = dir_open(inode);
+        if (dir == NULL)
+        {
+          dir_close(resolved_path_cwd);
+          free(resolved_path);
+          f->eax = 0;
+          break;
+        }
       }
-      /* Advance. */
-      size -= chunk_size;
-      offset += chunk_size;
-      bytes_written += chunk_size;
+
+      /* Open file */
+      lock_acquire(&fs_lock);
+      struct file *file = filesys_open(resolved_path);
+      free((char *)resolved_path);
+
+      /* Check if file exists */
+      if (file == NULL) {
+        lock_release(&fs_lock);
+        f->eax = -1;
+        break;
+      }
+
+      struct thread *cur = thread_current();
+
+      if (cur->fd_table == NULL) {
+        // calloc (since we know the size)
+        cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
+        if (cur->fd_table == NULL)
+        {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+        }
+      }
+
+      /* Find a free fd */
+      int fd = -1;
+      for (int i = FD_MIN; i < FD_MAX; i++) {
+        if (cur->fd_table[i] == NULL) {
+          fd = i;
+          break;
+        }
+      }
+
+      /* Table is full (i.e. no free fds) */
+      if (fd ==- 1) {
+        file_close(file);
+        lock_release(&fs_lock);
+        f->eax = -1;
+        break;
+      }
+
+      /* Store file pointer in FD table */
+      cur->fd_table[fd] = file;
+      if (dir != NULL)
+      {
+        ASSERT(is_dir(inode));
+        set_dir(file, dir);
+      }
+      file_seek(file, 0); // reset file position to 0 (start of file)
+      lock_release(&fs_lock);
+      f->eax = fd;
+      break;
     }
-    free(bounce);
 
-    return bytes_written;
-}
-
-/* Disables writes to INODE.
-   May be called at most once per inode opener. */
-void
-inode_deny_write (struct inode *inode) 
-{
-  inode->deny_write_cnt++;
-  ASSERT (inode->deny_write_cnt <= inode->open_cnt);
-}
-
-/* Re-enables writes to INODE.
-   Must be called once by each inode opener who has called
-   inode_deny_write() on the inode, before closing the inode. */
-void
-inode_allow_write (struct inode *inode) 
-{
-  ASSERT (inode->deny_write_cnt > 0);
-  ASSERT (inode->deny_write_cnt <= inode->open_cnt);
-  inode->deny_write_cnt--;
-}
-
-/* Returns the length, in bytes, of INODE's data. */
-off_t
-inode_length (const struct inode *inode)
-{
-  struct cache_block *cb = cache_get_block(inode->sector, false);
-  struct inode_disk *data = cache_read_block(cb);
-  int length = data->length;
-  cache_put_block(cb);
-  return length;
-}
-
-static void init_inode_disk(struct inode_disk *data, off_t length)
-{
-  for (int i = 0; i < DIRECT_BLOCK_COUNT; ++i)
-  {
-    data->direct[i] = GAP_MARKER;
-  }
-  data->indirect = GAP_MARKER;
-  data->doubly_indirect = GAP_MARKER;
-  data->length = length;
-  data->magic = INODE_MAGIC;
-}
-
-static void install_file_sector(struct inode *inode, off_t offset)
-{
-  ASSERT(inode != NULL);
-  block_sector_t file_sector = offset / BLOCK_SECTOR_SIZE;
-  block_sector_t disk_sector = GAP_MARKER;
-  bool already_held = true;
-  free_map_allocate(1, &disk_sector);
-  block_sector_t id_sector = inode->sector;
-
-  if (file_sector < DIRECT_BLOCK_COUNT)
-  {
-    struct cache_block *id_cb = cache_get_block(id_sector, true);
-    struct inode_disk *id_data = (struct inode_disk *)cache_read_block(id_cb);
-
-    id_data->direct[file_sector] = disk_sector;
-    cache_mark_dirty(id_cb);
-    cache_put_block(id_cb);
-  }
-  else if (file_sector < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT)
-  {
-    struct cache_block *id_cb = cache_get_block(id_sector, false);
-    struct inode_disk *id_data = (struct inode_disk *)cache_read_block(id_cb);
-    bool L1_present = id_data->indirect != GAP_MARKER;
-
-    if (!L1_present)
+    // remove
+    case SYS_REMOVE:
     {
-      cache_put_block(id_cb);
-      install_l1_indirect_block(inode, offset);
-      id_cb = cache_get_block(id_sector, false);
-      id_data = (struct inode_disk *)cache_read_block(id_cb);
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = 0;
+        exit(0);
+      }
+      const char *file = buffer_check(f, 0);
+
+      lock_acquire(&fs_lock);
+      f->eax = filesys_remove(file) ? 1 : 0;
+      free((char*)file);
+      lock_release(&fs_lock);
+
+      break;
     }
 
-    struct cache_block *l1_cb = cache_get_block(id_data->indirect, true);
-    block_sector_t *l1_data = cache_read_block(l1_cb);
+    // file size
+    case SYS_FILESIZE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
 
-    block_sector_t l1_index = file_sector - DIRECT_BLOCK_COUNT;
-    l1_data[l1_index] = disk_sector;
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
 
-    cache_mark_dirty(l1_cb);
-    cache_put_block(l1_cb);
-    cache_put_block(id_cb);
+      lock_acquire(&fs_lock);
+
+      /* Validate FD */
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      /* Get file size */
+      f->eax = file_length(cur->fd_table[fd]);
+      lock_release(&fs_lock);
+      break;
+    }
+
+    // exit
+    case SYS_EXIT: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      else
+      {
+        int status = *((int *)(f->esp + 4));
+        f->eax = status;
+        exit(status);
+      }
+      break;
+    }
+
+    // wait
+    case SYS_WAIT:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      else
+      {
+        tid_t pid = *((tid_t *)(f->esp + 4));
+        f->eax = process_wait(pid);
+      }
+
+      break;
+
+    // exec
+    case SYS_EXEC:
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+      const char *cmd_line = buffer_check(f, -1);
+      f->eax = process_execute(cmd_line);
+      free((char*)cmd_line);
+      break;
+
+    // close
+    case SYS_CLOSE: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      struct inode *inode = file_get_inode(cur->fd_table[fd]);
+      ASSERT(inode != NULL);
+
+      // managing 2 inode refs?
+      if (is_dir(inode))
+      {
+        struct dir *dir = get_dir(cur->fd_table[fd]);
+        ASSERT(dir != NULL);
+        dir_close(dir);
+      }
+
+      file_close(cur->fd_table[fd]);
+
+      cur->fd_table[fd] = NULL;
+
+      lock_release(&fs_lock);
+
+      break;
+    }
+
+    // tell
+    case SYS_TELL: {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = -1;
+        exit(-1);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = -1;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+      f->eax = file_tell(cur->fd_table[fd]);
+
+      lock_release(&fs_lock);
+      break;
+    }
+    // halt
+    case SYS_HALT:
+      shutdown_power_off();
+      break;
+
+    case SYS_CHDIR:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = 0;
+        exit(0);
+      }
+      const char *file = buffer_check(f, 0);
+      struct thread *cur = thread_current();
+      struct dir *cwd = cur->curr_dir;
+      ASSERT(cwd != NULL);
+
+      char *resolved_path = NULL;
+      struct dir *resolved_path_cwd = NULL;
+
+      if (!resolve_path((char *)file, &resolved_path, &resolved_path_cwd))
+      {
+        f->eax = 0;
+        free((char *)file);
+        // printf("no hit rp chdir\n");
+        break;
+      }
+
+      free((char *)file);
+
+      ASSERT(resolve_path != NULL);
+      ASSERT(resolved_path_cwd != NULL);
+
+      // printf("resolved path: %s\n", resolved_path);
+
+      struct inode *inode = NULL;
+      if (!dir_lookup(resolved_path_cwd, resolved_path, &inode))
+      {
+        dir_close(resolved_path_cwd);
+        free(resolved_path);
+        f->eax = 0;
+        break;
+      }
+
+      if (!is_dir(inode))
+      {
+        inode_close(inode);
+        dir_close(resolved_path_cwd);
+        free(resolved_path);
+        f->eax = 0;
+        break;
+      }
+
+      struct dir *new_dir = dir_open(inode);
+      if (new_dir == NULL)
+      {
+        dir_close(resolved_path_cwd);
+        free(resolved_path);
+        f->eax = 0;
+        break;
+      }
+
+      dir_close(cur->curr_dir);
+      cur->curr_dir = new_dir;
+
+      dir_close(resolved_path_cwd);
+      free(resolved_path);
+      f->eax = 1;
+
+      break;
+    }
+    case SYS_MKDIR:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+      {
+        f->eax = 0;
+        exit(0);
+      }
+      const char *file = buffer_check(f, 0);
+      struct thread *cur = thread_current();
+      struct dir *cwd = cur->curr_dir;
+      ASSERT(cwd != NULL);
+
+      char *resolved_path = NULL;
+      struct dir *resolved_path_cwd = NULL;
+
+      if (!resolve_path((char *)file, &resolved_path, &resolved_path_cwd))
+      {
+        f->eax = 0;
+        free((char *)file);
+        // printf("no hit\n");
+        break;
+      }
+
+      free((char *)file);
+
+      ASSERT(resolve_path != NULL);
+      ASSERT(resolved_path_cwd != NULL);
+
+      // printf("resolved path: %s\n", resolved_path);
+
+      block_sector_t sector = UINT32_MAX - 1;
+
+      if (!free_map_allocate(1, &sector))
+      {
+        f->eax = 0;
+        // printf("no hit freemap\n");
+        break;
+      }
+
+      ASSERT(sector != UINT32_MAX - 1);
+
+      struct inode *cwd_inode = dir_get_inode(resolved_path_cwd);
+      block_sector_t cwd_sector = inode_get_inumber(cwd_inode);
+
+      if (!dir_create(sector, 16, cwd_sector))
+      {
+        free(resolved_path);
+        dir_close(resolved_path_cwd);
+        free_map_release(sector, 1);
+        f->eax = 0;
+        // printf("no hit create\n");
+        break;
+      }
+
+      if (!dir_add(resolved_path_cwd, resolved_path, sector))
+      {
+        free(resolved_path);
+        dir_close(resolved_path_cwd);
+        free_map_release(sector, 1);
+        f->eax = 0;
+        // printf("no hit add\n");
+        break;
+      }
+
+      free(resolved_path);
+      dir_close(resolved_path_cwd);
+      f->eax = 1;
+      break;
+    }
+    case SYS_READDIR:
+    {
+      if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
+      {
+        f->eax = 0;
+        exit(0);
+      }
+
+      int fd = *((int *)(f->esp + 4));
+      const char *buffer = *((void **)(f->esp + 8));
+
+      if (!validate_user_buffer((char *)buffer, NAME_MAX + 1)) // same as reaadir macro
+      {
+        f->eax = 0;
+        exit(-1);
+      }
+      struct thread *cur = thread_current();
+
+      lock_acquire(&fs_lock);
+
+      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      {
+        f->eax = 0;
+        lock_release(&fs_lock);
+        exit(-1);
+      }
+
+      struct inode *inode = file_get_inode(cur->fd_table[fd]);
+      ASSERT(inode != NULL);
+
+      //  inode = inode_open(inode); // dir lookup alr calls reopen for us
+      //  // do we need reopen?
+
+      if (!is_dir(inode))
+      {
+        // printf("not a dir\n");
+        f->eax = 0;
+        lock_release(&fs_lock);
+        break;
+      }
+
+      struct dir *dir = get_dir(cur->fd_table[fd]); // dir_open(inode);
+      ASSERT(dir != NULL);
+      if (dir == NULL)
+      {
+        // printf("dir open fail\n");
+        f->eax = 0;
+        lock_release(&fs_lock);
+        break;
+      }
+
+      if (!dir_readdir(dir, (char *)buffer))
+      {
+        // printf("not a dir\n");
+        dir_close(dir);
+        f->eax = 0;
+        lock_release(&fs_lock);
+        break;
+      }
+
+      dir_close(dir);
+      lock_release(&fs_lock);
+      f->eax = 1;
+      break;
+    }
+    case SYS_ISDIR:
+    {
+       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+       {
+          f->eax = 0;
+          exit(0);
+       }
+
+       int fd = *((int *)(f->esp + 4));
+       struct thread *cur = thread_current();
+
+       lock_acquire(&fs_lock);
+
+       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+       {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+       }
+
+       struct inode *inode = file_get_inode(cur->fd_table[fd]);
+       ASSERT(inode != NULL);
+       f->eax = is_dir(inode);
+       lock_release(&fs_lock);
+       break;
+    }
+    case SYS_INUMBER:
+    {
+       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))
+       {
+          f->eax = 0;
+          exit(0);
+       }
+
+       int fd = *((int *)(f->esp + 4));
+       struct thread *cur = thread_current();
+
+       lock_acquire(&fs_lock);
+
+       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+       {
+          f->eax = -1;
+          lock_release(&fs_lock);
+          exit(-1);
+       }
+
+       struct inode *inode = file_get_inode(cur->fd_table[fd]);
+       ASSERT(inode != NULL);
+       f->eax = inode_get_inumber(inode);
+       lock_release(&fs_lock);
+       break;
+    }
+    default:
+      f->eax = -1;
+      exit(-1);
+      break;
+  }
+}
+
+/* - - - - - - - - - - Helper Functions for System Calls - - - - - - - - - - */
+
+/* Write system call
+Parameters:
+  - fd: File descriptor to write to
+  - buffer: Buffer containing data to write
+  - size: Number of bytes to write
+Returns:
+  Number of bytes actually written, which may be less than size 
+  if some bytes could not be written
+*/
+static int write(int fd, const void * buffer, unsigned size){
+  if(fd == 1){
+    lock_acquire(&fs_lock);
+    unsigned count = 0;
+    void *pos = (void *)buffer;
+    while(count < size){
+      int buffer_size = (size-count) > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size-count;
+
+      putbuf(pos, buffer_size);
+      count += buffer_size;
+      pos = (void *)buffer + count;
+    }
+    lock_release(&fs_lock);
+    return count;
   }
   else
   {
-    struct cache_block *id_cb = cache_get_block(id_sector, false);
-    ASSERT(id_cb != NULL);
-    struct inode_disk *id_data = (struct inode_disk *)cache_read_block(id_cb);
-    ASSERT(id_data != NULL);
-    bool L2_present = id_data->doubly_indirect != GAP_MARKER;
-
-    if (!L2_present)
+    struct thread *cur = thread_current();
+    lock_acquire(&fs_lock);
+    if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
     {
-      cache_put_block(id_cb);
-      install_l2_indirect_block(inode);
-      id_cb = cache_get_block(id_sector, false);
-      ASSERT(id_cb != NULL);
-      id_data = (struct inode_disk *)cache_read_block(id_cb);
-      ASSERT(id_data != NULL);
+      lock_release(&fs_lock);
+      exit(-1);
     }
-    ASSERT(id_data->doubly_indirect != GAP_MARKER);
+    struct file *cur_file = cur->fd_table[fd];
 
-    struct cache_block *l2_cb = cache_get_block(id_data->doubly_indirect, false);
-    ASSERT(l2_cb != NULL);
-    block_sector_t *l2_data = cache_read_block(l2_cb);
-    ASSERT(l2_data != NULL);
+    unsigned count = 0;
+    while(count < size){
+      int buffer_size = (size-count) > BLOCK_SECTOR_SIZE ? BLOCK_SECTOR_SIZE : size-count;
 
-    block_sector_t l2_index = (file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT) / INDIRECT_BLOCK_COUNT;
-    bool L1_present = l2_data[l2_index] != GAP_MARKER;
-    if (!L1_present)
-    {
-      cache_put_block(l2_cb);
-
-      cache_put_block(id_cb);
-
-      install_l1_indirect_block(inode, offset);
-
-      id_cb = cache_get_block(id_sector, false);
-      ASSERT(id_cb != NULL);
-      id_data = (struct inode_disk *)cache_read_block(id_cb);
-      ASSERT(id_data != NULL);
-
-      l2_cb = cache_get_block(id_data->doubly_indirect, false);
-      ASSERT(l2_cb != NULL);
-      l2_data = cache_read_block(l2_cb);
-      ASSERT(l2_data != NULL);
+      off_t bytes = file_write(cur_file, buffer+count, buffer_size);
+      if (bytes <= 0)
+      {
+        break;
+      }
+      count += bytes;
     }
-
-    ASSERT(l2_data[l2_index] != GAP_MARKER);
-
-    struct cache_block *l1_cb = cache_get_block(l2_data[l2_index], true);
-    block_sector_t *l1_data = cache_read_block(l1_cb);
-    block_sector_t l1_index = (file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT) % INDIRECT_BLOCK_COUNT;
-    l1_data[l1_index] = disk_sector;
-
-    cache_mark_dirty(l1_cb);
-    cache_put_block(l1_cb);
-  }
-  if (already_held)
-  {
+    lock_release(&fs_lock);
+    return count;
   }
 }
 
-static void install_l1_indirect_block(struct inode *inode, off_t offset)
-{
-  block_sector_t id_sector = inode->sector;
-  if ((uint32_t)(offset / BLOCK_SECTOR_SIZE) < (DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT))
-  {
-    struct cache_block *id_cb = cache_get_block(id_sector, true);
-    struct inode_disk *id_data = cache_read_block(id_cb);
-    ASSERT(id_data->indirect == GAP_MARKER);
 
-    free_map_allocate(1, &id_data->indirect);
-    ASSERT(id_data->indirect != GAP_MARKER && id_data->indirect != (block_sector_t)-1);
+/* Exit system call
+   Prints process name and exit code when user process terminates.
+   Format: "%s: exit(%d)\n" where %s is full program name without args
+   Note: Only prints for user processes, not kernel threads or halt
+   Optional message when process fails to load
+*/
+void exit(int status){
+  struct thread *thread_curr = thread_current();
+  struct process *ps = thread_curr->ps;
 
-    cache_mark_dirty(id_cb);
+  printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
 
-    struct cache_block *l1_cb = cache_get_block(id_data->indirect, true);
-    block_sector_t *l1_data = cache_read_block(l1_cb);
+  lock_acquire(&ps->ps_lock);
+  ps->exit_status = status;
+  lock_release(&ps->ps_lock);
 
-    for (unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i)
-    {
-      l1_data[i] = GAP_MARKER;
-    }
-    cache_mark_dirty(l1_cb);
-    cache_put_block(l1_cb);
-    cache_put_block(id_cb);
-  }
-  else
-  {
-    struct cache_block *id_cb = cache_get_block(id_sector, false);
-    struct inode_disk *id_data = cache_read_block(id_cb);
-
-    bool l2_present = id_data->doubly_indirect;
-
-    cache_put_block(id_cb);
-
-    if (!l2_present)
-    {
-      install_l2_indirect_block(inode);
-    }
-
-    id_cb = cache_get_block(id_sector, false);
-    id_data = cache_read_block(id_cb);
-
-    struct cache_block *l2_cb = cache_get_block(id_data->doubly_indirect, true);
-    block_sector_t *l2_data = cache_read_block(l2_cb);
-
-    block_sector_t file_sector = offset / BLOCK_SECTOR_SIZE;
-    off_t l2_index = (file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT) / INDIRECT_BLOCK_COUNT;
-    ASSERT(l2_data[l2_index] == GAP_MARKER);
-
-    free_map_allocate(1, &l2_data[l2_index]);
-
-    cache_mark_dirty(l2_cb);
-
-    struct cache_block *l1_cb = cache_get_block(l2_data[l2_index], true);
-    block_sector_t *l1_data = cache_read_block(l1_cb);
-
-    for (unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i)
-    {
-      l1_data[i] = GAP_MARKER;
-    }
-    cache_mark_dirty(l1_cb);
-    cache_put_block(l1_cb);
-    cache_put_block(l2_cb);
-    cache_put_block(id_cb);
-  }
-}
-
-static void install_l2_indirect_block(struct inode *inode)
-{
-  ASSERT(inode != NULL);
-  block_sector_t id_sector = inode->sector;
-  struct cache_block *id_cb = cache_get_block(id_sector, true);
-  struct inode_disk *id_data = cache_read_block(id_cb);
-  ASSERT(id_data->doubly_indirect == GAP_MARKER);
-
-  free_map_allocate(1, &id_data->doubly_indirect);
-  cache_mark_dirty(id_cb);
-
-  struct cache_block *l2_cb = cache_get_block(id_data->doubly_indirect, true);
-  block_sector_t *l2_data = cache_read_block(l2_cb);
-
-  for (unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i)
-  {
-    l2_data[i] = GAP_MARKER;
-  }
-
-  cache_mark_dirty(l2_cb);
-  cache_put_block(l2_cb);
-  cache_put_block(id_cb);
+  thread_exit();
 }

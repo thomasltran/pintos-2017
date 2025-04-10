@@ -289,13 +289,14 @@ process_exit(void)
 
   // clean up fd's when a thread exits
   lock_acquire(&fs_lock);
-  struct file **fd_table = cur->fd_table;
+  struct file_desc * fd_table = cur->fd_table;
   if (fd_table != NULL)
   { // called open
     for (int i = FD_MIN; i < FD_MAX; i++)
     {
-      if(fd_table[i] != NULL){
-        file_close(fd_table[i]);
+      struct file_desc * file_desc = &fd_table[i];
+      if(file_desc->file != NULL || file_desc->dir != NULL){
+        file_close(file_desc->file);
       }
     }
     free(fd_table);
@@ -437,7 +438,7 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
 
   /* Open executable file. */
   lock_acquire(&fs_lock);
-  file = filesys_open(file_name);
+  file = filesys_open(file_name, ps->parent_curr_dir);
   if (file == NULL)
   {
     ps->exe_file = NULL;

@@ -263,6 +263,7 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 
 // if false, don't have to close the cwd
 // if true, up to caller to close
+// opened inode is inode of the cwd at the end
 bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 {
    char *cpy = malloc(PATH_MAX + 1);
@@ -306,47 +307,30 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 
       if (strcmp(token, ".") != 0) // .
       {
-         if (strcmp(token, "..") == 0) // ..
+         // returns a reopen vers of inode
+         if (!dir_lookup(curr_dir, token, &inode))
          {
-            if (!dir_lookup(curr_dir, "..", &inode))
-            {
-               dir_close(curr_dir);
-               free(cpy);
-               return false;
-            }
-
             dir_close(curr_dir);
-            curr_dir = dir_open(inode);
-            if (curr_dir == NULL)
-            {
-               free(cpy);
-               return false;
-            }
+            free(cpy);
+            return false;
          }
-         else // regular
+
+         if (!is_dir(inode)) // file, but not at the end of path
          {
-            if (!dir_lookup(curr_dir, token, &inode))
-            {
-               dir_close(curr_dir);
-               free(cpy);
-               return false;
-            }
-
-            if (!is_dir(inode)) // file, but not at the end of path
-            {
-               inode_close(inode);
-               dir_close(curr_dir);
-               free(cpy);
-               return false;
-            }
-
+            inode_close(inode);
             dir_close(curr_dir);
-            curr_dir = dir_open(inode);
-            if (curr_dir == NULL)
-            {
-               free(cpy);
-               return false;
-            }
+            free(cpy);
+            return false;
+         }
+
+         dir_close(curr_dir);
+
+         // curr_dir represents inode, closing the dir closes inode too
+         curr_dir = dir_open(inode);
+         if (curr_dir == NULL)
+         {
+            free(cpy);
+            return false;
          }
       }
 
@@ -373,9 +357,7 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 	*filename_ret = filename_cpy;
 	*cwd = curr_dir;
 
-   // dir_close(curr_dir);
    free(cpy);
-
    return true;
 }
 /*

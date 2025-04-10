@@ -113,7 +113,7 @@ struct thread
   uint32_t *pagedir; /* Page directory. */
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
-  struct file **fd_table; /* file descriptor table */
+  struct file_desc * fd_table; /* file descriptor table */
   struct dir * curr_dir;
 #endif
   /* Owned by thread.c. */
@@ -134,6 +134,12 @@ struct process // struct to manage parent/child threads in process.c
    char * user_prog_name; // program name
    struct file * exe_file; // keep exe around until exit
    struct dir * parent_curr_dir;
+};
+
+struct file_desc {
+   struct dir * dir;
+   struct file * file;
+   int is_dir;
 };
 #endif
 
