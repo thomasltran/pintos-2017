@@ -289,6 +289,8 @@ process_exit(void)
 
   // clean up fd's when a thread exits
   lock_acquire(&fs_lock);
+  bool closed_cwd = false;
+
   struct file_desc * fd_table = cur->fd_table;
   if (fd_table != NULL)
   { // called open
@@ -296,13 +298,27 @@ process_exit(void)
     {
       struct file_desc * file_desc = &fd_table[i];
       if(file_desc->file != NULL || file_desc->dir != NULL){
-        file_close(file_desc->file);
+        if (file_desc->is_dir)
+        {
+          if (file_desc->dir == cur->curr_dir)
+          {
+            closed_cwd = true;
+          }
+          dir_close(file_desc->dir);
+        }
+        else
+        {
+          file_close(file_desc->file);
+        }
+        file_desc->file = NULL;
+        file_desc->dir = NULL;
+        file_desc->is_dir = false;
       }
     }
     free(fd_table);
   }
 
-  if (cur->curr_dir != NULL)
+  if (closed_cwd == false && cur->curr_dir != NULL)
   {
     dir_close(cur->curr_dir);
   }
