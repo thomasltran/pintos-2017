@@ -210,6 +210,7 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
     f->eax = set_eax_err;
     exit(-1);
   }
+
   return filename;
 }
 
@@ -382,7 +383,7 @@ syscall_handler(struct intr_frame *f)
       const char *filename = buffer_check(f, 0); // called in other syscalls with a filename buffer too, but checks byte by byte for validity
       unsigned initial_size = *(unsigned *)(f->esp + 8);
 
-      if (strnlen(filename, NAME_MAX) >= NAME_MAX)
+      if (strlen(filename) > NAME_MAX + 1)
       {
         f->eax = 0;
       }
@@ -642,7 +643,6 @@ syscall_handler(struct intr_frame *f)
        lock_release(&fs_lock);
        break;
     }
-
     case SYS_INUMBER:
     {
        if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4))

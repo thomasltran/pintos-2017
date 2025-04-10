@@ -261,12 +261,14 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   return false;
 }
 
-char *resolve_path(char * path)
+// if false, don't have to close the cwd
+// if true, up to caller to close
+bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 {
    char *cpy = malloc(PATH_MAX + 1);
    if (cpy == NULL)
    {
-      return NULL;
+      return false;
    }
 
    strlcpy(cpy, path, PATH_MAX + 1);
@@ -310,7 +312,7 @@ char *resolve_path(char * path)
             {
                dir_close(curr_dir);
                free(cpy);
-               return NULL;
+               return false;
             }
 
             dir_close(curr_dir);
@@ -318,7 +320,7 @@ char *resolve_path(char * path)
             if (curr_dir == NULL)
             {
                free(cpy);
-               return NULL;
+               return false;
             }
          }
          else // regular
@@ -327,7 +329,7 @@ char *resolve_path(char * path)
             {
                dir_close(curr_dir);
                free(cpy);
-               return NULL;
+               return false;
             }
 
             if (!is_dir(inode)) // file, but not at the end of path
@@ -335,7 +337,7 @@ char *resolve_path(char * path)
                inode_close(inode);
                dir_close(curr_dir);
                free(cpy);
-               return NULL;
+               return false;
             }
 
             dir_close(curr_dir);
@@ -343,7 +345,7 @@ char *resolve_path(char * path)
             if (curr_dir == NULL)
             {
                free(cpy);
-               return NULL;
+               return false;
             }
          }
       }
@@ -353,21 +355,28 @@ char *resolve_path(char * path)
 
    char *filename_cpy = NULL;
 
-   ASSERT(filename != NULL);
-   ASSERT(strlen(filename) <= NAME_MAX + 1);
+   if(filename == NULL || strlen(filename) > NAME_MAX + 1){
+      dir_close(curr_dir);
+      free(cpy);
+      return false;
+   }
 
    filename_cpy = malloc(NAME_MAX + 1);
    if (filename_cpy == NULL)
    {
       dir_close(curr_dir);
       free(cpy);
-      return NULL;
+      return false;
    }
    strlcpy(filename_cpy, filename, NAME_MAX + 1);
+	
+	*filename_ret = filename_cpy;
+	*cwd = curr_dir;
 
-   dir_close(curr_dir);
+   // dir_close(curr_dir);
    free(cpy);
-   return filename_cpy;
+
+   return true;
 }
 /*
 /usr/bin/ls
