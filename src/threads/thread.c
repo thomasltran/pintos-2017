@@ -652,6 +652,7 @@ init_thread (struct thread *t, const char *name, int nice)
 #ifdef USERPROG
   list_init(&t->ps_list);
   t->fd_table = NULL;
+  t->curr_dir = NULL;
 #endif
 }
 

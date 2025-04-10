@@ -37,6 +37,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  struct thread *parent_thread = thread_current();
 
   struct process *ps = malloc(sizeof(struct process));
   if (ps == NULL)
@@ -49,6 +50,10 @@ process_execute (const char *file_name)
   ps->ref_count = 2;
   ps->good_start = false;
   ps->exe_file = NULL;
+
+  ASSERT(parent_thread->curr_dir != NULL);
+  ps->parent_curr_dir = parent_thread->curr_dir;
+
   sema_init(&ps->user_prog_exit, 0);
   sema_init(&ps->child_started, 0);
 
@@ -78,8 +83,10 @@ process_execute (const char *file_name)
   ps->child_tid = tid; // if child is in process_exit before this, it has the ref to ps already so semaphore is good
   ASSERT(ps->user_prog_name != NULL);
 
-  struct thread *parent_thread = thread_current();
   list_push_back(&parent_thread->ps_list, &ps->elem);
+
+  ASSERT(parent_thread->curr_dir != NULL);
+
 
   return tid;
 }
@@ -147,6 +154,7 @@ start_process(void *p)
     struct thread *child_thread = thread_current();
     child_thread->ps = ps;
     child_thread->ps->user_prog_name = hold;
+    child_thread->curr_dir = dir_reopen(ps->parent_curr_dir);
     sema_up(&ps->child_started);
   }
 
@@ -292,6 +300,12 @@ process_exit(void)
     }
     free(fd_table);
   }
+
+  if (cur->curr_dir != NULL)
+  {
+    dir_close(cur->curr_dir);
+  }
+
   lock_release(&fs_lock);
 
   /* Destroy the  current process's page directory and switch back

@@ -29,7 +29,7 @@ struct inode_disk
     block_sector_t L2_indirect_sector;
   };
 
-  static void init_inode_disk(struct inode_disk* data, off_t length);
+  static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir);
   static void install_file_sector(struct inode* inode, off_t offset);
   static void install_l1_indirect_block(struct inode* inode, UNUSED off_t offset);
   static void install_l2_indirect_block(struct inode* inode);
@@ -148,7 +148,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool isdir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -166,7 +166,7 @@ inode_create (block_sector_t sector, off_t length)
       // disk_inode->length = length;
       // disk_inode->magic = INODE_MAGIC;
 
-      init_inode_disk(disk_inode, length);
+      init_inode_disk(disk_inode, length, isdir);
       // for(int i = 0; i < 123; ++i){
       //   printf("i = %d\n", i);
       //   ASSERT(disk_inode->direct_blocks[i] == UNUSED_MARKER);
@@ -603,7 +603,7 @@ inode_length (const struct inode *inode)
 }
 
 
-static void init_inode_disk(struct inode_disk* data, off_t length){
+static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir){
   for(int i = 0; i < DIRECT_BLOCK_COUNT; ++i){
     data->direct_blocks[i] = GAP_MARKER;
   }
@@ -611,6 +611,7 @@ static void init_inode_disk(struct inode_disk* data, off_t length){
   data->L2_indirect_sector = GAP_MARKER;
   data->length = length;
   data->magic = INODE_MAGIC;
+  data->isdir = isdir;
 }
 
 static void install_file_sector(struct inode* inode, off_t offset){
