@@ -130,11 +130,7 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  lock_acquire(&fs_lock);
-
   success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
-
-  lock_release(&fs_lock);
 
   /* If load failed, quit. */
   palloc_free_page(ps->user_prog_name);
@@ -197,7 +193,17 @@ int process_wait(tid_t child_tid)
       lock_acquire(&ps->ps_lock);
 
       exit_status = ps->exit_status;
+
       ps->ref_count--;
+      ASSERT(ps->ref_count >= 0);
+      if (ps->ref_count == 0) // nothing waiting for it
+      {
+        list_remove(&ps->elem); // list ops only done by parent
+        lock_release(&ps->ps_lock);
+        free(ps->user_prog_name);
+        free(ps);
+        return exit_status;
+      }
 
       lock_release(&ps->ps_lock);
       return exit_status;
@@ -227,7 +233,8 @@ process_exit(void)
 
     ps->ref_count--;
 
-    if (ps->ref_count <= 0)
+    ASSERT(ps->ref_count >= 0);
+    if (ps->ref_count == 0)
     {
       e = list_remove(e);
       lock_release(&ps->ps_lock);
@@ -256,7 +263,8 @@ process_exit(void)
 
     ps->ref_count--;
 
-    if (ps->ref_count <= 0) // nothing waiting for it
+    ASSERT(ps->ref_count >= 0);
+    if (ps->ref_count == 0) // nothing waiting for it
     {
       list_remove(&ps->elem); // list ops only done by parent
       lock_release(&ps->ps_lock);
@@ -398,7 +406,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Returns true if successful, false otherwise. */
 bool load(const char *file_name, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp)
 {
-  struct thread *t = thread_current ();
+  struct thread *t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
   off_t file_ofs;
@@ -408,96 +416,103 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   int addr_i = 0;
 
   /* Allocate and activate page directory. */
-  t->pagedir = pagedir_create ();
-  if (t->pagedir == NULL) 
+  t->pagedir = pagedir_create();
+  if (t->pagedir == NULL)
     goto done;
-  process_activate ();
+  process_activate();
 
   /* Open executable file. */
-  file = filesys_open (file_name);
-  if (file == NULL) 
-    {
-      ps->exe_file = NULL;
-      goto done; 
-    }
-    else{
-      ps->exe_file = file;
-      file_deny_write(ps->exe_file);
-    }
+  lock_acquire(&fs_lock);
+  file = filesys_open(file_name);
+  if (file == NULL)
+  {
+    ps->exe_file = NULL;
+    lock_release(&fs_lock);
+    goto done;
+  }
+  else
+  {
+    ps->exe_file = file;
+    file_deny_write(ps->exe_file);
+  }
 
   /* Read and verify executable header. */
-  if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
-      || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
-      || ehdr.e_type != 2
-      || ehdr.e_machine != 3
-      || ehdr.e_version != 1
-      || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
-      || ehdr.e_phnum > 1024) 
-    {
-      goto done; 
-    }
+  if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
+  {
+    lock_release(&fs_lock);
+    goto done;
+  }
+  lock_release(&fs_lock);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
-  for (i = 0; i < ehdr.e_phnum; i++) 
+  for (i = 0; i < ehdr.e_phnum; i++)
+  {
+    struct Elf32_Phdr phdr;
+    lock_acquire(&fs_lock);
+
+    if (file_ofs < 0 || file_ofs > file_length(file))
     {
-      struct Elf32_Phdr phdr;
-
-      if (file_ofs < 0 || file_ofs > file_length (file))
-        goto done;
-      file_seek (file, file_ofs);
-
-      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
-        goto done;
-      file_ofs += sizeof phdr;
-      switch (phdr.p_type) 
-        {
-        case PT_NULL:
-        case PT_NOTE:
-        case PT_PHDR:
-        case PT_STACK:
-        default:
-          /* Ignore this segment. */
-          break;
-        case PT_DYNAMIC:
-        case PT_INTERP:
-        case PT_SHLIB:
-          goto done;
-        case PT_LOAD:
-          if (validate_segment (&phdr, file)) 
-            {
-              bool writable = (phdr.p_flags & PF_W) != 0;
-              uint32_t file_page = phdr.p_offset & ~PGMASK;
-              uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
-              uint32_t page_offset = phdr.p_vaddr & PGMASK;
-              uint32_t read_bytes, zero_bytes;
-              if (phdr.p_filesz > 0)
-                {
-                  /* Normal segment.
-                     Read initial part from disk and zero the rest. */
-                  read_bytes = page_offset + phdr.p_filesz;
-                  zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE)
-                                - read_bytes);
-                }
-              else 
-                {
-                  /* Entirely zero.
-                     Don't read anything from disk. */
-                  read_bytes = 0;
-                  zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
-                }
-              if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
-                goto done;
-            }
-          else
-            goto done;
-          break;
-        }
+      lock_release(&fs_lock);
+      goto done;
     }
+    file_seek(file, file_ofs);
+
+    if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
+    {
+      lock_release(&fs_lock);
+      goto done;
+    }
+    lock_release(&fs_lock);
+
+    file_ofs += sizeof phdr;
+    switch (phdr.p_type)
+    {
+    case PT_NULL:
+    case PT_NOTE:
+    case PT_PHDR:
+    case PT_STACK:
+    default:
+      /* Ignore this segment. */
+      break;
+    case PT_DYNAMIC:
+    case PT_INTERP:
+    case PT_SHLIB:
+      goto done;
+    case PT_LOAD:
+      if (validate_segment(&phdr, file))
+      {
+        bool writable = (phdr.p_flags & PF_W) != 0;
+        uint32_t file_page = phdr.p_offset & ~PGMASK;
+        uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
+        uint32_t page_offset = phdr.p_vaddr & PGMASK;
+        uint32_t read_bytes, zero_bytes;
+        if (phdr.p_filesz > 0)
+        {
+          /* Normal segment.
+            Read initial part from disk and zero the rest. */
+          read_bytes = page_offset + phdr.p_filesz;
+          zero_bytes = (ROUND_UP(page_offset + phdr.p_memsz, PGSIZE) - read_bytes);
+        }
+        else
+        {
+          /* Entirely zero.
+            Don't read anything from disk. */
+          read_bytes = 0;
+          zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
+        }
+        if (!load_segment(file, file_page, (void *)mem_page,
+                          read_bytes, zero_bytes, writable))
+          goto done;
+      }
+      else
+        goto done;
+      break;
+    }
+  }
 
   /* Set up stack. */
-  if (!setup_stack (esp))
+  if (!setup_stack(esp))
     goto done;
 
   for (i = argc - 1; i >= 0; i--) // push words onto stack, reversed
@@ -522,7 +537,7 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
     *esp = (void *)esp_int;
     memset(*esp, 0, padding); // zero padding bytes
   }
-  
+
   *esp -= sizeof(char *); // null sentinel
   *((char **)(*esp)) = NULL;
 
@@ -549,12 +564,12 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   */
   success = true;
 
- done:
+  done:
   /* We arrive here whether the load is successful or not. */
-  //file_close(file);
-
+  // file_close(file);
   return success;
- }
+}
+   
 
 /* load() helpers. */
 
