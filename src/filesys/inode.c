@@ -30,9 +30,9 @@ struct inode_disk
   };
 
   static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir);
-  static void install_file_sector(struct inode* inode, off_t offset);
-  static void install_l1_indirect_block(struct inode* inode, UNUSED off_t offset);
-  static void install_l2_indirect_block(struct inode* inode);
+  static bool install_file_sector(struct inode* inode, off_t offset);
+  static bool install_l1_indirect_block(struct inode* inode, UNUSED off_t offset);
+  static bool install_l2_indirect_block(struct inode* inode);
     
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -172,6 +172,7 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
       //   ASSERT(disk_inode->direct_blocks[i] == UNUSED_MARKER);
       // }
 
+      ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
       struct cache_block* cb = cache_get_block(sector, true);
       cache_zero_block(cb);
       cache_mark_dirty(cb);
@@ -248,6 +249,7 @@ inode_open (block_sector_t sector)
   // block_read (fs_device, inode->sector, &inode->data);
   
   //exclusive set to false because reads are not exclusive, only writes are
+  ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
   struct cache_block* cb = cache_get_block(sector, false);
   cache_read_block(cb);
   cache_put_block(cb);
@@ -289,6 +291,7 @@ inode_close (struct inode *inode)
       /* Deallocate blocks if removed. */
       if (inode->removed) 
         {
+          ASSERT(inode->sector != UINT32_MAX && inode->sector != UINT32_MAX - 1);
           struct cache_block* cb = cache_get_block(inode->sector, false);
           struct inode_disk* data =  (struct inode_disk *)cache_read_block(cb);
           int length = data->length; 
@@ -358,6 +361,8 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
 
       }
       else{
+        ASSERT(sector_idx != UINT32_MAX && sector_idx != UINT32_MAX - 1);
+
         struct cache_block* cb = cache_get_block(sector_idx, false);
         void* data = cache_read_block(cb);
   
@@ -365,41 +370,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
         cache_put_block(cb);
 
       }
-      // struct cache_block* cb = cache_get_block(sector_idx, false);
-      // void* data = cache_read_block(cb);
-
-      // memcpy(buffer + bytes_read, data+sector_ofs, chunk_size);
-      // cache_put_block(cb);
-
-      // if (bounce == NULL) 
-      //   {
-      //     bounce = malloc (BLOCK_SECTOR_SIZE);
-      //     if (bounce == NULL)
-      //       break;
-      //   }
-      // block_read (fs_device, sector_idx, bounce);
-
-
-      // if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
-      //   {
-      //     /* Read full sector directly into caller's buffer. */
-      //     block_read (fs_device, sector_idx, buffer + bytes_read);
-
-      //   }
-      // else 
-      //   {
-      //     /* Read sector into bounce buffer, then partially copy
-      //        into caller's buffer. */
-      //     if (bounce == NULL) 
-      //       {
-      //         bounce = malloc (BLOCK_SECTOR_SIZE);
-      //         if (bounce == NULL)
-      //           break;
-      //       }
-      //     block_read (fs_device, sector_idx, bounce);
-      //     memcpy (buffer + bytes_read, bounce + sector_ofs, chunk_size);
-      //   }
-      
       /* Advance. */
       size -= chunk_size;
       offset += chunk_size;
@@ -445,6 +415,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         break;
 
       if(offset >= inode_length(inode)){
+        ASSERT(inode->sector != UINT32_MAX && inode->sector != UINT32_MAX - 1);
         struct cache_block* id_cb = cache_get_block(inode->sector, true);
         struct inode_disk* id_data = cache_read_block(id_cb);
         ASSERT(id_data->length < offset+size)
@@ -454,7 +425,9 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
         // sector_idx = byte_to_sector(inode, offset);
         if(sector_idx == (block_sector_t)-1){
-          install_file_sector(inode, offset);
+          if(!install_file_sector(inode, offset)){
+            return 0;
+          }
           sector_idx = byte_to_sector(inode, offset);
   
         }
@@ -464,51 +437,11 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         memcpy(data +sector_ofs, buffer+bytes_written, chunk_size);
         cache_mark_dirty(cb);
         cache_put_block(cb); 
-
-
-        //TOOD: write extending file
-        //change length of ondisk_inode
-          //cache_get_block(inode sector)
-          //cache_read_block()
-            //change length
-        //write to sector
-         //temp block_sector_t var
-         //freemap_allocate(1, &temp)
-         //cache_get_block(temp)
-         //cache_zero_block()
-         //memcpy() *basically write to cache block
-         //cache_put_block(write sector)
-         //insert temp into ondisk_inode{
-          // file_sector = bytes_to_sectors(offset)
-          //if(direct block)
-            //cacheblock.direct[file_sector] = temp
-          //else if (indirect l1)
-            //if(l1 is -1)
-              // freemap_allocate(1, cacheblock.indirect_sector)
-              //set all to UNUSED MARKER
-            //cache_get_block(l1_sector)
-            //cache_read_block()
-            //data[filesector-DIRECT_BLOCK_COUNT] = temp
-          //else if (indirect l2)
-            //if(l2 is -1)
-              // freemap_allocate(1, cacheblock.indirectl2_sector)
-              //set all to UNUSED MARKER
-            //get_cache_block(cachebloc.indirectl2_sector)
-            //cache_read_block()
-            //if(data[(file_sector - 253)/128] == UNUSED MARKER)
-              //freemap_allocate(1, that sector on l2)
-              //set all to unused marker
-            //putcacheblock(l2)
-            //getcacheblock(l1)
-            //readcacheblock(l1)
-            //data[file_sector - ((file_sector - 253)/128)*128) - 253] =  temp
-          //cache_put_block(inode)        
-        //}
-          
-
       }
       else if(sector_idx == GAP_MARKER){
-        install_file_sector(inode, offset);
+        if(!install_file_sector(inode, offset)){
+          return 0;
+        }
         sector_idx = byte_to_sector(inode, offset);
         ASSERT(sector_idx != GAP_MARKER && sector_idx != (block_sector_t)-1);
         struct cache_block* cb = cache_get_block(sector_idx, true);
@@ -525,41 +458,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         cache_put_block(cb); 
   
       }
-  
-      // struct cache_block* cb = cache_get_block(sector_idx, true);
-      // void* data = cache_read_block(cb);
-      // memcpy(data +sector_ofs, buffer+bytes_written, chunk_size);
-      // cache_mark_dirty(cb);
-      // cache_put_block(cb); 
-
-
-
-      // if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
-      //   {
-      //     /* Write full sector directly to disk. */
-      //     block_write (fs_device, sector_idx, buffer + bytes_written);
-      //   }
-      // else 
-      //   {
-      //     /* We need a bounce buffer. */
-      //     if (bounce == NULL) 
-      //       {
-      //         bounce = malloc (BLOCK_SECTOR_SIZE);
-      //         if (bounce == NULL)
-      //           break;
-      //       }
-
-      //     /* If the sector contains data before or after the chunk
-      //        we're writing, then we need to read in the sector
-      //        first.  Otherwise we start with a sector of all zeros. */
-      //     if (sector_ofs > 0 || chunk_size < sector_left) 
-      //       block_read (fs_device, sector_idx, bounce);
-      //     else
-      //       memset (bounce, 0, BLOCK_SECTOR_SIZE);
-      //     memcpy (bounce + sector_ofs, buffer + bytes_written, chunk_size);
-      //     block_write (fs_device, sector_idx, bounce);
-      //   }
-
       /* Advance. */
       size -= chunk_size;
       offset += chunk_size;
@@ -594,6 +492,7 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
+  ASSERT(inode->sector != UINT32_MAX && inode->sector != UINT32_MAX - 1);
   struct cache_block* cb = cache_get_block(inode->sector, false);
   struct inode_disk* data = cache_read_block(cb);
   int length = data->length;
@@ -614,33 +513,27 @@ static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir){
   data->isdir = isdir;
 }
 
-static void install_file_sector(struct inode* inode, off_t offset){
-  //inode_disk sector
+static bool install_file_sector(struct inode* inode, off_t offset){
   ASSERT(inode != NULL);
   block_sector_t file_sector = offset / BLOCK_SECTOR_SIZE;
   block_sector_t disk_sector = GAP_MARKER;
-  bool already_held = true;
-  // if(!lock_held_by_current_thread(&freemap_lock)){
-  //   already_held = false;
-  //   lock_acquire(&freemap_lock);
-  // }
-  free_map_allocate(1, &disk_sector);
-  struct cache_block* file_cb = cache_get_block(disk_sector, true);
-  cache_zero_block(file_cb);
-  cache_mark_dirty(file_cb);
-  cache_put_block(file_cb);
+
+  if(!free_map_allocate(1, &disk_sector)){
+    return false;
+  }
   
-  // lock_release(&freemap_lock);
   block_sector_t id_sector = inode->sector;
   
+  // dir
   if(file_sector < DIRECT_BLOCK_COUNT){
     struct cache_block* id_cb = cache_get_block(id_sector, true);
-    struct inode_disk* id_data =  (struct inode_disk*)cache_read_block(id_cb);
+    struct inode_disk* id_data = (struct inode_disk*)cache_read_block(id_cb);
   
     id_data->direct_blocks[file_sector] =  disk_sector;
     cache_mark_dirty(id_cb);
     cache_put_block(id_cb);
   }
+  // l1
   else if(file_sector < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT){
     struct cache_block* id_cb = cache_get_block(id_sector, false);
     struct inode_disk* id_data =  (struct inode_disk*)cache_read_block(id_cb);
@@ -648,7 +541,12 @@ static void install_file_sector(struct inode* inode, off_t offset){
 
     if(!L1_present){
       cache_put_block(id_cb);
-      install_l1_indirect_block(inode, offset);
+
+      // install
+      if(!install_l1_indirect_block(inode, offset)){
+        free_map_release(disk_sector, 1);
+        return false;
+      }
       id_cb = cache_get_block(id_sector, false);
       id_data =  (struct inode_disk*)cache_read_block(id_cb);
     }
@@ -663,8 +561,9 @@ static void install_file_sector(struct inode* inode, off_t offset){
 
     cache_put_block(l1_cb);
     cache_put_block(id_cb);
-
   }
+
+  // l2
   else{
     struct cache_block* id_cb = cache_get_block(id_sector, false);
     ASSERT(id_cb != NULL);
@@ -674,7 +573,11 @@ static void install_file_sector(struct inode* inode, off_t offset){
 
     if(!L2_present){
       cache_put_block(id_cb);
-      install_l2_indirect_block(inode);
+      // install
+      if(!install_l2_indirect_block(inode)){
+        free_map_release(disk_sector, 1);
+        return false;
+      }
       id_cb = cache_get_block(id_sector, false);
       ASSERT(id_cb != NULL);
       id_data =  (struct inode_disk*)cache_read_block(id_cb);
@@ -682,10 +585,9 @@ static void install_file_sector(struct inode* inode, off_t offset){
     }
     ASSERT(id_data->L2_indirect_sector != GAP_MARKER);
 
-
     struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector, false);
     ASSERT(l2_cb != NULL);
-    block_sector_t* l2_data = cache_read_block(l2_cb);
+    block_sector_t* l2_data = cache_read_block(l2_cb); // cast??
     ASSERT(l2_data != NULL);
 
     block_sector_t l2_index = (file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT)/INDIRECT_BLOCK_COUNT;
@@ -695,7 +597,11 @@ static void install_file_sector(struct inode* inode, off_t offset){
 
       cache_put_block(id_cb);
 
-      install_l1_indirect_block(inode, offset);
+      //install
+      if(!install_l1_indirect_block(inode, offset)){
+        free_map_release(disk_sector, 1);
+        return false;
+      }
 
       id_cb = cache_get_block(id_sector, false);
       ASSERT(id_cb != NULL);
@@ -717,143 +623,114 @@ static void install_file_sector(struct inode* inode, off_t offset){
 
     cache_mark_dirty(l1_cb);
     cache_put_block(l1_cb);
+    cache_put_block(l2_cb);
+    cache_put_block(id_cb);
   }
-  if(already_held){
-    // lock_acquire(&freemap_lock);
-  }
+
+  return true;
 }
 
-static void install_l1_indirect_block(struct inode* inode, off_t offset){
-  //NULL index refers to the l1 indirect index block from the inode_disk
-  //Otherwise index refers to the index within the l2 indirect index block
+static bool install_l1_indirect_block(struct inode* inode, off_t offset){
   block_sector_t id_sector = inode->sector;
+
   if((uint32_t)(offset/BLOCK_SECTOR_SIZE) < (DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT)){
-    //GET INODE DISK FROM BUFFER CACHE
     struct cache_block* id_cb = cache_get_block(id_sector, true);
     struct inode_disk* id_data = cache_read_block(id_cb);
     ASSERT(id_data->L1_indirect_sector == GAP_MARKER);
 
-    //INSTALL BLOCK_SECTOR_T TO L1 INDIRECT INDEX BLOCK OF INODE DISK
-    // lock_acquire(&freemap_lock);
-    free_map_allocate(1, &id_data->L1_indirect_sector); //write L1_indirect_sector to inode_disk
+    if(!free_map_allocate(1, &id_data->L1_indirect_sector)){
+      cache_put_block(id_cb);
+      return false;
+    } 
     ASSERT(id_data->L1_indirect_sector != GAP_MARKER && id_data->L1_indirect_sector != (block_sector_t)-1);
-    // lock_release(&freemap_lock);
 
-    //MARK INODE DISK'S CACHE BLOCK AS DIRTY
     cache_mark_dirty(id_cb);
 
-    //GET L1 INDIRECT INDEX BLOCK FROM BUFFER CACHE
     struct cache_block* l1_cb = cache_get_block(id_data->L1_indirect_sector, true);
     block_sector_t* l1_data = cache_read_block(l1_cb);
 
-    //SET ALL BLOCK_SECTOR_T TO GAP_MARKER INSIDE L1 INDIRECT INDEX BLOCK
     for(unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i){
       l1_data[i] = GAP_MARKER;
     }
 
-    //MARK L1 INDIRECT INDEX BLOCK'S CACHE BLOCK AS DIRTY
     cache_mark_dirty(l1_cb);
 
-    //PUT BACK L1 INDIRECT INDEX BLOCK'S CACHE BLOCK 
     cache_put_block(l1_cb);
-
-    //PUT BACK INODE DISK'S CACHE BLOCK
     cache_put_block(id_cb);
   }  
   else{
-    //GET INODE DISK FROM BUFFER CACHE
     struct cache_block* id_cb = cache_get_block(id_sector, false);
     struct inode_disk* id_data = cache_read_block(id_cb);
 
-    //CHECK IF L2 INDIRECT INDEX BLOCK IS PRESENT
-    bool l2_present = id_data->L2_indirect_sector;
+    bool l2_present = id_data->L2_indirect_sector != GAP_MARKER; // lke this in the other place?
     
-    //PUT BACK INODE DISK'S CACHE BLOCK 
     cache_put_block(id_cb);
 
-    //INSTALL L2 INDIRECT INDEX BLOCK TO INODE DISK
     if(!l2_present){
-      install_l2_indirect_block(inode);
+      if(!install_l2_indirect_block(inode)){
+        return false;
+      }
     }
 
-    //GET INODE DISK CACHE BLOCK
     id_cb = cache_get_block(id_sector, false);
     id_data = cache_read_block(id_cb);
 
-    //GET L2 INDIRECT INDEX BLOCK FROM BUFFER CACHE
     struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector, true);
     block_sector_t* l2_data = cache_read_block(l2_cb);
 
-    //CALCULATE L2 INDEX WITHIN L2 INDIRECT INDEX BLOCK
     block_sector_t file_sector = offset / BLOCK_SECTOR_SIZE;
     off_t l2_index = (file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT)/INDIRECT_BLOCK_COUNT;
     ASSERT(l2_data[l2_index] == GAP_MARKER);  
 
-    //INSTALL BLOCK_SECTOR_T TO L2_INDEX OF L2 INDIRECT INDEX BLOCK
-    // lock_acquire(&freemap_lock);
-    free_map_allocate(1, &l2_data[l2_index]);
-    // lock_release(&freemap_lock);
+    if(!free_map_allocate(1, &l2_data[l2_index])){
+      cache_put_block(l2_cb);
+      cache_put_block(id_cb);
+      return false;
+    }
 
-    //MARK L2 INDIRECT INDEX BLOCK'S CACHE BLOCK AS DIRTY
     cache_mark_dirty(l2_cb);
 
-    //GET L1 INDIRECT INDEX BLOCK FROM BUFFER CACHE
     struct cache_block* l1_cb = cache_get_block(l2_data[l2_index], true);
     block_sector_t* l1_data = cache_read_block(l1_cb);
 
-    //SET ALL BLOCK_SECTOR_T IN L1 INDIRECT INDEX BLOCK TO GAP_MARKER
     for(unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i){
       l1_data[i] = GAP_MARKER;
     }
     cache_mark_dirty(l1_cb);
 
-    //PUT BACK L1 INDIRECT BLOCK'S CACHE BLOCK 
     cache_put_block(l1_cb);
-
-    //PUT BACK L2 INDIRECT BLOCK'S CACHE BLOCK 
     cache_put_block(l2_cb);
-
-    //PUT BACK INODE DISK'S CACHE BLOCK 
     cache_put_block(id_cb);
-
-
   }
+  return true;
 }
 
 
-static void install_l2_indirect_block(struct inode* inode){
+static bool install_l2_indirect_block(struct inode* inode){
   ASSERT(inode != NULL);
   block_sector_t id_sector = inode->sector;
-  //GET INODE DISK's CACHE BLOCK
   struct cache_block* id_cb = cache_get_block(id_sector, true);
   struct inode_disk* id_data = cache_read_block(id_cb);
   ASSERT(id_data->L2_indirect_sector == GAP_MARKER);
 
-  //INSTALL BLOCK_SECTOR_T TO L2 INDIRECT INDEX BLOCK IN INODE DISK
-  // lock_acquire(&freemap_lock);
-  free_map_allocate(1, &id_data->L2_indirect_sector);
-  // lock_release(&freemap_lock);
+  if(!free_map_allocate(1, &id_data->L2_indirect_sector)){
+    cache_put_block(id_cb);
+    return false;
+  }
 
-  //MARK INODE DISK'S CACHE BLOCK AS DIRTY
   cache_mark_dirty(id_cb);
   
-  //GET L2 INDIRECT INDEX BLOCK'S CACHE BLOCK
   struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector ,true);
   block_sector_t* l2_data = cache_read_block(l2_cb);
 
-  //SET ALL BLOCK_SECTOR_T IN L2 INDIRECT INDEX BLOCK TO GAP_MARKER
   for(unsigned int i = 0; i < INDIRECT_BLOCK_COUNT; ++i){
     l2_data[i] = GAP_MARKER;
   }
 
-  //MARK L2 INDIRECT INDEX BLOCK'S CACHE BLOCK AS DIRTY
   cache_mark_dirty(l2_cb);
-
-  //PUT BACK L2 INDIRECT INDEX BLOCK'S CACHE BLOCK
   cache_put_block(l2_cb);
-
-  //PUT BACK INODE DISK'S CACHE BLOCK
   cache_put_block(id_cb);
+  return true;
 }
 
 bool is_dir(struct inode * inode){
