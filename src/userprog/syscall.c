@@ -319,8 +319,12 @@ syscall_handler(struct intr_frame *f)
             f->eax = -1;
             exit(-1);
           }
+          count += temp_bytes_read;
         }
-        count += temp_bytes_read;
+        else{
+          break;
+        }
+
       }
       bytes_read = count;
 
