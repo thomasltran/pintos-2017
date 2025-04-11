@@ -996,6 +996,7 @@ syscall_handler(struct intr_frame *f)
       if (!file_desc->is_dir)
       {
         f->eax = 0;
+        lock_release(&fs_lock);
         break;
       }
 
