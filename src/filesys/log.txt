@@ -1,8 +1,8 @@
-rm -f tmp-tests-filesys-extended-dir-rmdir.dsk
-pintos-mkdisk tmp-tests-filesys-extended-dir-rmdir.dsk --filesys-size=2
-pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-rmdir.dsk -p tests/filesys/extended/dir-rmdir -a dir-rmdir -p tests/filesys/extended/tar -a tar -- -q  -f run dir-rmdir < /dev/null 2> tests/filesys/extended/dir-rmdir.errors > tests/filesys/extended/dir-rmdir.output
-pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-rmdir.dsk -g fs.tar -a tests/filesys/extended/dir-rmdir.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-rmdir-persistence.errors > tests/filesys/extended/dir-rmdir-persistence.output
-rm -f tmp-tests-filesys-extended-dir-rmdir.dsk
-perl -I../.. ../../tests/filesys/extended/dir-rmdir.ck tests/filesys/extended/dir-rmdir tests/filesys/extended/dir-rmdir.result
-FAIL tests/filesys/extended/dir-rmdir
-run: rmdir "a": FAILED
+rm -f tmp-tests-filesys-extended-dir-vine.dsk
+pintos-mkdisk tmp-tests-filesys-extended-dir-vine.dsk --filesys-size=2
+pintos -v -k -T 150 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-vine.dsk -p tests/filesys/extended/dir-vine -a dir-vine -p tests/filesys/extended/tar -a tar -- -q  -f run dir-vine
+
+
+rm -f tmp-tests-filesys-extended-grow-dir-lg.dsk
+pintos-mkdisk tmp-tests-filesys-extended-grow-dir-lg.dsk --filesys-size=2
+pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-grow-dir-lg.dsk -p tests/filesys/extended/grow-dir-lg -a grow-dir-lg -p tests/filesys/extended/tar -a tar -- -q  -f run grow-dir-lg

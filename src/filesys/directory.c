@@ -255,15 +255,18 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
 
+
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
       if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
       {
         strlcpy(name, e.name, NAME_MAX + 1);
+        // printf("dir pos %d\n", dir->pos);
         return true;
       }
     }
+
   return false;
 }
 
@@ -450,7 +453,7 @@ check_empty (struct inode * inode)
   while (inode_read_at (inode, &e, sizeof e, pos) == sizeof e) 
     {
       pos += sizeof e;
-      // printf("critera: %s\n", e.name);
+      // printf("inode: %u: %s\n", inode_get_inumber(inode),e.name);
       if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
       {
         empty = false;

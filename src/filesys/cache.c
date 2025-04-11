@@ -80,6 +80,7 @@ void cache_flush(void)
 
 struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
 {
+    ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
     struct cache_block *cb = find_block(sector);
     // cb lock still held after find_block
 

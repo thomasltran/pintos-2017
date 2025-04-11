@@ -480,6 +480,7 @@ syscall_handler(struct intr_frame *f)
         file = filesys_open(resolved_path, cur->curr_dir);
       }
 
+      // printf("sysopen: %d %s\n", inode_get_inumber(inode), resolved_path);
       free((char *)resolved_path);
       dir_close(resolved_path_cwd);
 
@@ -541,6 +542,7 @@ syscall_handler(struct intr_frame *f)
         ASSERT(file_desc->file != NULL);
         file_seek(file_desc->file, 0); // reset file position to 0 (start of file)
       }
+      // printf("end sysopen fd: %d\n", fd);
       lock_release(&fs_lock);
       f->eax = fd;
       break;
@@ -827,23 +829,7 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      struct file_desc *fd_table = cur->fd_table;
-      bool curr_dir_open = false;
-      if (fd_table != NULL)
-      {
-        for (int i = FD_MIN; i < FD_MAX; i++)
-        {
-          struct file_desc *file_desc = &fd_table[i];
-          if (file_desc->dir == cur->curr_dir)
-          {
-            curr_dir_open = true;
-          }
-        }
-      }
-      if (!curr_dir_open)
-      {
-        dir_close(cur->curr_dir);
-      }
+      dir_close(cur->curr_dir);
       cur->curr_dir = new_dir;
 
       dir_close(resolved_path_cwd);
@@ -897,8 +883,6 @@ syscall_handler(struct intr_frame *f)
       struct inode *cwd_inode = dir_get_inode(resolved_path_cwd);
       block_sector_t cwd_sector = inode_get_inumber(cwd_inode);
 
-      // printf("mkdir: %s\n", resolved_path);
-
       if (!dir_create(sector, 16, cwd_sector))
       {
         free(resolved_path);
@@ -920,6 +904,8 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
         break;
       }
+
+      // printf("mkdir: %d, %s\n", sector, resolved_path);
 
       free(resolved_path);
       dir_close(resolved_path_cwd);
@@ -948,6 +934,7 @@ syscall_handler(struct intr_frame *f)
       lock_acquire(&fs_lock);
 
       struct file_desc *file_desc = &cur->fd_table[fd];
+      // printf("readdr: %d\n", fd);
 
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || (file_desc->file == NULL && file_desc->dir == NULL))
       {
@@ -964,18 +951,20 @@ syscall_handler(struct intr_frame *f)
       }
 
       ASSERT(file_desc->dir != NULL);
-      struct dir *dir = dir_reopen(file_desc->dir);
+      struct dir *dir = file_desc->dir;
+      // check_empty(dir_get_inode(dir));
       // reopen bc dir is closed at the end, don't interfere with other open
 
       if (!dir_readdir(dir, (char *)buffer))
       {
-        dir_close(dir);
+        // dir_close(dir);
         f->eax = 0;
         lock_release(&fs_lock);
         break;
       }
+      // printf("readdr end: %s\n", (char *)buffer);
 
-      dir_close(dir);
+      // dir_close(dir);
       lock_release(&fs_lock);
       f->eax = 1;
       break;
