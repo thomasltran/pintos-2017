@@ -66,7 +66,6 @@ bool filesys_create(const char *name, off_t initial_size, struct dir *cwd)
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
 
-  // check_empty(dir);
   // printf("file sys create end\n");
 
 

@@ -555,6 +555,7 @@ syscall_handler(struct intr_frame *f)
         exit(0);
       }
       const char *filename = buffer_check(f, 0);
+      struct thread *cur = thread_current();
 
       lock_acquire(&fs_lock);
       char *resolved_path = NULL;
@@ -584,9 +585,20 @@ syscall_handler(struct intr_frame *f)
 
       if (is_dir(inode))
       {
-        bool removable = dir_removable(inode);
-        if (removable)
+        struct file_desc *fd_table = cur->fd_table;
+        bool curr_dir_open = false;
+        if (fd_table != NULL)
         {
+          for (int i = FD_MIN; i < FD_MAX; i++)
+          {
+            struct file_desc *file_desc = &fd_table[i];
+            if (file_desc->is_dir && dir_get_inode(file_desc->dir) == inode)
+            {
+              curr_dir_open = true;
+            }
+          }
+        }
+        if(!curr_dir_open){
           success = dir_remove(resolved_path_cwd, resolved_path);
         }
       }
@@ -815,7 +827,23 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      dir_close(cur->curr_dir);
+      struct file_desc *fd_table = cur->fd_table;
+      bool curr_dir_open = false;
+      if (fd_table != NULL)
+      {
+        for (int i = FD_MIN; i < FD_MAX; i++)
+        {
+          struct file_desc *file_desc = &fd_table[i];
+          if (file_desc->dir == cur->curr_dir)
+          {
+            curr_dir_open = true;
+          }
+        }
+      }
+      if (!curr_dir_open)
+      {
+        dir_close(cur->curr_dir);
+      }
       cur->curr_dir = new_dir;
 
       dir_close(resolved_path_cwd);
@@ -832,9 +860,6 @@ syscall_handler(struct intr_frame *f)
         exit(0);
       }
       const char *file = buffer_check(f, 0);
-      struct thread *cur = thread_current();
-      struct dir *cwd = cur->curr_dir;
-      ASSERT(cwd != NULL);
 
       char *resolved_path = NULL;
       struct dir *resolved_path_cwd = NULL;

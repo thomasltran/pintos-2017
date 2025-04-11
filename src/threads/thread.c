@@ -523,7 +523,6 @@ bool dir_removable(struct inode *inode)
     struct thread *t = list_entry(e, struct thread, allelem);
     if (t->curr_dir != NULL && dir_get_inode(t->curr_dir) == inode)
     {
-      printf("inodeer\n");
       return false;
     }
   }

@@ -227,8 +227,9 @@ dir_remove (struct dir *dir, const char *name)
   inode = inode_open (e.inode_sector);
   if (inode == NULL)
     goto done;
-  
-  if(!check_empty(inode)){
+
+  if (!check_empty(inode) || !dir_removable(inode))
+  {
     goto done;
   }
 
@@ -257,11 +258,11 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
       dir->pos += sizeof e;
-      if (e.in_use)
-        {
-          strlcpy (name, e.name, NAME_MAX + 1);
-          return true;
-        } 
+      if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
+      {
+        strlcpy(name, e.name, NAME_MAX + 1);
+        return true;
+      }
     }
   return false;
 }
@@ -276,10 +277,34 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
    {
       return false;
    }
+   char *filename_cpy = NULL;
 
    strlcpy(cpy, path, PATH_MAX + 1);
    struct dir *curr_dir = NULL;
    struct thread *cur = thread_current();
+
+   if (strlen(cpy) == 0)
+   {
+     free(cpy);
+     return false;
+   }
+
+   if (strcmp(cpy, "/") == 0)
+   {
+     curr_dir = dir_open_root();
+     filename_cpy = malloc(NAME_MAX + 1);
+     if (filename_cpy == NULL)
+     {
+       dir_close(curr_dir);
+       free(cpy);
+       return false;
+     }
+     strlcpy(filename_cpy, ".", NAME_MAX + 1);
+     *filename_ret = filename_cpy;
+     *cwd = curr_dir;
+     free(cpy);
+     return true;
+   }
 
    if (cpy[0] == '/')
    {
@@ -291,6 +316,57 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
    }
 
    ASSERT(curr_dir != NULL);
+
+   if (strcmp(cpy, ".") == 0)
+   {
+     filename_cpy = malloc(NAME_MAX + 1);
+     if (filename_cpy == NULL)
+     {
+       dir_close(curr_dir);
+       free(cpy);
+       return false;
+     }
+     strlcpy(filename_cpy, ".", NAME_MAX + 1);
+     *filename_ret = filename_cpy;
+     *cwd = curr_dir;
+     free(cpy);
+     return true;
+   }
+
+   if (strcmp(cpy, "..") == 0)
+   {
+     struct inode *inode = NULL;
+     // get ref to .., parent of ..
+     if (!dir_lookup(curr_dir, "..", &inode))
+     {
+       dir_close(curr_dir);
+       free(cpy);
+       return false;
+     }
+
+     dir_close(curr_dir);
+     // open ../..
+     curr_dir = dir_open(inode);
+     if (curr_dir == NULL)
+     {
+       free(cpy);
+       return false;
+     }
+
+     filename_cpy = malloc(NAME_MAX + 1);
+     if (filename_cpy == NULL)
+     {
+       dir_close(curr_dir);
+       free(cpy);
+       return false;
+     }
+     // should refer to itself, or .. from ../..
+     strlcpy(filename_cpy, ".", NAME_MAX + 1); // do we want this ..?
+     *filename_ret = filename_cpy;
+     *cwd = curr_dir;
+     free(cpy);
+     return true;
+   }
 
    char *token, *save_ptr;
    char *filename = NULL;
@@ -342,8 +418,6 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
       token = next;
    }
 
-   char *filename_cpy = NULL;
-
    if(filename == NULL || strlen(filename) > NAME_MAX + 1){
       dir_close(curr_dir);
       free(cpy);
@@ -371,18 +445,18 @@ check_empty (struct inode * inode)
 {
   struct dir_entry e;
   off_t pos = 0;
+  bool empty = true;
 
   while (inode_read_at (inode, &e, sizeof e, pos) == sizeof e) 
     {
       pos += sizeof e;
       // printf("critera: %s\n", e.name);
       if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
-        { 
-          return false;
-        } 
+      {
+        empty = false;
+      }
     }
-  // printf("empty\n");
-  return true;
+    return empty;
 }
 /*
 /usr/bin/ls
