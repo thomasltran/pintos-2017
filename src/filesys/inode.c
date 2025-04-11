@@ -63,23 +63,24 @@ struct inode
 static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
-  ASSERT (inode != NULL);
-  int length = -1;
-  // block_sector_t start = UINT32_MAX;
-  struct cache_block* cb = cache_get_block(inode->sector, false);
-  
+  ASSERT(inode != NULL);
+
+  struct cache_block *cb = cache_get_block(inode->sector, false);
   struct inode_disk* data = (struct inode_disk*)cache_read_block(cb);
-  length = data->length;
-  // start = data->direct_blocks[0];
+  off_t length = data->length;
+
   block_sector_t pos_sector = UINT32_MAX;
-  // cache_put_block(cb);
-  // printf("pos: %d, length: %d\n", pos, length);
+
   if (length > 0 && (pos/BLOCK_SECTOR_SIZE <= (length-1)/BLOCK_SECTOR_SIZE)){
 
     block_sector_t file_sector = pos / BLOCK_SECTOR_SIZE;
+
+    // dir
     if(file_sector < DIRECT_BLOCK_COUNT){
       pos_sector = data->direct_blocks[file_sector];
     }
+
+    // indir
     else if(file_sector < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT){
       if(data->L1_indirect_sector == GAP_MARKER){
         pos_sector = GAP_MARKER;
@@ -87,33 +88,35 @@ byte_to_sector (const struct inode *inode, off_t pos)
       else{
         struct cache_block* cb_indirectL1 = cache_get_block(data->L1_indirect_sector, false);
         block_sector_t* indirect1_sector = cache_read_block(cb_indirectL1);
-        pos_sector = indirect1_sector[file_sector -DIRECT_BLOCK_COUNT];  
+        pos_sector = indirect1_sector[file_sector - DIRECT_BLOCK_COUNT];
         cache_put_block(cb_indirectL1);
-  
       }
-
     }
+
+    // doubly
     else{
       if(data->L2_indirect_sector == GAP_MARKER){
         pos_sector = GAP_MARKER;
       }
       else{
+        off_t doubly_indirect = file_sector - 123 - 128; // remove direct and indirect overhead from equation
+        off_t doubly_indirect_index = doubly_indirect / 128;
+        off_t indirect_index = doubly_indirect % 128;
+
         struct cache_block* cb_indirectL2 = cache_get_block(data->L2_indirect_sector, false);
         block_sector_t* indirectL2_data = cache_read_block(cb_indirectL2);
-        block_sector_t indirectL1_sector = indirectL2_data[(file_sector - DIRECT_BLOCK_COUNT - INDIRECT_BLOCK_COUNT)/INDIRECT_BLOCK_COUNT]; 
+
+        block_sector_t indirectL1_sector = indirectL2_data[doubly_indirect_index];
+
         if(indirectL1_sector == GAP_MARKER){
           pos_sector = GAP_MARKER;
         }
         else{
           struct cache_block* cb_indirectL1 = cache_get_block(indirectL1_sector, false);
           block_sector_t* indirect1_sector = cache_read_block(cb_indirectL1);
-          pos_sector = indirect1_sector[file_sector -DIRECT_BLOCK_COUNT];  
+          pos_sector = indirect1_sector[indirect_index];  
           cache_put_block(cb_indirectL1);
-  
-
-
         }
-        // pos_sector = indirectL2_sector[file_sector -DIRECT_BLOCK_COUNT];  
         cache_put_block(cb_indirectL2);
       }
     }
