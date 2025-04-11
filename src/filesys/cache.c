@@ -58,9 +58,11 @@ void cache_init(void)
         list_push_front(&lru_list, &cb->lru_elem);
     }
 
-    thread_create("flush-daemon", -20, flush_daemon, NULL);
+    // thread_create("flush-daemon", -20, flush_daemon, NULL);
 }
 
+// print all the things we dirty flush and double check after persis
+// have the assert for free map slots
 void cache_flush(void)
 {
     lock_acquire(&buffer_cache_lock);
@@ -70,6 +72,7 @@ void cache_flush(void)
         lock_acquire(&cb->lock);
         if (cb->dirty)
         {
+            // printf("wb sector: %u\n", cb->sector);
             block_write(fs_device, cb->sector, cb->data);
             cb->dirty = false;
         }
@@ -149,6 +152,7 @@ static struct cache_block *find_block(block_sector_t sector)
 
                 if (cb->dirty)
                 {
+                    // printf("wb sector evict: %u\n", cb->sector);
                     block_write(fs_device, cb->sector, cb->data);
                 }
 
@@ -173,7 +177,7 @@ void cache_put_block(struct cache_block *block)
     lock_acquire(&buffer_cache_lock);
     lock_acquire(&block->lock);
 
-    list_push_front(&lru_list, &block->lru_elem);
+    list_push_back(&lru_list, &block->lru_elem);
 
     if (block->exclusive)
     {

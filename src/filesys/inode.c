@@ -7,6 +7,8 @@
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
+#include <stdio.h>
+
 // #include "lib/stdio.h"
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
@@ -113,17 +115,11 @@ byte_to_sector (const struct inode *inode, off_t pos)
         }
         // pos_sector = indirectL2_sector[file_sector -DIRECT_BLOCK_COUNT];  
         cache_put_block(cb_indirectL2);
-
-
-
       }
-
-
     }
-    // return start + pos / BLOCK_SECTOR_SIZE;
     cache_put_block(cb);
+    printf("pos sector from byte to sector %u\n", pos_sector);
     return pos_sector;
-
   }
   else{
     cache_put_block(cb);
@@ -162,15 +158,7 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
   disk_inode = calloc (1, sizeof *disk_inode);
   if (disk_inode != NULL)
     {
-      // size_t sectors = bytes_to_sectors (length);
-      // disk_inode->length = length;
-      // disk_inode->magic = INODE_MAGIC;
-
       init_inode_disk(disk_inode, length, isdir);
-      // for(int i = 0; i < 123; ++i){
-      //   printf("i = %d\n", i);
-      //   ASSERT(disk_inode->direct_blocks[i] == UNUSED_MARKER);
-      // }
 
       ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
       struct cache_block* cb = cache_get_block(sector, true);
@@ -180,33 +168,6 @@ inode_create (block_sector_t sector, off_t length, bool isdir)
 
       memcpy(data, disk_inode, BLOCK_SECTOR_SIZE);
       cache_put_block(cb);
-      // lock_acquire(&freemap_lock);
-      // if (free_map_allocate (sectors, &disk_inode->start)) 
-      //   {
-      //     struct cache_block* cb = cache_get_block(sector, true);
-      //     cache_zero_block(cb);
-      //     cache_mark_dirty(cb);
-      //     void* data = cache_read_block(cb);
-
-      //     memcpy(data, disk_inode, BLOCK_SECTOR_SIZE);
-      //     cache_put_block(cb);
-      //     // block_write (fs_device, sector, disk_inode);
-      //     if (sectors > 0) 
-      //       {
-      //         // static char zeros[BLOCK_SECTOR_SIZE];
-      //         size_t i;
-              
-      //         for (i = 0; i < sectors; i++){
-      //           cb = cache_get_block(disk_inode->start + i, true);
-      //           cache_zero_block(cb);
-      //           cache_mark_dirty(cb);
-      //           cache_put_block(cb);
-      //           // block_write (fs_device, disk_inode->start + i, zeros);
-      //         }
-      //       }
-      //     success = true; 
-      //   }
-      // lock_release(&freemap_lock);
  
       free (disk_inode);
       success = true;

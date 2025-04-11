@@ -38,6 +38,7 @@ void
 filesys_done (void) 
 {
   free_map_close ();
+  printf("shutting down cache\n");
   cache_flush();
 }
 

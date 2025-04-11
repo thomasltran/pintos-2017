@@ -1,16 +1,32 @@
-rm -f tmp-tests-filesys-extended-dir-mkdir.dsk
-pintos-mkdisk tmp-tests-filesys-extended-dir-mkdir.dsk --filesys-size=2
-pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-mkdir.dsk -p tests/filesys/extended/dir-mkdir -a dir-mkdir -p tests/filesys/extended/tar -a tar -- -q  -f run dir-mkdir < /dev/null 2> tests/filesys/extended/dir-mkdir.errors > tests/filesys/extended/dir-mkdir.output
-pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-mkdir.dsk -g fs.tar -a tests/filesys/extended/dir-mkdir.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-mkdir-persistence.errors > tests/filesys/extended/dir-mkdir-persistence.output
-rm -f tmp-tests-filesys-extended-dir-mkdir.dsk
-perl -I../.. ../../tests/filesys/extended/dir-mkdir.ck tests/filesys/extended/dir-mkdir tests/filesys/extended/dir-mkdir.result
-pass tests/filesys/extended/dir-mkdir
+rm -f tmp-tests-filesys-extended-dir-empty-name.dsk
+pintos-mkdisk tmp-tests-filesys-extended-dir-empty-name.dsk --filesys-size=2
+pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-empty-name.dsk -p tests/filesys/extended/dir-empty-name -a dir-empty-name -p tests/filesys/extended/tar -a tar -- -q  -f run dir-empty-name < /dev/null 2> tests/filesys/extended/dir-empty-name.errors 
+
+> tests/filesys/extended/dir-empty-name.output
 
 
+pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-empty-name.dsk -g fs.tar -a tests/filesys/extended/dir-empty-name.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-empty-name-persistence.errors
 
-rm -f tmp-tests-filesys-extended-dir-mkdir.dsk
-pintos-mkdisk tmp-tests-filesys-extended-dir-mkdir.dsk --filesys-size=2
-pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-mkdir.dsk -p tests/filesys/extended/dir-mkdir -a dir-mkdir -p tests/filesys/extended/tar -a tar -- -q  -f run dir-mkdir < /dev/null 2> tests/filesys/extended/dir-mkdir.errors >& out.txt
-pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-mkdir.dsk -g fs.tar -a tests/filesys/extended/dir-mkdir.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-mkdir-persistence.errors > tests/filesys/extended/dir-mkdir-persistence.output
-rm -f tmp-tests-filesys-extended-dir-mkdir.dsk
->& ../out.txt
+
+rm -f tmp-tests-filesys-extended-dir-empty-name.dsk
+perl -I../.. ../../tests/filesys/extended/dir-empty-name.ck tests/filesys/extended/dir-empty-name tests/filesys/extended/dir-empty-name.result
+pass tests/filesys/extended/dir-empty-name
+perl -I../.. ../../tests/filesys/extended/dir-empty-name-persistence.ck tests/filesys/extended/dir-empty-name-persistence tests/filesys/extended/dir-empty-name-persistence.result
+FAIL tests/filesys/extended/dir-empty-name-persistence
+Kernel panic in file system extraction run: PANIC from CPU 0 at ../../devices/block.c:113 in check_sector(): Access past end of device hdb1 (sector=3221567364, size=4096)
+Call stack: 0xc002fc85 0xc002fd65 0xc0026cd9 0xc00384d2 0xc0037687 0xc003594a 0xc0034a84 0xc00220bc 0xc00223cc 0x804b023 0x80482be 0x804822b 0x804b540 0x8048aa1
+Translation of call stack:
+0xc002fc85: debug_backtrace_with_lock (.../../lib/kernel/debug.c:55)
+0xc002fd65: debug_panic (...ug.c:89 (discriminator 4))
+0xc0026cd9: block_read (...../../devices/block.c:113)
+0xc00384d2: cache_read_block (...../../filesys/cache.c:202)
+0xc0037687: inode_write_at (...../../filesys/inode.c:456)
+0xc003594a: file_write (...d/../../filesys/file.c:98)
+0xc0034a84: write (..../userprog/syscall.c:1110)
+0xc00220bc: intr_handler (..../threads/interrupt.c:353)
+0xc00223cc: intr_entry (threads/intr-stubs.o:?)
+0x0804b023: (unknown)
+0x080482be: (unknown)
+0x0804822b: (unknown)
+0x0804b540: (unknown)
+0x08048aa1: (unknown)
