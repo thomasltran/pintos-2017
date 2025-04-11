@@ -167,6 +167,7 @@ dir_lookup (const struct dir *dir, const char *name,
 bool
 dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
 {
+  // printf("dir add: %s, added to dir: %u\n", name, inode_get_inumber(dir_get_inode(dir)));
   struct dir_entry e;
   off_t ofs;
   bool success = false;
@@ -226,6 +227,10 @@ dir_remove (struct dir *dir, const char *name)
   inode = inode_open (e.inode_sector);
   if (inode == NULL)
     goto done;
+  
+  if(!check_empty(inode)){
+    goto done;
+  }
 
   /* Erase directory entry. */
   e.in_use = false;
@@ -359,6 +364,25 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 
    free(cpy);
    return true;
+}
+
+bool
+check_empty (struct inode * inode)
+{
+  struct dir_entry e;
+  off_t pos = 0;
+
+  while (inode_read_at (inode, &e, sizeof e, pos) == sizeof e) 
+    {
+      pos += sizeof e;
+      // printf("critera: %s\n", e.name);
+      if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
+        { 
+          return false;
+        } 
+    }
+  // printf("empty\n");
+  return true;
 }
 /*
 /usr/bin/ls

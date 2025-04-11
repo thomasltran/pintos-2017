@@ -165,6 +165,7 @@ void thread_exit_ap (void) NO_RETURN;
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+bool dir_removable(struct inode *inode);
 int thread_get_nice (void);
 void thread_set_nice (int);
 

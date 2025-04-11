@@ -57,12 +57,18 @@ bool filesys_create(const char *name, off_t initial_size, struct dir *cwd)
   else{
     dir = cwd;
   }
+
+  // printf("filesys create: %s, added to dir: %u\n", name, inode_get_inumber(dir_get_inode(dir)));
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, false)
                   && dir_add (dir, name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
+
+  // check_empty(dir);
+  // printf("file sys create end\n");
+
 
   // if from syscall, caller closes dir themself
   if (cwd == NULL)
@@ -107,11 +113,21 @@ filesys_open(const char *name, struct dir *cwd)
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 bool
-filesys_remove (const char *name) 
+filesys_remove (const char *name, struct dir *cwd)
 {
-  struct dir *dir = dir_open_root ();
+  struct dir *dir = NULL;
+  if (cwd == NULL)
+  {
+    dir = dir_open_root();
+  }
+  else{
+    dir = cwd;
+  }
   bool success = dir != NULL && dir_remove (dir, name);
-  dir_close (dir); 
+  if (cwd == NULL)
+  {
+    dir_close(dir);
+  }
 
   return success;
 }

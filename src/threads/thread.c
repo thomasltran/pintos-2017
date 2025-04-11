@@ -515,6 +515,21 @@ thread_foreach (thread_action_func *func, void *aux)
   spinlock_release (&all_lock);
 }
 
+bool dir_removable(struct inode *inode)
+{
+
+  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread *t = list_entry(e, struct thread, allelem);
+    if (t->curr_dir != NULL && dir_get_inode(t->curr_dir) == inode)
+    {
+      printf("inodeer\n");
+      return false;
+    }
+  }
+  return true;
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice)

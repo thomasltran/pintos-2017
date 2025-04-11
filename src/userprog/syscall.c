@@ -550,11 +550,51 @@ syscall_handler(struct intr_frame *f)
         f->eax = 0;
         exit(0);
       }
-      const char *file = buffer_check(f, 0);
+      const char *filename = buffer_check(f, 0);
 
       lock_acquire(&fs_lock);
-      f->eax = filesys_remove(file) ? 1 : 0;
-      free((char*)file);
+      char *resolved_path = NULL;
+      struct dir *resolved_path_cwd = NULL;
+      if (!resolve_path((char *)filename, &resolved_path, &resolved_path_cwd))
+      {
+        free((char *)filename);
+        f->eax = 0;
+        lock_release(&fs_lock);
+        break;
+      }
+
+      free((char *)filename);
+
+      struct inode *inode = NULL;
+      // create for dir or file should've added it alr
+      if (!dir_lookup(resolved_path_cwd, resolved_path, &inode))
+      {
+        dir_close(resolved_path_cwd);
+        free(resolved_path);
+        f->eax = 0;
+        lock_release(&fs_lock);
+        break;
+      }
+
+      bool success = false;
+
+      if (is_dir(inode))
+      {
+        bool removable = dir_removable(inode);
+        if (removable)
+        {
+          success = dir_remove(resolved_path_cwd, resolved_path);
+        }
+      }
+      else
+      {
+        success = filesys_remove(resolved_path, resolved_path_cwd);
+      }
+
+      free((char *)resolved_path);
+      dir_close(resolved_path_cwd);
+
+      f->eax = success;
       lock_release(&fs_lock);
 
       // go thru readdir make sure not the same as cwd and its .. and . only
@@ -827,6 +867,8 @@ syscall_handler(struct intr_frame *f)
 
       struct inode *cwd_inode = dir_get_inode(resolved_path_cwd);
       block_sector_t cwd_sector = inode_get_inumber(cwd_inode);
+
+      // printf("mkdir: %s\n", resolved_path);
 
       if (!dir_create(sector, 16, cwd_sector))
       {
