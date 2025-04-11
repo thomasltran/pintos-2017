@@ -423,6 +423,8 @@ syscall_handler(struct intr_frame *f)
         f->eax = filesys_create(resolved_path, initial_size, resolved_path_cwd) ? 1 : 0;
       }
       free((char *)resolved_path);
+      
+      // check_empty(dir_get_inode(resolved_path_cwd));
       dir_close(resolved_path_cwd);
       lock_release(&fs_lock);
       break;
@@ -477,7 +479,7 @@ syscall_handler(struct intr_frame *f)
       }
       else
       {
-        file = filesys_open(resolved_path, cur->curr_dir);
+        file = filesys_open(resolved_path, resolved_path_cwd);
       }
 
       // printf("sysopen: %d %s\n", inode_get_inumber(inode), resolved_path);
