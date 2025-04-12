@@ -49,6 +49,7 @@
 #include "devices/ide.h"
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
+#include "filesys/directory.h"
 #endif
 #include "lib/kernel/x86.h"
 #include "lib/atomic-ops.h"
@@ -169,6 +170,7 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+  thread_current()->curr_dir = dir_open_root();
 #endif
   
   /* start other processors */

@@ -38,7 +38,7 @@ static struct spinlock all_lock;
 static struct thread *initial_thread;
 
 // global lock for fs
-struct lock fs_lock;
+// struct lock fs_lock;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
@@ -86,7 +86,7 @@ thread_init (void)
   list_init(&bcpu->sq.sleep_list);
   spinlock_init (&bcpu->rq.lock);
   spinlock_init(&bcpu->sq.lock);
-  lock_init(&fs_lock);
+  // lock_init(&fs_lock);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_boot_thread (initial_thread, bcpu);
@@ -515,6 +515,20 @@ thread_foreach (thread_action_func *func, void *aux)
   spinlock_release (&all_lock);
 }
 
+bool dir_removable(struct inode *inode)
+{
+
+  for (struct list_elem *e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e))
+  {
+    struct thread *t = list_entry(e, struct thread, allelem);
+    if (t->curr_dir != NULL && dir_get_inode(t->curr_dir) == inode)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice)
@@ -652,6 +666,7 @@ init_thread (struct thread *t, const char *name, int nice)
 #ifdef USERPROG
   list_init(&t->ps_list);
   t->fd_table = NULL;
+  t->curr_dir = NULL;
 #endif
 }
 

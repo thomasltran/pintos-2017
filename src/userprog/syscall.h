@@ -8,6 +8,6 @@
 
 void syscall_init (void);
 void exit(int status); // declared here for use in exception.c
-extern struct lock fs_lock; // global filesys lock
+// extern struct lock fs_lock; // global filesys lock
 
 #endif /* userprog/syscall.h */

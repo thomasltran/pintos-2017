@@ -25,6 +25,7 @@ struct cache_block {
 
 static struct cache_block *find_block(block_sector_t sector);
 static struct lock buffer_cache_lock;
+static struct lock lru_lock;
 
 static struct cache_block cache[CACHE_SIZE];
 static struct list lru_list;
@@ -42,6 +43,7 @@ void cache_init(void)
 {
     list_init(&lru_list);
     lock_init(&buffer_cache_lock);
+    lock_init(&lru_lock);
 
     for (size_t i = 0; i < CACHE_SIZE; i++)
     {
@@ -80,6 +82,7 @@ void cache_flush(void)
 
 struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
 {
+    ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
     struct cache_block *cb = find_block(sector);
     // cb lock still held after find_block
 
@@ -101,10 +104,6 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
     }
 
     lock_release(&cb->lock);
-
-    // lock_acquire(&buffer_cache_lock);
-    // list_push_front(&lru_list, &cb->lru_elem);
-    // lock_release(&buffer_cache_lock);
 
     return cb;
 }
@@ -131,7 +130,7 @@ static struct cache_block *find_block(block_sector_t sector)
     lock_release(&buffer_cache_lock);
     while (true)
     {
-        lock_acquire(&buffer_cache_lock);
+        lock_acquire(&lru_lock);
 
         for (struct list_elem *e = list_begin(&lru_list);
              e != list_end(&lru_list);)
@@ -144,7 +143,7 @@ static struct cache_block *find_block(block_sector_t sector)
             if (!cb->exclusive && cb->readers == 0)
             {
                 list_remove(&cb->lru_elem);
-                lock_release(&buffer_cache_lock);
+                lock_release(&lru_lock);
 
                 if (cb->dirty)
                 {
@@ -160,7 +159,7 @@ static struct cache_block *find_block(block_sector_t sector)
             e = list_next(e);
             lock_release(&cb->lock);
         }
-        lock_release(&buffer_cache_lock);
+        lock_release(&lru_lock);
         timer_sleep(100); // find better time
     }
 
@@ -169,11 +168,8 @@ static struct cache_block *find_block(block_sector_t sector)
 
 void cache_put_block(struct cache_block *block)
 {
-    lock_acquire(&buffer_cache_lock);
+    
     lock_acquire(&block->lock);
-
-    list_push_front(&lru_list, &block->lru_elem);
-
     if (block->exclusive)
     {
         block->exclusive = false;
@@ -188,8 +184,11 @@ void cache_put_block(struct cache_block *block)
             cond_signal(&block->write_cond, &block->lock);
         }
     }
-    lock_release(&buffer_cache_lock);
     lock_release(&block->lock);
+
+    lock_acquire(&lru_lock);
+    list_push_back(&lru_list, &block->lru_elem);
+    lock_release(&lru_lock);
 }
 
 void *cache_read_block(struct cache_block *block)

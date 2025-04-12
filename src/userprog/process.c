@@ -22,6 +22,7 @@
 #include "threads/thread.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
+#include "filesys/directory.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp);
@@ -37,6 +38,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  struct thread *parent_thread = thread_current();
 
   struct process *ps = malloc(sizeof(struct process));
   if (ps == NULL)
@@ -49,6 +51,10 @@ process_execute (const char *file_name)
   ps->ref_count = 2;
   ps->good_start = false;
   ps->exe_file = NULL;
+
+  ASSERT(parent_thread->curr_dir != NULL);
+  ps->parent_curr_dir = parent_thread->curr_dir;
+
   sema_init(&ps->user_prog_exit, 0);
   sema_init(&ps->child_started, 0);
 
@@ -78,8 +84,10 @@ process_execute (const char *file_name)
   ps->child_tid = tid; // if child is in process_exit before this, it has the ref to ps already so semaphore is good
   ASSERT(ps->user_prog_name != NULL);
 
-  struct thread *parent_thread = thread_current();
   list_push_back(&parent_thread->ps_list, &ps->elem);
+
+  ASSERT(parent_thread->curr_dir != NULL);
+
 
   return tid;
 }
@@ -130,6 +138,9 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
+  struct thread *child_thread = thread_current();
+  child_thread->curr_dir = dir_reopen(ps->parent_curr_dir);
+
   success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -139,6 +150,8 @@ start_process(void *p)
   {
     free(hold);
     sema_up(&ps->child_started);
+
+    // curr dir will be closed
     thread_exit(); // never returns to caller
   }
   else
@@ -251,11 +264,49 @@ process_exit(void)
 
   struct process *ps = cur->ps;
 
-  if(ps != NULL && ps->exe_file != NULL){
-    lock_acquire(&fs_lock);
-    file_close(ps->exe_file);
-    lock_release(&fs_lock);
+  // clean up fd's when a thread exits
+  // lock_acquire(&fs_lock);
+  bool closed_cwd = false;
+
+  struct file_desc * fd_table = cur->fd_table;
+  if (fd_table != NULL)
+  { // called open
+    for (int i = FD_MIN; i < FD_MAX; i++)
+    {
+      struct file_desc * file_desc = &fd_table[i];
+      if(file_desc->file != NULL || file_desc->dir != NULL){
+        if (file_desc->is_dir)
+        {
+          if (file_desc->dir == cur->curr_dir)
+          {
+            closed_cwd = true;
+          }
+          dir_close(file_desc->dir);
+        }
+        else
+        {
+          file_close(file_desc->file);
+        }
+        file_desc->file = NULL;
+        file_desc->dir = NULL;
+        file_desc->is_dir = false;
+      }
+    }
+    free(fd_table);
   }
+
+  if (closed_cwd == false && cur->curr_dir != NULL)
+  {
+    dir_close(cur->curr_dir);
+  }
+
+  if(ps != NULL && ps->exe_file != NULL){
+    // lock_acquire(&fs_lock);
+    file_close(ps->exe_file);
+    // lock_release(&fs_lock);
+  }
+
+  // lock_release(&fs_lock);
 
   if (ps != NULL)
   {
@@ -278,21 +329,6 @@ process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
-
-  // clean up fd's when a thread exits
-  lock_acquire(&fs_lock);
-  struct file **fd_table = cur->fd_table;
-  if (fd_table != NULL)
-  { // called open
-    for (int i = FD_MIN; i < FD_MAX; i++)
-    {
-      if(fd_table[i] != NULL){
-        file_close(fd_table[i]);
-      }
-    }
-    free(fd_table);
-  }
-  lock_release(&fs_lock);
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
@@ -422,12 +458,12 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   process_activate();
 
   /* Open executable file. */
-  lock_acquire(&fs_lock);
-  file = filesys_open(file_name);
+  // lock_acquire(&fs_lock);
+  file = filesys_open(file_name, t->curr_dir);
   if (file == NULL)
   {
     ps->exe_file = NULL;
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
     goto done;
   }
   else
@@ -439,31 +475,31 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
     goto done;
   }
-  lock_release(&fs_lock);
+  // lock_release(&fs_lock);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++)
   {
     struct Elf32_Phdr phdr;
-    lock_acquire(&fs_lock);
+    // lock_acquire(&fs_lock);
 
     if (file_ofs < 0 || file_ofs > file_length(file))
     {
-      lock_release(&fs_lock);
+      // lock_release(&fs_lock);
       goto done;
     }
     file_seek(file, file_ofs);
 
     if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
     {
-      lock_release(&fs_lock);
+      // lock_release(&fs_lock);
       goto done;
     }
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
 
     file_ofs += sizeof phdr;
     switch (phdr.p_type)

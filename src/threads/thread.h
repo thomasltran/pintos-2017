@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "threads/synch.h"
+#include "filesys/directory.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -112,9 +113,8 @@ struct thread
   uint32_t *pagedir; /* Page directory. */
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
-  struct file **fd_table; /* file descriptor table */
-//   struct supp_pt supp;
-//   struct file_mapping_table file_mapping;
+  struct file_desc * fd_table; /* file descriptor table */
+  struct dir * curr_dir;
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -133,6 +133,13 @@ struct process // struct to manage parent/child threads in process.c
    tid_t child_tid; // thread id of child
    char * user_prog_name; // program name
    struct file * exe_file; // keep exe around until exit
+   struct dir * parent_curr_dir;
+};
+
+struct file_desc {
+   struct dir * dir;
+   struct file * file;
+   int is_dir;
 };
 #endif
 
@@ -158,6 +165,7 @@ void thread_exit_ap (void) NO_RETURN;
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
+bool dir_removable(struct inode *inode);
 int thread_get_nice (void);
 void thread_set_nice (int);
 
