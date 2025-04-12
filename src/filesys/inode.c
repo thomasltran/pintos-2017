@@ -65,6 +65,7 @@ struct inode
   byte_to_sector(const struct inode *inode, off_t pos)
   {
     ASSERT(inode != NULL);
+    // printf("inode num btos %u\n", inode_get_inumber(inode));
 
     struct cache_block *cb = cache_get_block(inode->sector, false);
     struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
@@ -200,10 +201,13 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
+          // printf("reopen %u\n", sector);
           inode_reopen (inode);
           return inode; 
         }
     }
+
+  // printf("open %u\n", sector);
 
   /* Allocate memory. */
   inode = malloc (sizeof *inode);
@@ -232,6 +236,7 @@ inode_open (block_sector_t sector)
 struct inode *
 inode_reopen (struct inode *inode)
 {
+  // printf("reopen %u\n", inode_get_inumber(inode));
   if (inode != NULL)
     inode->open_cnt++;
   return inode;
@@ -255,8 +260,14 @@ inode_close (struct inode *inode)
     return;
 
   /* Release resources if this was the last opener. */
+  if(inode->open_cnt - 1 != 0){
+    // printf("tried to close %u\n", inode_get_inumber(inode));
+
+  }
   if (--inode->open_cnt == 0)
     {
+
+      // printf("close %u\n", inode_get_inumber(inode));
       /* Remove from inode list and release lock. */
       list_remove (&inode->elem);
 
@@ -506,9 +517,10 @@ static bool install_file_sector(struct inode* inode, off_t offset){
     cache_mark_dirty(id_cb);
     cache_put_block(id_cb);
   }
+
   // l1
   else if(file_sector < DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT){
-    struct cache_block* id_cb = cache_get_block(id_sector, false);
+    struct cache_block* id_cb = cache_get_block(id_sector, true);
     struct inode_disk* id_data =  (struct inode_disk*)cache_read_block(id_cb);
     bool L1_present = id_data->L1_indirect_sector != GAP_MARKER;
 
@@ -520,10 +532,11 @@ static bool install_file_sector(struct inode* inode, off_t offset){
         free_map_release(disk_sector, 1);
         return false;
       }
-      id_cb = cache_get_block(id_sector, false);
+      id_cb = cache_get_block(id_sector, true);
       id_data =  (struct inode_disk*)cache_read_block(id_cb);
     }
 
+    // get the l1 block
     struct cache_block* l1_cb = cache_get_block(id_data->L1_indirect_sector, true);
     block_sector_t* l1_data = cache_read_block(l1_cb);
 
@@ -538,7 +551,7 @@ static bool install_file_sector(struct inode* inode, off_t offset){
 
   // l2
   else{
-    struct cache_block* id_cb = cache_get_block(id_sector, false);
+    struct cache_block* id_cb = cache_get_block(id_sector, true);
     ASSERT(id_cb != NULL);
     struct inode_disk* id_data =  (struct inode_disk*)cache_read_block(id_cb);
     ASSERT(id_data != NULL);
@@ -551,14 +564,14 @@ static bool install_file_sector(struct inode* inode, off_t offset){
         free_map_release(disk_sector, 1);
         return false;
       }
-      id_cb = cache_get_block(id_sector, false);
+      id_cb = cache_get_block(id_sector, true);
       ASSERT(id_cb != NULL);
       id_data =  (struct inode_disk*)cache_read_block(id_cb);
       ASSERT(id_data != NULL);  
     }
     ASSERT(id_data->L2_indirect_sector != GAP_MARKER);
 
-    struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector, false);
+    struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector, true);
     ASSERT(l2_cb != NULL);
     block_sector_t* l2_data = cache_read_block(l2_cb); // cast??
     ASSERT(l2_data != NULL);
@@ -573,15 +586,16 @@ static bool install_file_sector(struct inode* inode, off_t offset){
       //install
       if(!install_l1_indirect_block(inode, offset)){
         free_map_release(disk_sector, 1);
+        free_map_release(id_data->L2_indirect_sector, 1);
         return false;
       }
 
-      id_cb = cache_get_block(id_sector, false);
+      id_cb = cache_get_block(id_sector, true);
       ASSERT(id_cb != NULL);
       id_data =  (struct inode_disk*)cache_read_block(id_cb);
       ASSERT(id_data != NULL);  
 
-      l2_cb = cache_get_block(id_data->L2_indirect_sector, false);
+      l2_cb = cache_get_block(id_data->L2_indirect_sector, true);
       ASSERT(l2_cb != NULL);
       l2_data = cache_read_block(l2_cb);
       ASSERT(l2_data != NULL);
@@ -632,7 +646,7 @@ static bool install_l1_indirect_block(struct inode* inode, off_t offset){
     cache_put_block(id_cb);
   }  
   else{
-    struct cache_block* id_cb = cache_get_block(id_sector, false);
+    struct cache_block* id_cb = cache_get_block(id_sector, true);
     struct inode_disk* id_data = cache_read_block(id_cb);
 
     bool l2_present = id_data->L2_indirect_sector != GAP_MARKER; // lke this in the other place?
@@ -645,7 +659,7 @@ static bool install_l1_indirect_block(struct inode* inode, off_t offset){
       }
     }
 
-    id_cb = cache_get_block(id_sector, false);
+    id_cb = cache_get_block(id_sector, true);
     id_data = cache_read_block(id_cb);
 
     struct cache_block* l2_cb = cache_get_block(id_data->L2_indirect_sector, true);
@@ -656,6 +670,7 @@ static bool install_l1_indirect_block(struct inode* inode, off_t offset){
     ASSERT(l2_data[l2_index] == GAP_MARKER);  
 
     if(!free_map_allocate(1, &l2_data[l2_index])){
+      free_map_release(id_data->L2_indirect_sector, 1);
       cache_put_block(l2_cb);
       cache_put_block(id_cb);
       return false;

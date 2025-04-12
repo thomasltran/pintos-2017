@@ -7,6 +7,7 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "filesys/cache.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -53,7 +54,7 @@ bool filesys_create(const char *name, off_t initial_size, struct dir *cwd)
   struct dir *dir = NULL;
   if (cwd == NULL)
   {
-    dir = dir_open_root();
+    dir = thread_current()->curr_dir;
   }
   else{
     dir = cwd;
@@ -71,10 +72,6 @@ bool filesys_create(const char *name, off_t initial_size, struct dir *cwd)
 
 
   // if from syscall, caller closes dir themself
-  if (cwd == NULL)
-  {
-    dir_close(dir);
-  }
 
   return success;
 }
@@ -90,7 +87,7 @@ filesys_open(const char *name, struct dir *cwd)
   struct dir *dir = NULL;
   if (cwd == NULL)
   {
-    dir = dir_open_root();
+    dir = thread_current()->curr_dir;
   }
   else{
     dir = cwd;
@@ -99,11 +96,6 @@ filesys_open(const char *name, struct dir *cwd)
 
   if (dir != NULL)
     dir_lookup (dir, name, &inode);
-
-  if (cwd == NULL)
-  {
-    dir_close(dir);
-  }
 
   return file_open (inode);
 }
@@ -118,16 +110,12 @@ filesys_remove (const char *name, struct dir *cwd)
   struct dir *dir = NULL;
   if (cwd == NULL)
   {
-    dir = dir_open_root();
+    dir = thread_current()->curr_dir;
   }
   else{
     dir = cwd;
   }
   bool success = dir != NULL && dir_remove (dir, name);
-  if (cwd == NULL)
-  {
-    dir_close(dir);
-  }
 
   return success;
 }

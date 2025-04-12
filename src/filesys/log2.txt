@@ -1,0 +1,30 @@
+rm -f tmp-tests-filesys-extended-dir-over-file.dsk
+pintos-mkdisk tmp-tests-filesys-extended-dir-over-file.dsk --filesys-size=2
+pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-over-file.dsk -p tests/filesys/extended/dir-over-file -a dir-over-file -p tests/filesys/extended/tar -a tar -- -q  -f run dir-over-file < /dev/null 2> tests/filesys/extended/dir-over-file.errors
+
+
+
+pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-over-file.dsk -g fs.tar -a tests/filesys/extended/dir-over-file.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-over-file-persistence.errors
+
+
+rm -f tmp-tests-filesys-extended-dir-over-file.dsk
+perl -I../.. ../../tests/filesys/extended/dir-over-file.ck tests/filesys/extended/dir-over-file tests/filesys/extended/dir-over-file.result
+FAIL tests/filesys/extended/dir-over-file
+Test output failed to match any acceptable form.
+
+Acceptable output:
+  (dir-over-file) begin
+  (dir-over-file) mkdir "abc"
+  (dir-over-file) create "abc" (must return false)
+  (dir-over-file) end
+Differences in `diff -u' format:
++ open 4
+  (dir-over-file) begin
+  (dir-over-file) mkdir "abc"
++ open 208
++ closed 208
+  (dir-over-file) create "abc" (must return false)
+  (dir-over-file) end
++ closed 4
+
+(Process exit codes are excluded for matching purposes.)

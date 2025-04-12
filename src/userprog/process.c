@@ -22,6 +22,7 @@
 #include "threads/thread.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
+#include "filesys/directory.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp);
@@ -137,6 +138,9 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
+  struct thread *child_thread = thread_current();
+  child_thread->curr_dir = dir_reopen(ps->parent_curr_dir);
+
   success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
@@ -146,6 +150,8 @@ start_process(void *p)
   {
     free(hold);
     sema_up(&ps->child_started);
+
+    // curr dir will be closed
     thread_exit(); // never returns to caller
   }
   else
@@ -154,7 +160,6 @@ start_process(void *p)
     struct thread *child_thread = thread_current();
     child_thread->ps = ps;
     child_thread->ps->user_prog_name = hold;
-    child_thread->curr_dir = dir_reopen(ps->parent_curr_dir);
     sema_up(&ps->child_started);
   }
 
@@ -454,7 +459,7 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
 
   /* Open executable file. */
   lock_acquire(&fs_lock);
-  file = filesys_open(file_name, ps->parent_curr_dir);
+  file = filesys_open(file_name, t->curr_dir);
   if (file == NULL)
   {
     ps->exe_file = NULL;
