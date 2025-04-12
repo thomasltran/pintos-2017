@@ -38,7 +38,7 @@ static struct spinlock all_lock;
 static struct thread *initial_thread;
 
 // global lock for fs
-struct lock fs_lock;
+// struct lock fs_lock;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
@@ -86,7 +86,7 @@ thread_init (void)
   list_init(&bcpu->sq.sleep_list);
   spinlock_init (&bcpu->rq.lock);
   spinlock_init(&bcpu->sq.lock);
-  lock_init(&fs_lock);
+  // lock_init(&fs_lock);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_boot_thread (initial_thread, bcpu);

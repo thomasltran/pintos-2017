@@ -39,7 +39,6 @@ void
 filesys_done (void) 
 {
   free_map_close ();
-  printf("shutting down cache\n");
   cache_flush();
 }
 
@@ -60,18 +59,12 @@ bool filesys_create(const char *name, off_t initial_size, struct dir *cwd)
     dir = cwd;
   }
 
-  // printf("filesys create: %s, added to dir: %u\n", name, inode_get_inumber(dir_get_inode(dir)));
   bool success = (dir != NULL
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, false)
                   && dir_add (dir, name, inode_sector));
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
-
-  // printf("file sys create end\n");
-
-
-  // if from syscall, caller closes dir themself
 
   return success;
 }
@@ -112,7 +105,7 @@ filesys_remove (const char *name, struct dir *cwd)
   {
     dir = thread_current()->curr_dir;
   }
-  else{
+  else {
     dir = cwd;
   }
   bool success = dir != NULL && dir_remove (dir, name);

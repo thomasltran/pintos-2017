@@ -320,57 +320,6 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
 
    ASSERT(curr_dir != NULL);
 
-  //  if (strcmp(cpy, ".") == 0)
-  //  {
-  //    filename_cpy = malloc(NAME_MAX + 1);
-  //    if (filename_cpy == NULL)
-  //    {
-  //      dir_close(curr_dir);
-  //      free(cpy);
-  //      return false;
-  //    }
-  //    strlcpy(filename_cpy, ".", NAME_MAX + 1);
-  //    *filename_ret = filename_cpy;
-  //    *cwd = curr_dir;
-  //    free(cpy);
-  //    return true;
-  //  }
-
-  //  if (strcmp(cpy, "..") == 0)
-  //  {
-  //    struct inode *inode = NULL;
-  //    // get ref to .., parent of ..
-  //    if (!dir_lookup(curr_dir, "..", &inode))
-  //    {
-  //      dir_close(curr_dir);
-  //      free(cpy);
-  //      return false;
-  //    }
-
-  //    dir_close(curr_dir);
-  //    // open ../..
-  //    curr_dir = dir_open(inode);
-  //    if (curr_dir == NULL)
-  //    {
-  //      free(cpy);
-  //      return false;
-  //    }
-
-  //    filename_cpy = malloc(NAME_MAX + 1);
-  //    if (filename_cpy == NULL)
-  //    {
-  //      dir_close(curr_dir);
-  //      free(cpy);
-  //      return false;
-  //    }
-  //    // should refer to itself, or .. from ../..
-  //    strlcpy(filename_cpy, ".", NAME_MAX + 1); // do we want this ..?
-  //    *filename_ret = filename_cpy;
-  //    *cwd = curr_dir;
-  //    free(cpy);
-  //    return true;
-  //  }
-
    char *token, *save_ptr;
    char *filename = NULL;
 

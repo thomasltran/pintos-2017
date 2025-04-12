@@ -264,36 +264,8 @@ process_exit(void)
 
   struct process *ps = cur->ps;
 
-  if(ps != NULL && ps->exe_file != NULL){
-    lock_acquire(&fs_lock);
-    file_close(ps->exe_file);
-    lock_release(&fs_lock);
-  }
-
-  if (ps != NULL)
-  {
-    lock_acquire(&ps->ps_lock);
-
-    ps->ref_count--;
-
-    ASSERT(ps->ref_count >= 0);
-    if (ps->ref_count == 0) // nothing waiting for it
-    {
-      list_remove(&ps->elem); // list ops only done by parent
-      lock_release(&ps->ps_lock);
-      free(ps->user_prog_name);
-      free(ps);
-    }
-    else
-    {
-      sema_up(&ps->user_prog_exit);
-
-      lock_release(&ps->ps_lock);
-    }
-  }
-
   // clean up fd's when a thread exits
-  lock_acquire(&fs_lock);
+  // lock_acquire(&fs_lock);
   bool closed_cwd = false;
 
   struct file_desc * fd_table = cur->fd_table;
@@ -328,7 +300,35 @@ process_exit(void)
     dir_close(cur->curr_dir);
   }
 
-  lock_release(&fs_lock);
+  if(ps != NULL && ps->exe_file != NULL){
+    // lock_acquire(&fs_lock);
+    file_close(ps->exe_file);
+    // lock_release(&fs_lock);
+  }
+
+  // lock_release(&fs_lock);
+
+  if (ps != NULL)
+  {
+    lock_acquire(&ps->ps_lock);
+
+    ps->ref_count--;
+
+    ASSERT(ps->ref_count >= 0);
+    if (ps->ref_count == 0) // nothing waiting for it
+    {
+      list_remove(&ps->elem); // list ops only done by parent
+      lock_release(&ps->ps_lock);
+      free(ps->user_prog_name);
+      free(ps);
+    }
+    else
+    {
+      sema_up(&ps->user_prog_exit);
+
+      lock_release(&ps->ps_lock);
+    }
+  }
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
@@ -458,12 +458,12 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   process_activate();
 
   /* Open executable file. */
-  lock_acquire(&fs_lock);
+  // lock_acquire(&fs_lock);
   file = filesys_open(file_name, t->curr_dir);
   if (file == NULL)
   {
     ps->exe_file = NULL;
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
     goto done;
   }
   else
@@ -475,31 +475,31 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
     goto done;
   }
-  lock_release(&fs_lock);
+  // lock_release(&fs_lock);
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++)
   {
     struct Elf32_Phdr phdr;
-    lock_acquire(&fs_lock);
+    // lock_acquire(&fs_lock);
 
     if (file_ofs < 0 || file_ofs > file_length(file))
     {
-      lock_release(&fs_lock);
+      // lock_release(&fs_lock);
       goto done;
     }
     file_seek(file, file_ofs);
 
     if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
     {
-      lock_release(&fs_lock);
+      // lock_release(&fs_lock);
       goto done;
     }
-    lock_release(&fs_lock);
+    // lock_release(&fs_lock);
 
     file_ofs += sizeof phdr;
     switch (phdr.p_type)
