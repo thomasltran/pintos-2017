@@ -65,7 +65,7 @@ struct inode
   byte_to_sector(const struct inode *inode, off_t pos)
   {
     ASSERT(inode != NULL);
-    // printf("inode num btos %u\n", inode_get_inumber(inode));
+    // // printf("inode num btos %u\n", inode_get_inumber(inode));
 
     struct cache_block *cb = cache_get_block(inode->sector, false);
     struct inode_disk *data = (struct inode_disk *)cache_read_block(cb);
@@ -201,7 +201,7 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
-          // printf("reopen %u\n", sector);
+          // printf("reopen in open %u\n", sector);
           inode_reopen (inode);
           return inode; 
         }

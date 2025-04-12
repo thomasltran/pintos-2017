@@ -124,7 +124,7 @@ copy_user_string(const char *usrc, char *kdst, size_t max_len)
 
     /* Loop string until max len or null terminator */
     for (size_t i = 0; i < max_len; i++) {
-      // // printf("count %d\n", i);
+      // // // printf("count %d\n", i);
       uint8_t byte;
       const uint8_t *src = (const uint8_t *)usrc + i;
       int result = get_user_byte(src, &byte);
@@ -405,13 +405,13 @@ syscall_handler(struct intr_frame *f)
         free((char *)filename);
         f->eax = 0;
         lock_release(&fs_lock);
-        // printf("no hit create\n");
+        // // printf("no hit create\n");
         break;
       }
 
       free((char *)filename);
 
-      // printf("resolved path: %s\n", resolved_path);
+      // // printf("resolved path: %s\n", resolved_path);
 
       if (strlen(resolved_path) > NAME_MAX + 1)
       {
@@ -482,7 +482,7 @@ syscall_handler(struct intr_frame *f)
         file = filesys_open(resolved_path, resolved_path_cwd);
       }
 
-      // printf("sysopen: %d %s\n", inode_get_inumber(inode), resolved_path);
+      // // printf("sysopen: %d %s\n", inode_get_inumber(inode), resolved_path);
       free((char *)resolved_path);
       dir_close(resolved_path_cwd);
 
@@ -544,7 +544,7 @@ syscall_handler(struct intr_frame *f)
         ASSERT(file_desc->file != NULL);
         file_seek(file_desc->file, 0); // reset file position to 0 (start of file)
       }
-      // printf("end sysopen fd: %d\n", fd);
+      // // printf("end sysopen fd: %d\n", fd);
       lock_release(&fs_lock);
       f->eax = fd;
       break;
@@ -571,6 +571,7 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
         break;
       }
+      // printf("rm post resolve\n");
 
       free((char *)filename);
 
@@ -584,6 +585,7 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
         break;
       }
+      // printf("rm post lookup\n");
 
       bool success = false;
 
@@ -602,12 +604,16 @@ syscall_handler(struct intr_frame *f)
             }
           }
         }
+        // printf("rm post fd search\n");
+        inode_close(inode);
         if(!curr_dir_open){
           success = dir_remove(resolved_path_cwd, resolved_path);
         }
+        // printf("rm post remove\n");
       }
       else
       {
+        inode_close(inode);
         success = filesys_remove(resolved_path, resolved_path_cwd);
       }
 
@@ -789,7 +795,7 @@ syscall_handler(struct intr_frame *f)
       {
         f->eax = 0;
         free((char *)file);
-        // printf("no hit rp chdir\n");
+        // // printf("no hit rp chdir\n");
         lock_release(&fs_lock);
         break;
       }
@@ -799,7 +805,7 @@ syscall_handler(struct intr_frame *f)
       ASSERT(resolve_path != NULL);
       ASSERT(resolved_path_cwd != NULL);
 
-      // printf("resolved path: %s\n", resolved_path);
+      // // printf("resolved path: %s\n", resolved_path);
 
       struct inode *inode = NULL;
       if (!dir_lookup(resolved_path_cwd, resolved_path, &inode))
@@ -858,24 +864,25 @@ syscall_handler(struct intr_frame *f)
       {
         f->eax = 0;
         free((char *)file);
-        // printf("no hit\n");
+        // // printf("no hit\n");
         lock_release(&fs_lock);
         break;
       }
+      // printf("post resolve\n");
 
       free((char *)file);
 
       ASSERT(resolve_path != NULL);
       ASSERT(resolved_path_cwd != NULL);
 
-      // printf("resolved path: %s\n", resolved_path);
+      // // printf("resolved path: %s\n", resolved_path);
 
       block_sector_t sector = UINT32_MAX - 1;
 
       if (!free_map_allocate(1, &sector))
       {
         f->eax = 0;
-        // printf("no hit freemap\n");
+        // // printf("no hit freemap\n");
         lock_release(&fs_lock);
         break;
       }
@@ -891,10 +898,11 @@ syscall_handler(struct intr_frame *f)
         dir_close(resolved_path_cwd);
         free_map_release(sector, 1);
         f->eax = 0;
-        // printf("no hit create\n");
+        // // printf("no hit create\n");
         lock_release(&fs_lock);
         break;
       }
+      // printf("post dir create\n");
 
       if (!dir_add(resolved_path_cwd, resolved_path, sector))
       {
@@ -902,15 +910,18 @@ syscall_handler(struct intr_frame *f)
         dir_close(resolved_path_cwd);
         free_map_release(sector, 1);
         f->eax = 0;
-        // printf("no hit add\n");
+        // // printf("no hit add\n");
         lock_release(&fs_lock);
         break;
       }
 
-      // printf("mkdir: %d, %s\n", sector, resolved_path);
+      // printf("post dir add\n");
+
+      // // printf("mkdir: %d, %s\n", sector, resolved_path);
 
       free(resolved_path);
       dir_close(resolved_path_cwd);
+      // printf("post dir close\n");
       f->eax = 1;
       lock_release(&fs_lock);
       break;
@@ -936,7 +947,7 @@ syscall_handler(struct intr_frame *f)
       lock_acquire(&fs_lock);
 
       struct file_desc *file_desc = &cur->fd_table[fd];
-      // printf("readdr: %d\n", fd);
+      // // printf("readdr: %d\n", fd);
 
       if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || (file_desc->file == NULL && file_desc->dir == NULL))
       {
@@ -964,7 +975,7 @@ syscall_handler(struct intr_frame *f)
         lock_release(&fs_lock);
         break;
       }
-      // printf("readdr end: %s\n", (char *)buffer);
+      // // printf("readdr end: %s\n", (char *)buffer);
 
       // dir_close(dir);
       lock_release(&fs_lock);

@@ -1,0 +1,41 @@
+rm -f tmp-tests-filesys-extended-dir-rmdir.dsk
+pintos-mkdisk tmp-tests-filesys-extended-dir-rmdir.dsk --filesys-size=2
+pintos -v -k -T 60 --smp 2 --kvm  --disk=tmp-tests-filesys-extended-dir-rmdir.dsk -p tests/filesys/extended/dir-rmdir -a dir-rmdir -p tests/filesys/extended/tar -a tar -- -q  -f run dir-rmdir < /dev/null 2> tests/filesys/extended/dir-rmdir.errors
+pintos -v -k -T 60  --kvm --disk=tmp-tests-filesys-extended-dir-rmdir.dsk -g fs.tar -a tests/filesys/extended/dir-rmdir.tar -- -q  run 'tar fs.tar /' < /dev/null 2> tests/filesys/extended/dir-rmdir-persistence.errors
+
+
+rm -f tmp-tests-filesys-extended-dir-rmdir.dsk
+perl -I../.. ../../tests/filesys/extended/dir-rmdir.ck tests/filesys/extended/dir-rmdir tests/filesys/extended/dir-rmdir.result
+FAIL tests/filesys/extended/dir-rmdir
+Test output failed to match any acceptable form.
+
+Acceptable output:
+  (dir-rmdir) begin
+  (dir-rmdir) mkdir "a"
+  (dir-rmdir) rmdir "a"
+  (dir-rmdir) chdir "a" (must return false)
+  (dir-rmdir) end
+Differences in `diff -u' format:
++ reopen 1
++ open 4
+  (dir-rmdir) begin
+  (dir-rmdir) mkdir "a"
++ reopen 1
++ open 208
++ close 208
++ tried to close 1
+  (dir-rmdir) rmdir "a"
++ reopen 1
++ open 208
++ reopen in open 208
++ reopen 208
++ tried to close 208
++ tried to close 1
+  (dir-rmdir) chdir "a" (must return false)
++ reopen 1
++ tried to close 1
+  (dir-rmdir) end
++ close 4
++ tried to close 1
+
+(Process exit codes are excluded for matching purposes.)
