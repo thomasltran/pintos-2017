@@ -31,7 +31,7 @@ struct inode_disk
 };
 
 static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir);
-static bool install_file_sector(struct inode* inode, off_t offset);
+static block_sector_t install_file_sector(struct inode* inode, off_t offset);
 static bool install_l1_indirect_block(off_t offset, struct inode_disk* id_data, UNUSED block_sector_t* l2_data);
 static bool install_l2_indirect_block(struct inode_disk* id_data);
 static block_sector_t calculate_file_sector(off_t offset);
@@ -122,7 +122,6 @@ struct inode
     block_sector_t *indirectL2_data = (block_sector_t *)cache_read_block(cb_indirectL2);
 
     block_sector_t indirectL1_sector = indirectL2_data[doubly_indirect_index];
-
     if (indirectL1_sector == GAP_MARKER)
     {
       cache_put_block(cb_indirectL2);
@@ -412,63 +411,40 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   while (size > 0) 
     {
       /* Sector to write, starting byte offset within sector. */
+      off_t curr_length = inode_length(inode);
       block_sector_t sector_idx = byte_to_sector (inode, offset);
+
+      //sprase file or writing beyond sector of EOF
+      bool exclusive = false;
+      if(sector_idx == GAP_MARKER){
+        sector_idx = install_file_sector(inode, offset);
+        if(sector_idx == GAP_MARKER){
+          lock_release(&inode->lock);
+          return bytes_written;
+        }
+        exclusive = true;
+      }
+      struct cache_block* cb = cache_get_block(sector_idx, exclusive);
+      ASSERT(cb != NULL);
+
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
-
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      // off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      // int min_left = inode_left < sector_left ? inode_left : sector_left;
-
       /* Number of bytes to actually write into this sector. */
-      // int chunk_size = size < min_left ? size : min_left;
       int chunk_size = size < sector_left ? size : sector_left;
-
       if (chunk_size <= 0)
         break;
       
-      struct cache_block* cb = NULL;
-      off_t curr_length = inode_length(inode);
-
-      // either for eof/extend case, or sparse
-      // need to install
-      if(sector_idx == GAP_MARKER){
-        if(!install_file_sector(inode, offset)){
-          lock_release(&inode->lock);
-          return 0;
-        }
-        // installed, so should have non-GAP MARKER sector idx
-        sector_idx = byte_to_sector(inode, offset);
-        ASSERT(sector_idx != GAP_MARKER);
-        cb = cache_get_block(sector_idx, true);
-      }
-      else {
-        // could make this not excl?
-        // doesn't have to be excl, no guaranteee about file data
-        cb = cache_get_block(sector_idx, false);
-      }
-
-      ASSERT(cb != NULL);
-      struct inode_disk * data = NULL;
-      if (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE)
-      {
-        /* fully overwritten */
-        data = (struct inode_disk*)cache_zero_block(cb);
-      }
-      else
-      {
-        /* partial write */
-        data = (struct inode_disk*)cache_read_block(cb);
-      }
+      bool full_sector_write = (sector_ofs == 0 && chunk_size == BLOCK_SECTOR_SIZE);
+      struct inode_disk * data = full_sector_write ? (struct inode_disk*)cache_zero_block(cb): (struct inode_disk*)cache_read_block(cb);
 
       memcpy(((void*)data) + sector_ofs, buffer + bytes_written, chunk_size);
 
       cache_mark_dirty(cb);
       cache_put_block(cb); 
 
-      // length? size or chunksize
       if (offset + chunk_size > curr_length) {
-        cb = cache_get_block(inode->sector, true);
+        cb = cache_get_block(inode->sector, false);
         struct inode_disk* disk_inode = (struct inode_disk*)cache_read_block(cb);
         disk_inode->length = offset + chunk_size;
         cache_mark_dirty(cb);
@@ -530,13 +506,13 @@ static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir){
   data->isdir = isdir;
 }
 
-static bool install_file_sector(struct inode* inode, off_t offset){
+static block_sector_t install_file_sector(struct inode* inode, off_t offset){
   ASSERT(inode != NULL);
   block_sector_t file_sector = calculate_file_sector(offset);
   block_sector_t disk_sector;
 
   if(!free_map_allocate(1, &disk_sector)){
-    return false;
+    return GAP_MARKER;
   }
   
   block_sector_t id_sector = inode->sector;
@@ -556,7 +532,7 @@ static bool install_file_sector(struct inode* inode, off_t offset){
   // l1
   else if(file_sector < (block_sector_t)(DIRECT_BLOCK_COUNT + INDIRECT_BLOCK_COUNT)){
     if(!install_indirect_check(id_cb, id_data, NULL, id_data->L1_indirect_sector, disk_sector, offset, true)){
-      return false;
+      return GAP_MARKER;
     }
     ASSERT(id_data->L1_indirect_sector != GAP_MARKER);
     
@@ -568,7 +544,7 @@ static bool install_file_sector(struct inode* inode, off_t offset){
   // l2
   else{
     if(!install_indirect_check(id_cb, id_data, NULL, id_data->L2_indirect_sector, disk_sector, offset, false)){
-      return false;
+      return GAP_MARKER;
     }
     ASSERT(id_data->L2_indirect_sector != GAP_MARKER);
 
@@ -580,7 +556,7 @@ static bool install_file_sector(struct inode* inode, off_t offset){
     block_sector_t l2_index = calculate_l2_index(offset);
     if(!install_indirect_check(l2_cb, id_data, l2_data, l2_data[l2_index], disk_sector, offset, true)){
       free_map_release(id_data->L2_indirect_sector, 1);
-      return false;
+      return GAP_MARKER;
     }
     ASSERT(l2_data[l2_index] != GAP_MARKER);
     
@@ -590,7 +566,7 @@ static bool install_file_sector(struct inode* inode, off_t offset){
     cache_put_block(id_cb);
   }
 
-  return true;
+  return disk_sector;
 }
 
 static bool install_l1_indirect_block(off_t offset, struct inode_disk* id_data, UNUSED block_sector_t* l2_data){
