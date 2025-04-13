@@ -15,7 +15,7 @@
 #define INODE_MAGIC 0x494e4f44
 #define DIRECT_BLOCK_COUNT 123
 #define INDIRECT_BLOCK_COUNT 128
-#define GAP_MARKER UINT32_MAX // sparse files
+#define GAP_MARKER UINT32_MAX - 1 // sparse files
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
