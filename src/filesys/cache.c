@@ -75,35 +75,16 @@ void cache_readahead(block_sector_t sector)
 // could get evicted, but just trying to increase perf
 static void cache_readahead_daemon()
 {
-    while(true){
-        lock_acquire(&readahead_lock);
+    lock_acquire(&readahead_lock);
 
-        if (shutdown)
-        {
-            lock_release(&readahead_lock);
-            thread_exit();
-        }
-
-        // must not commit to waiting if shutdown, otherwise test hangs
-        while (!shutdown)
-        {
-            cond_wait(&cb_available, &readahead_lock);
-        }
-
-        if (shutdown)
-        {
-            lock_release(&readahead_lock);
-            thread_exit();
-        }
-
-        // prefetch
+    while (!shutdown)
+    {
         if (!list_empty(&readahead_queue))
         {
             ASSERT(!shutdown);
 
             struct list_elem *e = list_pop_front(&readahead_queue);
             struct readahead_entry *readahead_entry = list_entry(e, struct readahead_entry, elem);
-            // lock_release(&readahead_lock);
 
             ASSERT(readahead_entry != NULL);
             ASSERT(readahead_entry->sector != UINT32_MAX && readahead_entry->sector != UINT32_MAX - 1);
@@ -111,8 +92,17 @@ static void cache_readahead_daemon()
             cache_get_block(readahead_entry->sector, false, true);
             free(readahead_entry);
         }
-        lock_release(&readahead_lock);
+
+        if (shutdown)
+        {
+            lock_release(&readahead_lock);
+            thread_exit();
+        }
+        cond_wait(&cb_available, &readahead_lock);
     }
+
+    lock_release(&readahead_lock);
+    thread_exit();
 }
 
 // writes back dirty blocks periodically
@@ -141,7 +131,7 @@ void cache_init(void)
     for (size_t i = 0; i < CACHE_SIZE; i++)
     {
         struct cache_block *cb = &cache[i];
-        
+
         cb->valid = false;
         cb->dirty = false;
         cb->exclusive = false;
@@ -200,11 +190,6 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive, bool 
     struct cache_block *cb = find_block(sector);
     // cb lock still held after find_block
 
-    if (cb == NULL)
-    {
-        return NULL;
-    }
-
     // exclusive
     if (exclusive)
     {
@@ -250,13 +235,11 @@ static struct cache_block *find_block(block_sector_t sector)
         lock_acquire(&cb->lock);
         if (cb->sector == sector)
         {
-            list_remove(&cb->lru_elem);
             lock_release(&buffer_cache_lock);
             return cb;
         }
         lock_release(&cb->lock);
     }
-
     lock_release(&buffer_cache_lock);
 
     // evict
@@ -270,11 +253,8 @@ static struct cache_block *find_block(block_sector_t sector)
             cb = list_entry(e, struct cache_block, lru_elem);
             lock_acquire(&cb->lock);
 
-            // shouldn't hit this if based on the diagram?
-            ASSERT(!cb->exclusive && cb->readers == 0);
             if (!cb->exclusive && cb->readers == 0)
             {
-                list_remove(&cb->lru_elem);
                 lock_release(&lru_lock);
 
                 if (cb->dirty)
@@ -322,8 +302,11 @@ void cache_put_block(struct cache_block *block)
     }
     lock_release(&block->lock);
 
-    // ASSERT(!block->exclusive && block->readers == 0);
-    list_push_back(&lru_list, &block->lru_elem);
+    if (!block->exclusive && block->readers == 0)
+    {
+        list_remove(&block->lru_elem);
+        list_push_back(&lru_list, &block->lru_elem);
+    }
     lock_release(&lru_lock);
 }
 
