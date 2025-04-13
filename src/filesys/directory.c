@@ -39,6 +39,7 @@ struct dir_entry
         return false;
      }
 
+     // adds .. and . and their corresponding sector as dir entries in the dir
      if (!dir_add(dir, "..", parent_sector))
      {
         dir_close(dir);
@@ -292,6 +293,7 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
      return false;
    }
 
+   // special case just "/"
    if (strcmp(cpy, "/") == 0)
    {
      curr_dir = dir_open_root();
@@ -309,10 +311,12 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
      return true;
    }
 
+   // first char is /
    if (cpy[0] == '/')
    {
       curr_dir = dir_open_root();
    }
+   // uses thread's curr dir
    else
    {
       curr_dir = dir_reopen(cur->curr_dir);
@@ -323,6 +327,7 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
    char *token, *save_ptr;
    char *filename = NULL;
 
+   // parses by /
    token = strtok_r(cpy, "/", &save_ptr);
    while (token != NULL)
    {
@@ -370,12 +375,14 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
       token = next;
    }
 
+   // exceeds our limit
    if(filename == NULL || strlen(filename) > NAME_MAX + 1){
       dir_close(curr_dir);
       free(cpy);
       return false;
    }
 
+   // ret version
    filename_cpy = malloc(NAME_MAX + 1);
    if (filename_cpy == NULL)
    {
@@ -385,15 +392,15 @@ bool resolve_path(char * path, char ** filename_ret, struct dir ** cwd)
    }
    strlcpy(filename_cpy, filename, NAME_MAX + 1);
 	
-	*filename_ret = filename_cpy;
-	*cwd = curr_dir;
+	 *filename_ret = filename_cpy;
+	 *cwd = curr_dir;
 
    free(cpy);
    return true;
 }
 
-bool
-check_empty (struct inode * inode)
+// if dir is empty, ignore . and ..
+bool check_empty (struct inode * inode)
 {
   struct dir_entry e;
   off_t pos = 0;
@@ -402,7 +409,6 @@ check_empty (struct inode * inode)
   while (inode_read_at (inode, &e, sizeof e, pos) == sizeof e) 
     {
       pos += sizeof e;
-      // printf("inode: %u: %s\n", inode_get_inumber(inode),e.name);
       if (e.in_use && strcmp(e.name, ".") != 0 && strcmp(e.name, "..") != 0)
       {
         empty = false;
@@ -410,27 +416,3 @@ check_empty (struct inode * inode)
     }
     return empty;
 }
-/*
-/usr/bin/ls
-subdir/ls
-../subdir/ls
-./subdir/ls
-ls
-
-subcategories
-absolute (start with /) and relative pathnames (don’t start with /)
-
-“/usr/bin/ls”
-tokenize → usr bin ls
-ls -ld /usr has subdir usr
-
-start at root dir → is there entry usr? if so → make sure entry is dir? if so → (before you open it, close usr) open up dir, look up bin, is there entry bin? → etc.
-
-54
-traversing through fs, open, etc.
-as we go to next one should close prev
-all calls have common component
-if given long path name, work for n-1 components always the same
-differs for very last one
-create, rename, execute checks etc.
-*/

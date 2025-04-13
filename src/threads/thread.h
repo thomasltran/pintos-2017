@@ -114,7 +114,7 @@ struct thread
   struct process * ps; // reference a child thread holds to its struct process
   struct list ps_list; // list of processes
   struct file_desc * fd_table; /* file descriptor table */
-  struct dir * curr_dir;
+  struct dir * curr_dir; // cwd of thread
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -133,13 +133,14 @@ struct process // struct to manage parent/child threads in process.c
    tid_t child_tid; // thread id of child
    char * user_prog_name; // program name
    struct file * exe_file; // keep exe around until exit
-   struct dir * parent_curr_dir;
+   struct dir * parent_curr_dir; // cwd of parent
 };
 
+// fd table
 struct file_desc {
    struct dir * dir;
    struct file * file;
-   int is_dir;
+   int is_dir; // is a dir
 };
 #endif
 

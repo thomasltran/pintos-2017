@@ -395,7 +395,6 @@ syscall_handler(struct intr_frame *f)
 
       char *resolved_path = NULL;
       struct dir *resolved_path_cwd = NULL;
-      // fs lock before maybe?
 
       // lock_acquire(&fs_lock);
 
@@ -416,12 +415,9 @@ syscall_handler(struct intr_frame *f)
       }
       else
       {
-        // is this right
         f->eax = filesys_create(resolved_path, initial_size, resolved_path_cwd) ? 1 : 0;
       }
       free((char *)resolved_path);
-      
-      // check_empty(dir_get_inode(resolved_path_cwd));
       dir_close(resolved_path_cwd);
       // lock_release(&fs_lock);
       break;
@@ -613,9 +609,6 @@ syscall_handler(struct intr_frame *f)
 
       f->eax = success;
       // lock_release(&fs_lock);
-
-      // go thru readdir make sure not the same as cwd and its .. and . only
-
       break;
     }
 
@@ -877,6 +870,7 @@ syscall_handler(struct intr_frame *f)
       struct inode *cwd_inode = dir_get_inode(resolved_path_cwd);
       block_sector_t cwd_sector = inode_get_inumber(cwd_inode);
 
+      // 16 at first
       if (!dir_create(sector, 16, cwd_sector))
       {
         free(resolved_path);
@@ -887,6 +881,7 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
+      // add to cwd of the path
       if (!dir_add(resolved_path_cwd, resolved_path, sector))
       {
         free(resolved_path);
@@ -897,14 +892,13 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-
-
       free(resolved_path);
       dir_close(resolved_path_cwd);
       f->eax = 1;
       // lock_release(&fs_lock);
       break;
     }
+
     case SYS_READDIR:
     {
       if (!is_valid_user_ptr(f->esp) || !is_valid_user_ptr(f->esp + 4) || !is_valid_user_ptr(f->esp + 8))
@@ -916,7 +910,7 @@ syscall_handler(struct intr_frame *f)
       int fd = *((int *)(f->esp + 4));
       const char *buffer = *((void **)(f->esp + 8));
 
-      if (!validate_user_buffer((char *)buffer, NAME_MAX + 1)) // same as reaadir macro
+      if (!validate_user_buffer((char *)buffer, NAME_MAX + 1)) // same as readdir macro
       {
         f->eax = 0;
         exit(-1);
@@ -943,18 +937,14 @@ syscall_handler(struct intr_frame *f)
 
       ASSERT(file_desc->dir != NULL);
       struct dir *dir = file_desc->dir;
-      // check_empty(dir_get_inode(dir));
-      // reopen bc dir is closed at the end, don't interfere with other open
 
       if (!dir_readdir(dir, (char *)buffer))
       {
-        // dir_close(dir);
         f->eax = 0;
         // lock_release(&fs_lock);
         break;
       }
 
-      // dir_close(dir);
       // lock_release(&fs_lock);
       f->eax = 1;
       break;
@@ -988,7 +978,6 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      // dir get inode
       ASSERT(file_desc->dir != NULL);
       struct inode *inode = dir_get_inode(file_desc->dir);
       ASSERT(inode != NULL && is_dir(inode));

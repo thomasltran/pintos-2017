@@ -10,8 +10,8 @@
    This is the traditional UNIX maximum length.
    After directories are implemented, this maximum length may be
    retained, but much longer full path names must be allowed. */
-#define NAME_MAX 14
-#define PATH_MAX 128
+#define NAME_MAX 14 // remains 14, the same
+#define PATH_MAX 128 // max path length
 
 struct inode;
 

@@ -10,26 +10,31 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 
+// struct cache block
 struct cache_block {
-    bool valid;
-    bool dirty;
-    bool exclusive;
-    block_sector_t sector;
-    uint8_t data[BLOCK_SECTOR_SIZE];
-    struct lock lock;
-    struct condition read_cond;
-    struct condition write_cond;
-    int readers;
-    struct list_elem lru_elem;
+    bool valid; // data is up to date
+    bool dirty; // more recent data than on disk
+    bool exclusive; // writer
+    block_sector_t sector; // sector
+    uint8_t data[BLOCK_SECTOR_SIZE]; // data
+    struct lock lock; // lock for cache block
+    struct condition read_cond; // readers
+    struct condition write_cond; // writers
+    int readers; // num of readers
+    struct list_elem lru_elem; // lru list
 };
 
 static struct cache_block *find_block(block_sector_t sector);
-static struct lock buffer_cache_lock;
-static struct lock lru_lock;
+static struct lock buffer_cache_lock; // lock for global buff cache array
+static struct lock lru_lock; // lock for lru list
 
+// global buff cache array
 static struct cache_block cache[CACHE_SIZE];
+
+// lru list
 static struct list lru_list;
 
+// flushes every 30 secs
 static void flush_daemon(void *aux UNUSED)
 {
     while (true)
@@ -39,6 +44,7 @@ static void flush_daemon(void *aux UNUSED)
     }
 }
 
+// init
 void cache_init(void)
 {
     list_init(&lru_list);
@@ -63,6 +69,7 @@ void cache_init(void)
     thread_create("flush-daemon", -20, flush_daemon, NULL);
 }
 
+// flush dirty cache blocks
 void cache_flush(void)
 {
     lock_acquire(&buffer_cache_lock);
@@ -80,12 +87,14 @@ void cache_flush(void)
     lock_release(&buffer_cache_lock);
 }
 
+// gets a cache block
 struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
 {
     ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
     struct cache_block *cb = find_block(sector);
     // cb lock still held after find_block
 
+    // exclusive request
     if (exclusive)
     {
         while (cb->readers > 0 || cb->exclusive)
@@ -94,6 +103,7 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
         }
         cb->exclusive = true;
     }
+    // shared request
     else
     {
         while (cb->exclusive)
@@ -108,12 +118,14 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
     return cb;
 }
 
+// retrieves a block for the given sector
 static struct cache_block *find_block(block_sector_t sector)
 {
     struct cache_block *cb = NULL;
 
     lock_acquire(&buffer_cache_lock);
 
+    // already in buff cache
     for (size_t i = 0; i < CACHE_SIZE; i++)
     {
         cb = &cache[i];
@@ -128,6 +140,8 @@ static struct cache_block *find_block(block_sector_t sector)
     }
 
     lock_release(&buffer_cache_lock);
+
+    // evict
     while (true)
     {
         lock_acquire(&lru_lock);
@@ -166,16 +180,19 @@ static struct cache_block *find_block(block_sector_t sector)
     return NULL;
 }
 
+// put block
 void cache_put_block(struct cache_block *block)
 {
     
     lock_acquire(&block->lock);
+    // block was exclusive
     if (block->exclusive)
     {
         block->exclusive = false;
         cond_broadcast(&block->read_cond, &block->lock);
         cond_signal(&block->write_cond, &block->lock);
     }
+    // shared
     else
     {
         block->readers--;
@@ -191,6 +208,7 @@ void cache_put_block(struct cache_block *block)
     lock_release(&lru_lock);
 }
 
+// read into block's data
 void *cache_read_block(struct cache_block *block)
 {
     lock_acquire(&block->lock);
@@ -203,6 +221,7 @@ void *cache_read_block(struct cache_block *block)
     return block->data;
 }
 
+// zero's block
 void *cache_zero_block(struct cache_block *block)
 {
     lock_acquire(&block->lock);
@@ -215,6 +234,7 @@ void *cache_zero_block(struct cache_block *block)
     return block->data;
 }
 
+// mark dirty
 void cache_mark_dirty(struct cache_block *block)
 {
     lock_acquire(&block->lock);

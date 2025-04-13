@@ -515,6 +515,7 @@ thread_foreach (thread_action_func *func, void *aux)
   spinlock_release (&all_lock);
 }
 
+// if dir not in use by any other threads as their cwd
 bool dir_removable(struct inode *inode)
 {
 

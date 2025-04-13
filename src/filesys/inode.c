@@ -15,13 +15,13 @@
 #define INODE_MAGIC 0x494e4f44
 #define DIRECT_BLOCK_COUNT 123
 #define INDIRECT_BLOCK_COUNT 128
-#define GAP_MARKER UINT32_MAX - 1 // sparse files
+#define GAP_MARKER UINT32_MAX - 1 // sparse files, not installed yet
 
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
 {
-  bool isdir;
+  bool isdir; // dir or not
   uint8_t unused[3]; /* Not used. */
   off_t length;      /* File size in bytes. */
   unsigned magic;    /* Magic number. */
@@ -57,7 +57,7 @@ struct inode
     int open_cnt;                       /* Number of openers. */
     bool removed;                       /* True if deleted, false otherwise. */
     int deny_write_cnt;                 /* 0: writes ok, >0: deny writes. */
-    struct lock lock;
+    struct lock lock;                   // lock for inode
   };
 
 /* Returns the block device sector that contains byte offset POS
@@ -143,7 +143,7 @@ struct inode
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
-static struct lock list_inodes_lock;
+static struct lock list_inodes_lock; // lock for inode list
 
 /* Initializes the inode module. */
 void
@@ -206,17 +206,13 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       lock_release(&list_inodes_lock);
 
-      // lock_acquire(&inode->lock);
-
-      // sector never changes
+      // sector never changes, HB
       // not in lru list before inode fields are initialized
       if (inode->sector == sector)
       {
         inode_reopen(inode);
-        // lock_release(&inode->lock);
         return inode;
       }
-      // lock_release(&inode->lock);
       lock_acquire(&list_inodes_lock);
     }
     lock_release(&list_inodes_lock);
@@ -295,7 +291,6 @@ inode_close (struct inode *inode)
           cache_put_block(cb);
           lock_release(&inode->lock);
 
-          // review
           for(size_t i = 0; i < bytes_to_sectors(length); ++i){
             block_sector_t curr_sector = byte_to_sector(inode, i * BLOCK_SECTOR_SIZE);
 
@@ -414,13 +409,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       block_sector_t sector_idx = byte_to_sector (inode, offset);
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
-      /* Bytes left in inode, bytes left in sector, lesser of the two. */
-      // off_t inode_left = inode_length (inode) - offset;
       int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
-      // int min_left = inode_left < sector_left ? inode_left : sector_left;
-
-      /* Number of bytes to actually write into this sector. */
-      // int chunk_size = size < min_left ? size : min_left;
       int chunk_size = size < sector_left ? size : sector_left;
 
       if (chunk_size <= 0)
@@ -442,7 +431,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         cb = cache_get_block(sector_idx, true);
       }
       else {
-        // could make this not excl?
         // doesn't have to be excl, no guaranteee about file data
         cb = cache_get_block(sector_idx, false);
       }
@@ -465,7 +453,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       cache_mark_dirty(cb);
       cache_put_block(cb); 
 
-      // length? size or chunksize
       if (offset + chunk_size > curr_length) {
         cb = cache_get_block(inode->sector, true);
         struct inode_disk* disk_inode = (struct inode_disk*)cache_read_block(cb);
@@ -521,6 +508,7 @@ inode_length (const struct inode *inode)
 }
 
 
+// init the inode_disk with fields and multi-level index support
 static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir){
   set_gap_marker(data->direct_blocks, (block_sector_t)DIRECT_BLOCK_COUNT);
   data->L1_indirect_sector = GAP_MARKER;
@@ -530,6 +518,7 @@ static void init_inode_disk(struct inode_disk* data, off_t length, bool isdir){
   data->isdir = isdir;
 }
 
+// installs inode, allocates sector on freemap
 static block_sector_t install_file_sector(struct inode* inode, off_t offset){
   ASSERT(inode != NULL);
   block_sector_t file_sector = calculate_file_sector(offset);
@@ -593,6 +582,7 @@ static block_sector_t install_file_sector(struct inode* inode, off_t offset){
   return true;
 }
 
+// helper to install l1
 static bool install_l1_indirect_block(off_t offset, struct inode_disk* id_data, UNUSED block_sector_t* l2_data){
   block_sector_t file_sector = calculate_file_sector(offset);
   ASSERT(id_data != NULL);
@@ -624,7 +614,7 @@ static bool install_l1_indirect_block(off_t offset, struct inode_disk* id_data, 
   return true;
 }
 
-
+// helper to install l2
 static bool install_l2_indirect_block(struct inode_disk* id_data){
   ASSERT(id_data->L2_indirect_sector == GAP_MARKER);
 
@@ -635,6 +625,7 @@ static bool install_l2_indirect_block(struct inode_disk* id_data){
   return true;
 }
 
+// if inode is dir
 bool is_dir(struct inode * inode){
   struct cache_block* cb = cache_get_block(inode->sector, false);
   struct inode_disk* data = (struct inode_disk*)cache_read_block(cb);
@@ -643,6 +634,7 @@ bool is_dir(struct inode * inode){
   return isdir;
 }
 
+// helpers for indices/offset calculation
 static block_sector_t calculate_file_sector(off_t offset){
   return (((block_sector_t)offset) / ((block_sector_t)BLOCK_SECTOR_SIZE));
 }
@@ -654,13 +646,13 @@ static block_sector_t calculate_l1_index(off_t offset, bool l2_parent){
   else{
     return (calculate_file_sector(offset) - ((block_sector_t) DIRECT_BLOCK_COUNT));
   }
-
 }
 
 static block_sector_t calculate_l2_index(off_t offset){
   return ((calculate_file_sector(offset) - ((block_sector_t) DIRECT_BLOCK_COUNT) - ((block_sector_t) INDIRECT_BLOCK_COUNT)) /((block_sector_t) INDIRECT_BLOCK_COUNT));
 }
 
+// helpers for install
 static void install_file_sector_helper(block_sector_t indirect_sector, block_sector_t disk_sector, off_t offset){
   struct cache_block* l1_cb = cache_get_block(indirect_sector, false);
   block_sector_t* l1_data = cache_read_block(l1_cb);
@@ -669,8 +661,6 @@ static void install_file_sector_helper(block_sector_t indirect_sector, block_sec
   cache_mark_dirty(l1_cb);
 
   cache_put_block(l1_cb);
-
-
 }
 
 static void install_indirect_init(block_sector_t sector){
@@ -682,6 +672,7 @@ static void install_indirect_init(block_sector_t sector){
   cache_put_block(indirect_cb);
 }
 
+// check if l1 needs to be installed, used for l1 under l2 too
 static bool install_indirect_check(struct cache_block* parent_cb, struct inode_disk* id_data, UNUSED block_sector_t* l2_data,block_sector_t indirect_sector, block_sector_t disk_sector, off_t offset, bool is_L1){
   if(indirect_sector == GAP_MARKER){
     bool installed = is_L1 ? install_l1_indirect_block(offset, id_data, l2_data): install_l2_indirect_block(id_data);
@@ -694,6 +685,7 @@ static bool install_indirect_check(struct cache_block* parent_cb, struct inode_d
   return true;
 }
 
+// sets gap marker
 static void set_gap_marker(block_sector_t* data, block_sector_t length){
   ASSERT(data != NULL);
   for(block_sector_t i = 0; i < length; ++i){

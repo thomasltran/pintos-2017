@@ -53,6 +53,8 @@ process_execute (const char *file_name)
   ps->exe_file = NULL;
 
   ASSERT(parent_thread->curr_dir != NULL);
+
+  // so child can use in start, and load when it does filesys_open
   ps->parent_curr_dir = parent_thread->curr_dir;
 
   sema_init(&ps->user_prog_exit, 0);
@@ -87,7 +89,6 @@ process_execute (const char *file_name)
   list_push_back(&parent_thread->ps_list, &ps->elem);
 
   ASSERT(parent_thread->curr_dir != NULL);
-
 
   return tid;
 }
