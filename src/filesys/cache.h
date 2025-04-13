@@ -13,11 +13,11 @@ struct cache_block;
 void cache_init(void);
 
 /* Flushes all dirty blocks in cache to disk. Used for synchronization and eviction. */
-void cache_flush(void);
+void cache_flush(bool);
 
 /* Gets a block from the cache for the given sector.
  * If exclusive is true, gets exclusive write access. */
-struct cache_block *cache_get_block(block_sector_t sector, bool exclusive);
+struct cache_block *cache_get_block(block_sector_t sector, bool exclusive, bool readahead);
 
 /* Releases a previously acquired cache block. */
 void cache_put_block(struct cache_block *block);
@@ -30,5 +30,8 @@ void *cache_zero_block(struct cache_block *block);
 
 /* Marks a cache block as dirty, indicating it needs to be written back to disk. */
 void cache_mark_dirty(struct cache_block *block);
+
+// readahead
+void cache_readahead(block_sector_t sector);
 
 #endif

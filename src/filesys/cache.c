@@ -24,6 +24,13 @@ struct cache_block {
     struct list_elem lru_elem; // lru list
 };
 
+// holds info for readahead
+struct readahead_entry
+{
+    block_sector_t sector; // sector
+    struct list_elem elem; // elem for readahead list
+};
+
 static struct cache_block *find_block(block_sector_t sector);
 static struct lock buffer_cache_lock; // lock for global buff cache array
 static struct lock lru_lock; // lock for lru list
@@ -34,13 +41,87 @@ static struct cache_block cache[CACHE_SIZE];
 // lru list
 static struct list lru_list;
 
-// flushes every 30 secs
+static struct list readahead_queue; // readahead queue
+static struct lock readahead_lock; // readahead lock
+static struct condition cb_available; // task available, or shutdown
+static bool shutdown; // if filesys done is called
+
+static void cache_readahead_daemon(void *aux UNUSED);
+
+// adds the sector to the queue
+void cache_readahead(block_sector_t sector)
+{
+    lock_acquire(&readahead_lock);
+
+    if (shutdown)
+    {
+        cond_signal(&cb_available, &readahead_lock);
+        lock_release(&readahead_lock);
+        return;
+    }
+
+    ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
+
+    struct readahead_entry *readahead_entry = malloc(sizeof(struct readahead_entry));
+    readahead_entry->sector = sector;
+
+    list_push_back(&readahead_queue, &readahead_entry->elem);
+    cond_signal(&cb_available, &readahead_lock);
+
+    lock_release(&readahead_lock);
+}
+
+// prefetch the block (sector), reading will make the cache block valid
+// could get evicted, but just trying to increase perf
+static void cache_readahead_daemon()
+{
+    while(true){
+        lock_acquire(&readahead_lock);
+
+        if (shutdown)
+        {
+            lock_release(&readahead_lock);
+            thread_exit();
+        }
+
+        // must not commit to waiting if shutdown, otherwise test hangs
+        while (!shutdown)
+        {
+            cond_wait(&cb_available, &readahead_lock);
+        }
+
+        if (shutdown)
+        {
+            lock_release(&readahead_lock);
+            thread_exit();
+        }
+
+        // prefetch
+        if (!list_empty(&readahead_queue))
+        {
+            ASSERT(!shutdown);
+
+            struct list_elem *e = list_pop_front(&readahead_queue);
+            struct readahead_entry *readahead_entry = list_entry(e, struct readahead_entry, elem);
+            // lock_release(&readahead_lock);
+
+            ASSERT(readahead_entry != NULL);
+            ASSERT(readahead_entry->sector != UINT32_MAX && readahead_entry->sector != UINT32_MAX - 1);
+
+            cache_get_block(readahead_entry->sector, false, true);
+            free(readahead_entry);
+        }
+        lock_release(&readahead_lock);
+    }
+}
+
+// writes back dirty blocks periodically
 static void flush_daemon(void *aux UNUSED)
 {
     while (true)
     {
         timer_sleep(30 * TIMER_FREQ);
-        cache_flush();
+        cache_flush(false);
     }
 }
 
@@ -50,6 +131,12 @@ void cache_init(void)
     list_init(&lru_list);
     lock_init(&buffer_cache_lock);
     lock_init(&lru_lock);
+
+    list_init(&readahead_queue);
+    lock_init(&readahead_lock);
+    cond_init(&cb_available);
+
+    shutdown = false;
 
     for (size_t i = 0; i < CACHE_SIZE; i++)
     {
@@ -67,11 +154,30 @@ void cache_init(void)
     }
 
     thread_create("flush-daemon", -20, flush_daemon, NULL);
+    thread_create("cache_readahead_daemon", -20, cache_readahead_daemon, NULL);
 }
 
 // flush dirty cache blocks
-void cache_flush(void)
+void cache_flush(bool fs_done)
 {
+    if (fs_done)
+    {
+        lock_acquire(&readahead_lock);
+
+        for (struct list_elem *e = list_begin(&readahead_queue);
+             e != list_end(&readahead_queue);)
+        {
+            struct readahead_entry *readahead_entry = list_entry(e, struct readahead_entry, elem);
+            e = list_remove(e);
+            free(readahead_entry);
+        }
+
+        shutdown = true;
+        cond_signal(&cb_available, &readahead_lock);
+
+        lock_release(&readahead_lock);
+    }
+
     lock_acquire(&buffer_cache_lock);
     for (size_t i = 0; i < CACHE_SIZE; i++)
     {
@@ -88,13 +194,18 @@ void cache_flush(void)
 }
 
 // gets a cache block
-struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
+struct cache_block *cache_get_block(block_sector_t sector, bool exclusive, bool readahead)
 {
     ASSERT(sector != UINT32_MAX && sector != UINT32_MAX - 1);
     struct cache_block *cb = find_block(sector);
     // cb lock still held after find_block
 
-    // exclusive request
+    if (cb == NULL)
+    {
+        return NULL;
+    }
+
+    // exclusive
     if (exclusive)
     {
         while (cb->readers > 0 || cb->exclusive)
@@ -103,7 +214,7 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
         }
         cb->exclusive = true;
     }
-    // shared request
+    // shared
     else
     {
         while (cb->exclusive)
@@ -114,6 +225,13 @@ struct cache_block *cache_get_block(block_sector_t sector, bool exclusive)
     }
 
     lock_release(&cb->lock);
+
+    if (readahead)
+    {
+        cache_read_block(cb);
+        cache_put_block(cb);
+        cb = NULL;
+    }
 
     return cb;
 }
@@ -183,7 +301,8 @@ static struct cache_block *find_block(block_sector_t sector)
 // put block
 void cache_put_block(struct cache_block *block)
 {
-    
+
+    lock_acquire(&lru_lock);
     lock_acquire(&block->lock);
     // block was exclusive
     if (block->exclusive)
@@ -203,7 +322,7 @@ void cache_put_block(struct cache_block *block)
     }
     lock_release(&block->lock);
 
-    lock_acquire(&lru_lock);
+    // ASSERT(!block->exclusive && block->readers == 0);
     list_push_back(&lru_list, &block->lru_elem);
     lock_release(&lru_lock);
 }
