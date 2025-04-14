@@ -257,6 +257,21 @@ process_exit(void)
     lock_release(&fs_lock);
   }
 
+  // clean up fd's when a thread exits
+  lock_acquire(&fs_lock);
+  struct file **fd_table = cur->fd_table;
+  if (fd_table != NULL)
+  { // called open
+    for (int i = FD_MIN; i < FD_MAX; i++)
+    {
+      if(fd_table[i] != NULL){
+        file_close(fd_table[i]);
+      }
+    }
+    free(fd_table);
+  }
+  lock_release(&fs_lock);
+
   if (ps != NULL)
   {
     lock_acquire(&ps->ps_lock);
@@ -278,21 +293,6 @@ process_exit(void)
       lock_release(&ps->ps_lock);
     }
   }
-
-  // clean up fd's when a thread exits
-  lock_acquire(&fs_lock);
-  struct file **fd_table = cur->fd_table;
-  if (fd_table != NULL)
-  { // called open
-    for (int i = FD_MIN; i < FD_MAX; i++)
-    {
-      if(fd_table[i] != NULL){
-        file_close(fd_table[i]);
-      }
-    }
-    free(fd_table);
-  }
-  lock_release(&fs_lock);
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
