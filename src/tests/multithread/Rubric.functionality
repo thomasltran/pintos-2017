@@ -1,0 +1,7 @@
+Functionality of system calls:
+- Test argument passing on Pintos command line.
+3	args-none
+3	args-single
+3	args-multiple
+3	args-many
+3	args-dbl-space

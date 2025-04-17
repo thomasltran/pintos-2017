@@ -1,0 +1,24 @@
+# -*- makefile -*-
+
+tests/%.output: FILESYSSOURCE = --filesys-size=2
+tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
+
+tests/multithread_TESTS = $(addprefix tests/multithread/,args-none		\
+args-single args-multiple args-many args-dbl-space)
+
+tests/multithread_PROGS = $(tests/multithread_TESTS) $(addprefix \
+tests/multithread/,child-simple child-args child-bad child-close child-rox)
+
+tests/multithread/args-none_SRC = tests/multithread/args.c
+tests/multithread/args-single_SRC = tests/multithread/args.c
+tests/multithread/args-multiple_SRC = tests/multithread/args.c
+tests/multithread/args-many_SRC = tests/multithread/args.c
+tests/multithread/args-dbl-space_SRC = tests/multithread/args.c
+
+$(foreach prog,$(tests/multithread_PROGS),$(eval $(prog)_SRC += tests/lib.c))
+
+tests/multithread/args-single_ARGS = onearg
+tests/multithread/args-multiple_ARGS = some arguments for you!
+tests/multithread/args-many_ARGS = a b c d e f g h i j k l m n o p q r s t u v
+tests/multithread/args-dbl-space_ARGS = two  spaces!
+tests/multithread/multi-recurse_ARGS = 15

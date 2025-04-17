@@ -118,6 +118,7 @@ struct thread
   unsigned magic; /* Detects stack overflow. */
 };
 
+// organize to program
 #ifdef USERPROG
 struct process // struct to manage parent/child threads in process.c
 {

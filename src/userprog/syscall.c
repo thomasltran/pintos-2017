@@ -20,6 +20,7 @@ static bool validate_user_buffer(const void *uaddr, size_t size);
 static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
 static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
+static bool check_fd(int fd);
 
 /* Initialize the system call handler */
 void
@@ -210,6 +211,10 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   return filename;
 }
 
+static bool check_fd(int fd)
+{
+  return !(fd < FD_MIN || fd >= FD_MAX || thread_current()->fd_table == NULL || thread_current()->fd_table[fd] == NULL);
+}
 
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
 
@@ -272,49 +277,14 @@ syscall_handler(struct intr_frame *f)
 
       struct thread *cur = thread_current();
 
-      lock_acquire(&fs_lock);
-
-      if (fd == 0)
-      {
-        bytes_read = 0;
-        while ((unsigned int)bytes_read < size - 1) // buffer null terminated
-        {
-          uint8_t key_input = input_getc();
-          if (key_input > 0)
-          {
-            void *ptr = (void *)buffer + bytes_read++; // ++ will account for null terminator
-            *(uint8_t *)ptr = key_input;
-          }
-          else
-          {
-            break;
-          }
-        }
-        if (bytes_read > 0)
-        {
-          void *ptr = (void *)buffer + bytes_read;
-          *(uint8_t *)ptr = '\0';
-          /* Re-validate buffer since page status might have changed */
-          if (!validate_user_buffer(buffer, bytes_read) ||
-              !memcpy_to_user((void *)buffer, (void *)buffer, bytes_read))
-          {
-            f->eax = -1;
-            lock_release(&fs_lock);
-            exit(-1);
-          }
-        }
-        lock_release(&fs_lock);
-        f->eax = bytes_read;
-        break;
-      }
-
       /* Validate FD */
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      if (!check_fd(fd))
       {
         f->eax = -1;
-        lock_release(&fs_lock);
         exit(-1);
       }
+
+      lock_acquire(&fs_lock);
 
       /* Perform read operation */
       struct file *file = cur->fd_table[fd];
@@ -380,13 +350,15 @@ syscall_handler(struct intr_frame *f)
       unsigned position = *(unsigned *)(f->esp + 8);
 
       struct thread *cur = thread_current();
-      lock_acquire(&fs_lock);
 
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      if (!check_fd(fd))
       {
-        lock_release(&fs_lock);
+        f->eax = -1;
         exit(-1);
       }
+
+      lock_acquire(&fs_lock);
+
       struct file *cur_file = cur->fd_table[fd];
       file_seek(cur_file, position);
 
@@ -441,6 +413,8 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
+      lock_release(&fs_lock);
+
       struct thread *cur = thread_current();
 
       if (cur->fd_table == NULL) {
@@ -449,7 +423,6 @@ syscall_handler(struct intr_frame *f)
         if (cur->fd_table == NULL)
         {
           f->eax = -1;
-          lock_release(&fs_lock);
           exit(-1);
         }
       }
@@ -462,6 +435,8 @@ syscall_handler(struct intr_frame *f)
           break;
         }
       }
+
+      lock_acquire(&fs_lock);
 
       /* Table is full (i.e. no free fds) */
       if (fd ==- 1) {
@@ -508,15 +483,14 @@ syscall_handler(struct intr_frame *f)
       int fd = *((int *)(f->esp + 4));
       struct thread *cur = thread_current();
 
-      lock_acquire(&fs_lock);
-
       /* Validate FD */
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      if (!check_fd(fd))
       {
         f->eax = -1;
-        lock_release(&fs_lock);
         exit(-1);
       }
+
+      lock_acquire(&fs_lock);
 
       /* Get file size */
       f->eax = file_length(cur->fd_table[fd]);
@@ -578,14 +552,14 @@ syscall_handler(struct intr_frame *f)
       int fd = *((int *)(f->esp + 4));
       struct thread *cur = thread_current();
 
-      lock_acquire(&fs_lock);
-
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      if (!check_fd(fd))
       {
         f->eax = -1;
-        lock_release(&fs_lock);
         exit(-1);
       }
+
+      lock_acquire(&fs_lock);
+
       file_close(cur->fd_table[fd]);
       cur->fd_table[fd] = NULL;
 
@@ -605,14 +579,14 @@ syscall_handler(struct intr_frame *f)
       int fd = *((int *)(f->esp + 4));
       struct thread *cur = thread_current();
 
-      lock_acquire(&fs_lock);
-
-      if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+      if (!check_fd(fd))
       {
         f->eax = -1;
-        lock_release(&fs_lock);
         exit(-1);
       }
+
+      lock_acquire(&fs_lock);
+
       f->eax = file_tell(cur->fd_table[fd]);
 
       lock_release(&fs_lock);
@@ -659,19 +633,21 @@ static int write(int fd, const void * buffer, unsigned size){
   else
   {
     struct thread *cur = thread_current();
-    lock_acquire(&fs_lock);
-    if (fd < FD_MIN || fd >= FD_MAX || cur->fd_table == NULL || cur->fd_table[fd] == NULL)
+
+    if (!check_fd(fd))
     {
-      lock_release(&fs_lock);
       exit(-1);
     }
+
+    lock_acquire(&fs_lock);
     struct file *cur_file = cur->fd_table[fd];
 
     unsigned count = 0;
-    while(count < size){
-      int buffer_size = (size-count) > 207 ? 207 : size-count;
+    while (count < size)
+    {
+      int buffer_size = (size - count) > 207 ? 207 : size - count;
 
-      off_t bytes = file_write(cur_file, buffer+count, buffer_size);
+      off_t bytes = file_write(cur_file, buffer + count, buffer_size);
       if (bytes <= 0)
       {
         break;
