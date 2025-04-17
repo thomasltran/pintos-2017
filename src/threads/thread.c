@@ -469,6 +469,7 @@ thread_exit (void)
   ASSERT(!intr_context ());
 
 #ifdef USERPROG
+  // if 
   process_exit ();
 #endif
 
@@ -650,8 +651,8 @@ init_thread (struct thread *t, const char *name, int nice)
   if (cpu_can_acquire_spinlock)
     spinlock_release (&all_lock);
 #ifdef USERPROG
-  list_init(&t->ps_list);
-  t->fd_table = NULL;
+  list_init(&t->parent_child_list);
+  // bitmap create here too
 #endif
 }
 

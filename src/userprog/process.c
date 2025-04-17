@@ -24,7 +24,7 @@
 #include "lib/string.h"
 
 static thread_func start_process NO_RETURN;
-static bool load(const char *cmdline, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp);
+static bool load(const char *cmdline, struct parent_child *parent_child, char **argv, int argc, void (**eip)(void), void **esp);
 
 /* Starts a new thread running a user program loaded from file_name.
    Creates a process struct to track the parent-child relationship and 
@@ -38,48 +38,48 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
 
-  struct process *ps = malloc(sizeof(struct process));
-  if (ps == NULL)
+  struct parent_child *parent_child = malloc(sizeof(struct parent_child));
+  if (parent_child == NULL)
   {
     return TID_ERROR;
   }
-  lock_init(&ps->ps_lock);
-  ps->exit_status = -1;
-  ps->child_tid = -1; // remains -1 if failed start
-  ps->ref_count = 2;
-  ps->good_start = false;
-  ps->exe_file = NULL;
-  sema_init(&ps->user_prog_exit, 0);
-  sema_init(&ps->child_started, 0);
+  lock_init(&parent_child->parent_child_lock);
+  parent_child->exit_status = -1;
+  parent_child->child_tid = -1; // remains -1 if failed start
+  parent_child->ref_count = 2;
+  parent_child->good_start = false;
+  parent_child->exe_file = NULL;
+  sema_init(&parent_child->user_prog_exit, 0);
+  sema_init(&parent_child->child_started, 0);
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
   {
-    free(ps);
+    free(parent_child);
     return TID_ERROR;
   }
   strlcpy (fn_copy, file_name, PGSIZE);
-  ps->user_prog_name = fn_copy;
+  parent_child->user_prog_name = fn_copy;
 
   // child of the calling process
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(file_name, NICE_DEFAULT, start_process, ps);
+  tid = thread_create(file_name, NICE_DEFAULT, start_process, parent_child);
   
-  sema_down(&ps->child_started); // ensure child starts
+  sema_down(&parent_child->child_started); // ensure child starts
 
-  if (tid == TID_ERROR || !ps->good_start) // if child thread fails, never gets added to the list
+  if (tid == TID_ERROR || !parent_child->good_start) // if child thread fails, never gets added to the list
   {
-    free(ps);
+    free(parent_child);
     return TID_ERROR;
   }
 
-  ps->child_tid = tid; // if child is in process_exit before this, it has the ref to ps already so semaphore is good
-  ASSERT(ps->user_prog_name != NULL);
+  parent_child->child_tid = tid; // if child is in process_exit before this, it has the ref to parent_child already so semaphore is good
+  ASSERT(parent_child->user_prog_name != NULL);
 
   struct thread *parent_thread = thread_current();
-  list_push_back(&parent_thread->ps_list, &ps->elem);
+  list_push_back(&parent_thread->parent_child_list, &parent_child->elem);
 
   return tid;
 }
@@ -92,8 +92,8 @@ process_execute (const char *file_name)
 static void
 start_process(void *p)
 {
-  struct process *ps = (struct process *)p;
-  char *file_name = ps->user_prog_name;
+  struct parent_child *parent_child = (struct parent_child *)p;
+  char *file_name = parent_child->user_prog_name;
 
   char *argv[64]; // find better limit
   char *token, *save_ptr;
@@ -130,24 +130,24 @@ start_process(void *p)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  success = load(file_name, ps, argv, i, &if_.eip, &if_.esp);
+  success = load(file_name, parent_child, argv, i, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page(ps->user_prog_name);
+  palloc_free_page(parent_child->user_prog_name);
 
   if (!success)
   {
     free(hold);
-    sema_up(&ps->child_started);
+    sema_up(&parent_child->child_started);
     thread_exit(); // never returns to caller
   }
   else
   {
-    ps->good_start = true;
+    parent_child->good_start = true;
     struct thread *child_thread = thread_current();
-    child_thread->ps = ps;
-    child_thread->ps->user_prog_name = hold;
-    sema_up(&ps->child_started);
+    child_thread->parent_child = parent_child;
+    child_thread->parent_child->user_prog_name = hold;
+    sema_up(&parent_child->child_started);
   }
 
   // hex_dump(if_.esp, &if_.esp, 0xc0000000, 1);
@@ -176,39 +176,39 @@ int process_wait(tid_t child_tid)
   struct thread *parent_thread = thread_current();
   int exit_status = -1;
 
-  for (struct list_elem *e = list_begin(&parent_thread->ps_list);
-       e != list_end(&parent_thread->ps_list);)
+  for (struct list_elem *e = list_begin(&parent_thread->parent_child_list);
+       e != list_end(&parent_thread->parent_child_list);)
   {
-    struct process *ps = list_entry(e, struct process, elem);
-    ASSERT(ps != NULL);
+    struct parent_child *parent_child = list_entry(e, struct parent_child, elem);
+    ASSERT(parent_child != NULL);
 
-    lock_acquire(&ps->ps_lock);
+    lock_acquire(&parent_child->parent_child_lock);
     
-    if (child_tid == ps->child_tid && ps->ref_count > 0) // HB relationship for parent in setting vs. reading ps->child_tid
+    if (child_tid == parent_child->child_tid && parent_child->ref_count > 0) // HB relationship for parent in setting vs. reading parent_child->child_tid
     {
-      lock_release(&ps->ps_lock);
+      lock_release(&parent_child->parent_child_lock);
 
-      sema_down(&ps->user_prog_exit);
+      sema_down(&parent_child->user_prog_exit);
 
-      lock_acquire(&ps->ps_lock);
+      lock_acquire(&parent_child->parent_child_lock);
 
-      exit_status = ps->exit_status;
+      exit_status = parent_child->exit_status;
 
-      ps->ref_count--;
-      ASSERT(ps->ref_count >= 0);
-      if (ps->ref_count == 0) // nothing waiting for it
+      parent_child->ref_count--;
+      ASSERT(parent_child->ref_count >= 0);
+      if (parent_child->ref_count == 0) // nothing waiting for it
       {
-        list_remove(&ps->elem); // list ops only done by parent
-        lock_release(&ps->ps_lock);
-        free(ps->user_prog_name);
-        free(ps);
+        list_remove(&parent_child->elem); // list oparent_child only done by parent
+        lock_release(&parent_child->parent_child_lock);
+        free(parent_child->user_prog_name);
+        free(parent_child);
         return exit_status;
       }
 
-      lock_release(&ps->ps_lock);
+      lock_release(&parent_child->parent_child_lock);
       return exit_status;
     }
-    lock_release(&ps->ps_lock);
+    lock_release(&parent_child->parent_child_lock);
 
     e = list_next(e);
   }
@@ -223,37 +223,37 @@ process_exit(void)
   uint32_t *pd;
   int tid = cur->tid;
 
-  for (struct list_elem *e = list_begin(&cur->ps_list);
-       e != list_end(&cur->ps_list);)
+  for (struct list_elem *e = list_begin(&cur->parent_child_list);
+       e != list_end(&cur->parent_child_list);)
   {
-    struct process *ps = list_entry(e, struct process, elem);
-    ASSERT(ps != NULL);
+    struct parent_child *parent_child = list_entry(e, struct parent_child, elem);
+    ASSERT(parent_child != NULL);
 
-    lock_acquire(&ps->ps_lock);
+    lock_acquire(&parent_child->parent_child_lock);
 
-    ps->ref_count--;
+    parent_child->ref_count--;
 
-    ASSERT(ps->ref_count >= 0);
-    if (ps->ref_count == 0)
+    ASSERT(parent_child->ref_count >= 0);
+    if (parent_child->ref_count == 0)
     {
       e = list_remove(e);
-      lock_release(&ps->ps_lock);
+      lock_release(&parent_child->parent_child_lock);
 
-      free(ps->user_prog_name);
-      free(ps);
+      free(parent_child->user_prog_name);
+      free(parent_child);
     }
     else
     {
       e = list_next(e);
-      lock_release(&ps->ps_lock);
+      lock_release(&parent_child->parent_child_lock);
     }
   }
 
-  struct process *ps = cur->ps;
+  struct parent_child *parent_child = cur->parent_child;
 
-  if(ps != NULL && ps->exe_file != NULL){
+  if(parent_child != NULL && parent_child->exe_file != NULL){
     lock_acquire(&fs_lock);
-    file_close(ps->exe_file);
+    file_close(parent_child->exe_file);
     lock_release(&fs_lock);
   }
 
@@ -272,25 +272,25 @@ process_exit(void)
   }
   lock_release(&fs_lock);
 
-  if (ps != NULL)
+  if (parent_child != NULL)
   {
-    lock_acquire(&ps->ps_lock);
+    lock_acquire(&parent_child->parent_child_lock);
 
-    ps->ref_count--;
+    parent_child->ref_count--;
 
-    ASSERT(ps->ref_count >= 0);
-    if (ps->ref_count == 0) // nothing waiting for it
+    ASSERT(parent_child->ref_count >= 0);
+    if (parent_child->ref_count == 0) // nothing waiting for it
     {
-      list_remove(&ps->elem); // list ops only done by parent
-      lock_release(&ps->ps_lock);
-      free(ps->user_prog_name);
-      free(ps);
+      list_remove(&parent_child->elem); // list oparent_child only done by parent
+      lock_release(&parent_child->parent_child_lock);
+      free(parent_child->user_prog_name);
+      free(parent_child);
     }
     else
     {
-      sema_up(&ps->user_prog_exit);
+      sema_up(&parent_child->user_prog_exit);
 
-      lock_release(&ps->ps_lock);
+      lock_release(&parent_child->parent_child_lock);
     }
   }
 
@@ -404,7 +404,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    Pushes the command line arguments onto the stack in the correct order,
    ensuring proper word alignment (4 byte boundaries).
    Returns true if successful, false otherwise. */
-bool load(const char *file_name, struct process *ps, char **argv, int argc, void (**eip)(void), void **esp)
+bool load(const char *file_name, struct parent_child *parent_child, char **argv, int argc, void (**eip)(void), void **esp)
 {
   struct thread *t = thread_current();
   struct Elf32_Ehdr ehdr;
@@ -426,14 +426,14 @@ bool load(const char *file_name, struct process *ps, char **argv, int argc, void
   file = filesys_open(file_name);
   if (file == NULL)
   {
-    ps->exe_file = NULL;
+    parent_child->exe_file = NULL;
     lock_release(&fs_lock);
     goto done;
   }
   else
   {
-    ps->exe_file = file;
-    file_deny_write(ps->exe_file);
+    parent_child->exe_file = file;
+    file_deny_write(parent_child->exe_file);
   }
 
   /* Read and verify executable header. */

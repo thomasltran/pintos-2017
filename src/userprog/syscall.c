@@ -242,6 +242,7 @@ syscall_handler(struct intr_frame *f)
 
   // Get the syscall number
   uint32_t sc_num = *((uint32_t *)(f->esp));
+  struct thread * cur = thread_current();
 
   // Syscalls Handled Via Switch Cases
   switch (sc_num) {
@@ -274,8 +275,6 @@ syscall_handler(struct intr_frame *f)
         f->eax = -1;
         exit(-1);
       }
-
-      struct thread *cur = thread_current();
 
       /* Validate FD */
       if (!check_fd(fd))
@@ -349,8 +348,6 @@ syscall_handler(struct intr_frame *f)
       int fd = *(int *)(f->esp + 4);
       unsigned position = *(unsigned *)(f->esp + 8);
 
-      struct thread *cur = thread_current();
-
       if (!check_fd(fd))
       {
         f->eax = -1;
@@ -414,8 +411,6 @@ syscall_handler(struct intr_frame *f)
       }
 
       lock_release(&fs_lock);
-
-      struct thread *cur = thread_current();
 
       if (cur->fd_table == NULL) {
         // calloc (since we know the size)
@@ -481,7 +476,6 @@ syscall_handler(struct intr_frame *f)
       }
 
       int fd = *((int *)(f->esp + 4));
-      struct thread *cur = thread_current();
 
       /* Validate FD */
       if (!check_fd(fd))
@@ -550,7 +544,6 @@ syscall_handler(struct intr_frame *f)
       }
 
       int fd = *((int *)(f->esp + 4));
-      struct thread *cur = thread_current();
 
       if (!check_fd(fd))
       {
@@ -577,7 +570,6 @@ syscall_handler(struct intr_frame *f)
       }
 
       int fd = *((int *)(f->esp + 4));
-      struct thread *cur = thread_current();
 
       if (!check_fd(fd))
       {
@@ -632,15 +624,13 @@ static int write(int fd, const void * buffer, unsigned size){
   }
   else
   {
-    struct thread *cur = thread_current();
-
     if (!check_fd(fd))
     {
       exit(-1);
     }
 
     lock_acquire(&fs_lock);
-    struct file *cur_file = cur->fd_table[fd];
+    struct file *cur_file = thread_current()->fd_table[fd];
 
     unsigned count = 0;
     while (count < size)
@@ -667,13 +657,13 @@ static int write(int fd, const void * buffer, unsigned size){
 */
 void exit(int status){
   struct thread *thread_curr = thread_current();
-  struct process *ps = thread_curr->ps;
+  struct parent_child *parent_child = thread_curr->parent_child;
 
-  printf("%s: exit(%d)\n", thread_curr->ps->user_prog_name, status);
+  printf("%s: exit(%d)\n", thread_curr->parent_child->user_prog_name, status);
 
-  lock_acquire(&ps->ps_lock);
-  ps->exit_status = status;
-  lock_release(&ps->ps_lock);
+  lock_acquire(&parent_child->parent_child_lock);
+  parent_child->exit_status = status;
+  lock_release(&parent_child->parent_child_lock);
 
   thread_exit();
 }

@@ -90,10 +90,6 @@ struct thread
   enum thread_status status; /* Thread state. */
   char name[THREAD_NAME_MAX]; /* Name (for debugging purposes). */
   uint8_t *stack; /* Saved stack pointer. */
-  int nice; /* Nice value. */
-  int64_t wakeup;           /* Wakeup time for a sleeping thread */
-  struct list_elem allelem; /* List element for all threads list. */
-
   struct cpu *cpu; /* Points to the CPU this thread is currently bound to.
                       thread_unblock () will add a thread to the rq of
                       this CPU.  A load balancer needs to update this
@@ -103,16 +99,21 @@ struct thread
   /* Shared between thread.c and synch.c. */
   struct list_elem elem; /* List element. */
   struct list_elem sleepelem; /* List element for sleeping list */
+  struct list_elem allelem; /* List element for all threads list. */
 
+  int nice; /* Nice value. */
+  int64_t wakeup;           /* Wakeup time for a sleeping thread */
   uint64_t vruntime; // vruntime of the thread
   uint64_t last_cpu_time;  // track start (running) time
   
 #ifdef USERPROG
-  /* Owned by userprog/process.c. */
+  struct parent_child * parent_child; // reference a child thread holds to its struct process
+
+  // kept for parent/child process interaction
+  // don't think we need a lock b/c process wait/exit still in t erms of a process, not a thread. only ever executed by that thread
   uint32_t *pagedir; /* Page directory. */
-  struct process * ps; // reference a child thread holds to its struct process
-  struct list ps_list; // list of processes
   struct file **fd_table; /* file descriptor table */
+  struct list parent_child_list; // list of processes
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -120,10 +121,10 @@ struct thread
 
 // organize to program
 #ifdef USERPROG
-struct process // struct to manage parent/child threads in process.c
+struct parent_child // struct to manage parent/child threads in process.c
 {
    struct list_elem elem; // list of processes
-   struct lock ps_lock; // protect process fields
+   struct lock parent_child_lock; // protect process fields
    struct semaphore user_prog_exit; // child thread exit
    struct semaphore child_started; // child thread start (goes along with good_start)
    bool good_start; // started child process's thread and successfully making it past load
