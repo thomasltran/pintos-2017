@@ -43,7 +43,7 @@ is_valid_user_ptr(const void *ptr)
     struct thread *t = thread_current();
     return ptr != NULL 
         && is_user_vaddr(ptr)
-        && pagedir_get_page(t->pagedir, ptr) != NULL;
+        && pagedir_get_page(t->pcb->pagedir, ptr) != NULL;
 } 
 
 /* Validate a buffer in user memory
@@ -70,7 +70,7 @@ bool validate_user_buffer(const void *uaddr, size_t size)
 
     /* Check page directory entries */
     struct thread *t = thread_current();
-    uint32_t *pd = t->pagedir;
+    uint32_t *pd = t->pcb->pagedir;
     
     /* Handle single page case */
     if (pg_no(start) == pg_no(end))
@@ -213,7 +213,7 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
 
 static bool check_fd(int fd)
 {
-  return !(fd < FD_MIN || fd >= FD_MAX || thread_current()->fd_table == NULL || thread_current()->fd_table[fd] == NULL);
+  return !(fd < FD_MIN || fd >= FD_MAX || thread_current()->pcb->fd_table == NULL || thread_current()->pcb->fd_table[fd] == NULL);
 }
 
 /* - - - - - - - - - - System Call Handler - - - - - - - - - - */
@@ -286,7 +286,7 @@ syscall_handler(struct intr_frame *f)
       lock_acquire(&fs_lock);
 
       /* Perform read operation */
-      struct file *file = cur->fd_table[fd];
+      struct file *file = cur->pcb->fd_table[fd];
 
       /* Allocate kernel buffer and read from file */
       uint8_t *kern_buf = malloc(size);
@@ -356,7 +356,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      struct file *cur_file = cur->fd_table[fd];
+      struct file *cur_file = cur->pcb->fd_table[fd];
       file_seek(cur_file, position);
 
       lock_release(&fs_lock);
@@ -412,10 +412,10 @@ syscall_handler(struct intr_frame *f)
 
       lock_release(&fs_lock);
 
-      if (cur->fd_table == NULL) {
+      if (cur->pcb->fd_table == NULL) {
         // calloc (since we know the size)
-        cur->fd_table = calloc(FD_MAX, sizeof(struct file *));
-        if (cur->fd_table == NULL)
+        cur->pcb->fd_table = calloc(FD_MAX, sizeof(struct file *));
+        if (cur->pcb->fd_table == NULL)
         {
           f->eax = -1;
           exit(-1);
@@ -425,7 +425,7 @@ syscall_handler(struct intr_frame *f)
       /* Find a free fd */
       int fd = -1;
       for (int i = FD_MIN; i < FD_MAX; i++) {
-        if (cur->fd_table[i] == NULL) {
+        if (cur->pcb->fd_table[i] == NULL) {
           fd = i;
           break;
         }
@@ -442,7 +442,7 @@ syscall_handler(struct intr_frame *f)
       }
 
       /* Store file pointer in FD table */
-      cur->fd_table[fd] = file;
+      cur->pcb->fd_table[fd] = file;
       file_seek(file, 0); // reset file position to 0 (start of file)
       lock_release(&fs_lock);
       f->eax = fd;
@@ -487,7 +487,7 @@ syscall_handler(struct intr_frame *f)
       lock_acquire(&fs_lock);
 
       /* Get file size */
-      f->eax = file_length(cur->fd_table[fd]);
+      f->eax = file_length(cur->pcb->fd_table[fd]);
       lock_release(&fs_lock);
       break;
     }
@@ -553,8 +553,8 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      file_close(cur->fd_table[fd]);
-      cur->fd_table[fd] = NULL;
+      file_close(cur->pcb->fd_table[fd]);
+      cur->pcb->fd_table[fd] = NULL;
 
       lock_release(&fs_lock);
 
@@ -579,7 +579,7 @@ syscall_handler(struct intr_frame *f)
 
       lock_acquire(&fs_lock);
 
-      f->eax = file_tell(cur->fd_table[fd]);
+      f->eax = file_tell(cur->pcb->fd_table[fd]);
 
       lock_release(&fs_lock);
       break;
@@ -630,7 +630,7 @@ static int write(int fd, const void * buffer, unsigned size){
     }
 
     lock_acquire(&fs_lock);
-    struct file *cur_file = thread_current()->fd_table[fd];
+    struct file *cur_file = thread_current()->pcb->fd_table[fd];
 
     unsigned count = 0;
     while (count < size)

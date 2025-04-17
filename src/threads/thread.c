@@ -138,7 +138,7 @@ thread_tick (void)
   if (t == get_cpu ()->rq.idle_thread)
     get_cpu ()->idle_ticks++;
 #ifdef USERPROG
-  else if (t->pagedir != NULL)
+  else if (t->pcb->pagedir != NULL)
     get_cpu ()->user_ticks++;
 #endif
   else
@@ -259,6 +259,16 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     sf = alloc_frame (t, sizeof *sf);
     sf->eip = switch_entry;
     sf->ebp = 0;
+
+    t->pcb = palloc_get_page(PAL_ZERO);
+    if (t->pcb == NULL)
+      return NULL;
+    t->pcb->fd_table = NULL;
+    t->pcb->pagedir = NULL;
+    t->pcb->multithread = false;
+    lock_init(&t->pcb->lock);
+    // pcb->bitmap = bitmap_create(32); // 32 max threads
+    // bitmap create here too
 
     return t;
 }
@@ -457,7 +467,17 @@ do_thread_exit (void)
 
   lock_own_ready_queue ();
   cur->status = THREAD_DYING;
+
+  // clean up pcb
+  if(cur->pcb != NULL && !cur->pcb->multithread){
+    // bitmap_destroy(cur->pcb->bitmap);
+    palloc_free_page(cur->pcb);
+  }
+  // this has to happen before schedule? multi-oom freezes after like 1-2 iterations
+
   schedule ();
+
+
   NOT_REACHED ();
 }
 
@@ -469,10 +489,10 @@ thread_exit (void)
   ASSERT(!intr_context ());
 
 #ifdef USERPROG
-  // if 
+  // if it's the main thread (thraed which calls pthread_create), wait until all the (pthreads) child threads have pthread_exit
+  // cond wait, check if bitmap empty
   process_exit ();
 #endif
-
   do_thread_exit ();
 }
 
@@ -628,6 +648,17 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
   boot_thread->tid = allocate_tid ();
   boot_thread->cpu = cpu;
   cpu->rq.curr = boot_thread;
+
+  boot_thread->pcb = palloc_get_page(PAL_ZERO);
+  if (boot_thread->pcb == NULL){
+    ASSERT(1 == 2); // shouldn't hit for boot thread
+  }
+  boot_thread->pcb->fd_table = NULL;
+  boot_thread->pcb->pagedir = NULL;
+  boot_thread->pcb->multithread = false;
+  lock_init(&boot_thread->pcb->lock); // unused rn
+  // pcb->bitmap = bitmap_create(32); // 32 max threads
+  // bitmap create here too
 }
 
 /* Does basic initialization of T as a blocked thread named
@@ -652,7 +683,6 @@ init_thread (struct thread *t, const char *name, int nice)
     spinlock_release (&all_lock);
 #ifdef USERPROG
   list_init(&t->parent_child_list);
-  // bitmap create here too
 #endif
 }
 

@@ -6,8 +6,7 @@ tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
 tests/multithread_TESTS = $(addprefix tests/multithread/,args-none		\
 args-single args-multiple args-many args-dbl-space)
 
-tests/multithread_PROGS = $(tests/multithread_TESTS) $(addprefix \
-tests/multithread/,child-simple child-args child-bad child-close child-rox)
+tests/multithread_PROGS = $(tests/multithread_TESTS)
 
 tests/multithread/args-none_SRC = tests/multithread/args.c
 tests/multithread/args-single_SRC = tests/multithread/args.c

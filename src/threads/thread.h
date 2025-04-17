@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include "filesys/file.h"
 #include "threads/synch.h"
+#include <stdbool.h>
+#include "lib/kernel/bitmap.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -108,12 +110,10 @@ struct thread
   
 #ifdef USERPROG
   struct parent_child * parent_child; // reference a child thread holds to its struct process
-
-  // kept for parent/child process interaction
-  // don't think we need a lock b/c process wait/exit still in t erms of a process, not a thread. only ever executed by that thread
-  uint32_t *pagedir; /* Page directory. */
-  struct file **fd_table; /* file descriptor table */
   struct list parent_child_list; // list of processes
+
+  struct pcb * pcb;
+  size_t pthread_tid; // based off of pcb bitmap indices
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -133,6 +133,14 @@ struct parent_child // struct to manage parent/child threads in process.c
    tid_t child_tid; // thread id of child
    char * user_prog_name; // program name
    struct file * exe_file; // keep exe around until exit
+};
+
+struct pcb {
+   struct lock lock; // todo:
+   bool multithread; // related to pthreads
+   struct file **fd_table; /* file descriptor table */
+   uint32_t *pagedir; /* Page directory. */
+   // struct bitmap * bitmap; // 0-31 for pthread tid
 };
 #endif
 

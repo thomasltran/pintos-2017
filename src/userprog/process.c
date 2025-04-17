@@ -259,7 +259,7 @@ process_exit(void)
 
   // clean up fd's when a thread exits
   lock_acquire(&fs_lock);
-  struct file **fd_table = cur->fd_table;
+  struct file **fd_table = cur->pcb->fd_table;
   if (fd_table != NULL)
   { // called open
     for (int i = FD_MIN; i < FD_MAX; i++)
@@ -298,17 +298,17 @@ process_exit(void)
      to the kernel-only page directory. */
 
   ASSERT(tid == thread_current()->tid);
-  pd = cur->pagedir;
+  pd = cur->pcb->pagedir;
   if (pd != NULL)
   {
     /* Correct ordering here is crucial.  We must set
-       cur->pagedir to NULL before switching page directories,
+       cur->pcb->pagedir to NULL before switching page directories,
        so that a timer interrupt can't switch back to the
        process page directory.  We must activate the base page
        directory before destroying the process's page
        directory, or our active page directory will be one
        that's been freed (and cleared). */
-    cur->pagedir = NULL;
+    cur->pcb->pagedir = NULL;
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
@@ -323,7 +323,7 @@ process_activate (void)
   struct thread *t = thread_current ();
 
   /* Activate thread's page tables. */
-  pagedir_activate (t->pagedir);
+  pagedir_activate (t->pcb->pagedir);
 
   /* Set thread's kernel stack for use in processing
      interrupts. */
@@ -416,8 +416,8 @@ bool load(const char *file_name, struct parent_child *parent_child, char **argv,
   int addr_i = 0;
 
   /* Allocate and activate page directory. */
-  t->pagedir = pagedir_create();
-  if (t->pagedir == NULL)
+  t->pcb->pagedir = pagedir_create();
+  if (t->pcb->pagedir == NULL)
     goto done;
   process_activate();
 
@@ -715,6 +715,6 @@ install_page (void *upage, void *kpage, bool writable)
 
   /* Verify that there's not already a page at that virtual
      address, then map our page there. */
-  return (pagedir_get_page (t->pagedir, upage) == NULL
-          && pagedir_set_page (t->pagedir, upage, kpage, writable));
+  return (pagedir_get_page (t->pcb->pagedir, upage) == NULL
+          && pagedir_set_page (t->pcb->pagedir, upage, kpage, writable));
 }
