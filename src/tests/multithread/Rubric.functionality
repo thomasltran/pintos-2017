@@ -5,3 +5,6 @@ Functionality of system calls:
 3	args-multiple
 3	args-many
 3	args-dbl-space
+
+- Test "exec" system call.
+5	exec-arg

@@ -1,0 +1,28 @@
+pintos -v -k -T 60 --smp 2 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
+perl -I../.. ../../tests/multithread/exec-arg.ck tests/multithread/exec-arg tests/multithread/exec-arg.result
+FAIL tests/multithread/exec-arg
+Test output failed to match any acceptable form.
+
+Acceptable output:
+  (exec-arg) begin
+  (args) begin
+  (args) argc = 2
+  (args) argv[0] = 'child-args'
+  (args) argv[1] = 'childarg'
+  (args) argv[2] = null
+  (args) end
+  child-args: exit(0)
+  (exec-arg) end
+  exec-arg: exit(0)
+Differences in `diff -u' format:
+  (exec-arg) begin
+- (args) begin
+- (args) argc = 2
+- (args) argv[0] = 'child-args'
+- (args) argv[1] = 'childarg'
+- (args) argv[2] = null
+- (args) end
+- child-args: exit(0)
++ hi we're in pthread
+  (exec-arg) end
+  exec-arg: exit(0)

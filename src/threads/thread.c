@@ -266,9 +266,8 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     t->pcb->fd_table = NULL;
     t->pcb->pagedir = NULL;
     t->pcb->multithread = false;
+    t->pcb->bitmap = NULL; // 32 max threads, need malloc so can't do it yet
     lock_init(&t->pcb->lock);
-    // pcb->bitmap = bitmap_create(32); // 32 max threads
-    // bitmap create here too
 
     return t;
 }
@@ -473,6 +472,11 @@ do_thread_exit (void)
     // bitmap_destroy(cur->pcb->bitmap);
     palloc_free_page(cur->pcb);
   }
+  else{
+    // if it's the main thread (caller of the pthread_creates), wait for children to exit
+  }
+
+
   // this has to happen before schedule? multi-oom freezes after like 1-2 iterations
 
   schedule ();
@@ -656,8 +660,9 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
   boot_thread->pcb->fd_table = NULL;
   boot_thread->pcb->pagedir = NULL;
   boot_thread->pcb->multithread = false;
+  boot_thread->pcb->bitmap = NULL;
+
   lock_init(&boot_thread->pcb->lock); // unused rn
-  // pcb->bitmap = bitmap_create(32); // 32 max threads
   // bitmap create here too
 }
 

@@ -113,7 +113,8 @@ struct thread
   struct list parent_child_list; // list of processes
 
   struct pcb * pcb;
-  size_t pthread_tid; // based off of pcb bitmap indices
+  uint8_t *pthread_chunk; // top of 8 mb chunk
+  // size_t pthread_tid; // based off of pcb bitmap indices
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -136,11 +137,11 @@ struct parent_child // struct to manage parent/child threads in process.c
 };
 
 struct pcb {
-   struct lock lock; // todo:
+   struct lock lock; // todo: think
    bool multithread; // related to pthreads
    struct file **fd_table; /* file descriptor table */
    uint32_t *pagedir; /* Page directory. */
-   // struct bitmap * bitmap; // 0-31 for pthread tid
+   struct bitmap * bitmap; // 0-31 for pthread tid
 };
 #endif
 

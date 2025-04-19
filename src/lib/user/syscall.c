@@ -182,3 +182,16 @@ inumber (int fd)
 {
   return syscall1 (SYS_INUMBER, fd);
 }
+
+// returns tid used for join, -1 if fail
+int pthread_create(void * (*start_routine)(void *), void * arg){
+  return syscall2(SYS_PTHREAD_CREATE, start_routine, arg);
+}
+
+int pthread_join(int tid){
+  return syscall1(SYS_PTHREAD_JOIN, tid);
+}
+
+void pthread_exit(){
+  syscall0(SYS_PTHREAD_EXIT);
+}

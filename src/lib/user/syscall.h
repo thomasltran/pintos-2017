@@ -45,4 +45,9 @@ bool readdir (int fd, char name[READDIR_MAX_LEN + 1]);
 bool isdir (int fd);
 int inumber (int fd);
 
+// returns tid used for join, -1 if fail
+int pthread_create(void * (*start_routine)(void *), void * arg);
+int pthread_join(int tid);
+void pthread_exit(void);
+
 #endif /* lib/user/syscall.h */

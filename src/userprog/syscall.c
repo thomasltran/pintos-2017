@@ -247,6 +247,32 @@ syscall_handler(struct intr_frame *f)
   // Syscalls Handled Via Switch Cases
   switch (sc_num) {
 
+    case SYS_PTHREAD_CREATE: {
+      printf("hi we're in pthread\n");
+      // todo: if fails any step, ret -1
+
+      cur->pcb->multithread = true;
+
+      // first time we're calling pthread_create, init the bitmap
+      if(cur->pcb->bitmap == NULL){
+        cur->pcb->bitmap = bitmap_create(32); // 0-31 gives pthread tids
+      }
+
+      int pthread_tid = bitmap_scan_and_flip (cur->pcb->bitmap, 0, 1, false);
+
+      // go from bottom up for thread assignments
+      // bottom of thread space, find the chunk of the thread, ptr to the top of it
+      uint8_t * assigned_chunk = PTHREAD_SIZE + (PTHREAD_REGION + (pthread_tid * PTHREAD_SIZE));
+
+
+      // set up void * (mimic func), and fake ret addr
+        // fake ret addr responsibile for the pthread_exit wrapper
+          // similar to int main(), implicitly calls exit
+      // 
+
+      break;
+    }
+
     /* comments here that checks ptrs, buffers, fd, extract func params etc. mostly applies to the other syscall cases as well */
     // read
     case SYS_READ: {
