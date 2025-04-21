@@ -1,5 +1,6 @@
 #include <syscall.h>
 #include "../syscall-nr.h"
+#include <stddef.h>
 
 /* Invokes syscall NUMBER, passing no arguments, and returns the
    return value as an `int'. */
@@ -183,15 +184,27 @@ inumber (int fd)
   return syscall1 (SYS_INUMBER, fd);
 }
 
-// returns tid used for join, -1 if fail
-int pthread_create(void * (*start_routine)(void *), void * arg){
-  return syscall2(SYS_PTHREAD_CREATE, start_routine, arg);
+void twrapper(void *userfun_ptr, void *userarg)
+{
+  userfun_t userfun = (userfun_t)userfun_ptr;
+  userfun(userarg);
+  // pthread_exit(NULL);
+}
+
+uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg)
+{
+  return syscall3(SYS_PTHREAD_CREATE, wrapper, userfun, userarg);
+}
+
+uint32_t _pthread_create(userfun_t userfun, void *arg)
+{
+  return pthread_create(twrapper, (void *)userfun, arg);
 }
 
 int pthread_join(int tid){
   return syscall1(SYS_PTHREAD_JOIN, tid);
 }
 
-void pthread_exit(){
-  syscall0(SYS_PTHREAD_EXIT);
+void pthread_exit(void * res){
+  syscall1(SYS_PTHREAD_EXIT, res);
 }

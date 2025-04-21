@@ -19,6 +19,8 @@ typedef int mapid_t;
 #define EXIT_SUCCESS 0          /* Successful execution. */
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
 
+typedef void *(*userfun_t)(void *);
+
 /* Projects 2 and later. */
 void halt (void) NO_RETURN;
 void exit (int status) NO_RETURN;
@@ -46,8 +48,11 @@ bool isdir (int fd);
 int inumber (int fd);
 
 // returns tid used for join, -1 if fail
-int pthread_create(void * (*start_routine)(void *), void * arg);
+uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg);
 int pthread_join(int tid);
-void pthread_exit(void);
+void pthread_exit(void * res);
+
+void twrapper(void *userfun_ptr, void *userarg);
+uint32_t _pthread_create(userfun_t userfun, void *arg);
 
 #endif /* lib/user/syscall.h */

@@ -11,6 +11,20 @@
 #include "lib/string.h"
 #include "devices/shutdown.h"
 #include "devices/input.h"
+#include "threads/gdt.h"
+#include "threads/flags.h"
+#include "threads/palloc.h"
+#include "threads/tss.h"
+
+struct pthread_args
+{
+  void (*wrapper)(void *, void *);
+  void *esp;
+  struct pcb *pcb;
+  uint8_t *pthread_chunk;
+};
+
+void start_thread(void *aux);
 
 /* Function declarations */
 static void syscall_handler (struct intr_frame *);
@@ -216,12 +230,41 @@ static bool check_fd(int fd)
   return !(fd < FD_MIN || fd >= FD_MAX || thread_current()->pcb->fd_table == NULL || thread_current()->pcb->fd_table[fd] == NULL);
 }
 
-/* - - - - - - - - - - System Call Handler - - - - - - - - - - */
+static bool
+install_page(void *upage, void *kpage, bool writable)
+{
+  struct thread *t = thread_current();
 
-/* System call handler 
-Parameters:
-  - f: The interrupt frame for the system call
-*/
+  /* Verify that there's not already a page at that virtual
+     address, then map our page there. */
+  return (pagedir_get_page(t->pcb->pagedir, upage) == NULL && pagedir_set_page(t->pcb->pagedir, upage, kpage, writable));
+}
+
+void start_thread(void *aux)
+{
+  struct thread * cur = thread_current();
+  struct pthread_args * args = (struct pthread_args *)aux;
+  ASSERT(args != NULL);
+
+  cur->pcb = args->pcb;
+
+  // from start_process
+  struct intr_frame if_;
+  memset(&if_, 0, sizeof if_);
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
+  if_.eip = (void (*) (void))args->wrapper;
+  if_.esp = args->esp;
+
+  // from process_activate
+  pagedir_activate (cur->pcb->pagedir);
+  tss_update ();
+
+  free(args);
+  asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+}
+
 static void
 syscall_handler(struct intr_frame *f)
 {
@@ -244,34 +287,88 @@ syscall_handler(struct intr_frame *f)
   uint32_t sc_num = *((uint32_t *)(f->esp));
   struct thread * cur = thread_current();
 
-  // Syscalls Handled Via Switch Cases
   switch (sc_num) {
 
-    case SYS_PTHREAD_CREATE: {
-      printf("hi we're in pthread\n");
-      // todo: if fails any step, ret -1
+  case SYS_PTHREAD_CREATE:
+  {
+    void *wrapper_addr = *(void **)(f->esp + 4);
+    void *routine_addr = *(void **)(f->esp + 8);
+    void *arg = *(void **)(f->esp + 12);
 
+    void (*wrapper)(void *, void *) = (void (*)(void *, void *))wrapper_addr;
+    void *(*start_routine)(void *) = (void *(*)(void *))routine_addr;
+
+    if (cur->pcb->bitmap == NULL)
+    {
+      cur->pcb->bitmap = bitmap_create(33);
       cur->pcb->multithread = true;
+      bitmap_mark(cur->pcb->bitmap, 0); // mark main thread as used
+    }
 
-      // first time we're calling pthread_create, init the bitmap
-      if(cur->pcb->bitmap == NULL){
-        cur->pcb->bitmap = bitmap_create(32); // 0-31 gives pthread tids
-      }
-
-      int pthread_tid = bitmap_scan_and_flip (cur->pcb->bitmap, 0, 1, false);
-
-      // go from bottom up for thread assignments
-      // bottom of thread space, find the chunk of the thread, ptr to the top of it
-      uint8_t * assigned_chunk = PTHREAD_SIZE + (PTHREAD_REGION + (pthread_tid * PTHREAD_SIZE));
-
-
-      // set up void * (mimic func), and fake ret addr
-        // fake ret addr responsibile for the pthread_exit wrapper
-          // similar to int main(), implicitly calls exit
-      // 
-
+    size_t pthread_tid = bitmap_scan_and_flip(cur->pcb->bitmap, 1, 1, false);
+    if (pthread_tid == BITMAP_ERROR)
+    {
+      f->eax = -1;
       break;
     }
+
+    void *stack_top = PHYS_BASE - (pthread_tid * PTHREAD_SIZE); // chunk
+
+    // same from setup_stack stuff
+    uint8_t *kpage;
+    bool success = false;
+    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (kpage == NULL)
+    {
+      bitmap_reset(cur->pcb->bitmap, pthread_tid);
+      f->eax = -1;
+      break;
+    }
+    success = install_page(stack_top - PGSIZE, kpage, true);
+    if (!success)
+    {
+      palloc_free_page(kpage);
+      bitmap_reset(cur->pcb->bitmap, pthread_tid);
+      f->eax = -1;
+      break;
+    }
+    
+    // arg passing rev order
+    stack_top -= sizeof(void *);
+    *(void **)stack_top = arg;
+
+    stack_top -= sizeof(void *);
+    *(void **)stack_top = start_routine;
+
+    stack_top -= sizeof(void *);
+    *(void **)stack_top = 0;
+
+    struct pthread_args *pthread_args = malloc(sizeof(struct pthread_args));
+
+    pthread_args->wrapper = wrapper;
+    pthread_args->esp = stack_top;
+    pthread_args->pcb = cur->pcb;
+    pthread_args->pthread_chunk = stack_top - PTHREAD_SIZE; // haven't made use of this, do we want this to save to bottom or top of the chunk?
+
+    tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
+    if (tid == TID_ERROR)
+    {
+      palloc_free_page(kpage);
+      bitmap_reset(cur->pcb->bitmap, pthread_tid);
+      free(pthread_args);
+      f->eax = -1;
+      break;
+    }
+
+    f->eax = pthread_tid;
+    break;
+  }
+
+  case SYS_PTHREAD_EXIT:
+  {
+    printf("pthread exit\n");
+    break;
+  }
 
     /* comments here that checks ptrs, buffers, fd, extract func params etc. mostly applies to the other syscall cases as well */
     // read
