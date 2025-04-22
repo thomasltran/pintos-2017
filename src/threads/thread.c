@@ -24,6 +24,8 @@
 #include <atomic-ops.h>
 #include "lib/kernel/bitmap.h"
 #include "threads/ipi.h"
+#include "threads/palloc.h"
+#include "userprog/pagedir.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -267,7 +269,12 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     t->pcb->pagedir = NULL;
     t->pcb->multithread = false;
     t->pcb->bitmap = NULL; // 32 max threads, need malloc so can't do it yet
+    list_init(&t->pcb->list);
     lock_init(&t->pcb->lock);
+
+    t->pthread_args = NULL;
+
+
 
     return t;
 }
@@ -464,23 +471,47 @@ do_thread_exit (void)
   list_remove (&cur->allelem);
   spinlock_release (&all_lock);
 
-  lock_own_ready_queue ();
-  cur->status = THREAD_DYING;
-
   // clean up pcb
-  if(cur->pcb != NULL && !cur->pcb->multithread){
-    // bitmap_destroy(cur->pcb->bitmap);
+  if (!cur->pcb->multithread)
+  {
     palloc_free_page(cur->pcb);
   }
-  else{
-    // if it's the main thread (caller of the pthread_creates), wait for children to exit
+  else
+  {
+    lock_acquire(&cur->pcb->lock);
+    bool last = bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1;
+    lock_release(&cur->pcb->lock);
+
+    if (cur->pthread_args != NULL) // pthread
+    {
+      if (!last)
+      {
+        void *stack_top = PHYS_BASE - (cur->pthread_args->pthread_tid * PTHREAD_SIZE);
+        pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+        palloc_free_page(cur->pthread_args->kpage);
+      }
+      sema_up(&cur->pthread_args->pthread_exit);
+      bitmap_flip(cur->pcb->bitmap, cur->pthread_args->pthread_tid);
+    }
+    else
+    { // main thread
+      bitmap_flip(cur->pcb->bitmap, 0);
+    }
+
+    if (last)
+    {
+      bitmap_destroy(cur->pcb->bitmap);
+      palloc_free_page(cur->pcb);
+    }
   }
 
+  lock_own_ready_queue();
+  cur->status = THREAD_DYING;
 
   // this has to happen before schedule? multi-oom freezes after like 1-2 iterations
+  // should we flip as late as possible, does it matter
 
   schedule ();
-
 
   NOT_REACHED ();
 }
@@ -491,11 +522,20 @@ void
 thread_exit (void)
 {
   ASSERT(!intr_context ());
+  struct thread * cur = thread_current ();
 
 #ifdef USERPROG
-  // if it's the main thread (thraed which calls pthread_create), wait until all the (pthreads) child threads have pthread_exit
-  // cond wait, check if bitmap empty
-  process_exit ();
+  // could just add a bool to do_thread_exit for last to not check agin
+  lock_acquire(&cur->pcb->lock);
+  if (bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1)
+  {
+    lock_release(&cur->pcb->lock);
+    process_exit();
+  }
+  else
+  {
+    lock_release(&cur->pcb->lock);
+  }
 #endif
   do_thread_exit ();
 }
@@ -661,6 +701,7 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
   boot_thread->pcb->pagedir = NULL;
   boot_thread->pcb->multithread = false;
   boot_thread->pcb->bitmap = NULL;
+  boot_thread->pthread_args = NULL;
 
   lock_init(&boot_thread->pcb->lock); // unused rn
   // bitmap create here too

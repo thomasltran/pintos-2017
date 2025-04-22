@@ -187,8 +187,8 @@ inumber (int fd)
 void twrapper(void *userfun_ptr, void *userarg)
 {
   userfun_t userfun = (userfun_t)userfun_ptr;
-  userfun(userarg);
-  // pthread_exit(NULL);
+  void * res = userfun(userarg);
+  pthread_exit(res);
 }
 
 uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg)
@@ -201,8 +201,8 @@ uint32_t _pthread_create(userfun_t userfun, void *arg)
   return pthread_create(twrapper, (void *)userfun, arg);
 }
 
-int pthread_join(int tid){
-  return syscall1(SYS_PTHREAD_JOIN, tid);
+uint32_t pthread_join(uint32_t tid, void ** res){
+  return syscall2(SYS_PTHREAD_JOIN, tid, res);
 }
 
 void pthread_exit(void * res){

@@ -49,7 +49,7 @@ int inumber (int fd);
 
 // returns tid used for join, -1 if fail
 uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg);
-int pthread_join(int tid);
+uint32_t pthread_join(uint32_t tid, void ** res);
 void pthread_exit(void * res);
 
 void twrapper(void *userfun_ptr, void *userarg);

@@ -301,6 +301,12 @@ process_exit(void)
   pd = cur->pcb->pagedir;
   if (pd != NULL)
   {
+    if (cur->pthread_args != NULL) // pthread
+    {
+      void *stack_top = PHYS_BASE - (cur->pthread_args->pthread_tid * PTHREAD_SIZE);
+      pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+      palloc_free_page(cur->pthread_args->kpage);
+    }
     /* Correct ordering here is crucial.  We must set
        cur->pcb->pagedir to NULL before switching page directories,
        so that a timer interrupt can't switch back to the

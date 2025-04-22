@@ -16,14 +16,6 @@
 #include "threads/palloc.h"
 #include "threads/tss.h"
 
-struct pthread_args
-{
-  void (*wrapper)(void *, void *);
-  void *esp;
-  struct pcb *pcb;
-  uint8_t *pthread_chunk;
-};
-
 void start_thread(void *aux);
 
 /* Function declarations */
@@ -246,7 +238,13 @@ void start_thread(void *aux)
   struct pthread_args * args = (struct pthread_args *)aux;
   ASSERT(args != NULL);
 
+  cur->pthread_args = args;
   cur->pcb = args->pcb;
+
+  // from process_activate
+  // tell to use this pagedir for this new pthread
+  pagedir_activate(cur->pcb->pagedir);
+  tss_update();
 
   // from start_process
   struct intr_frame if_;
@@ -257,11 +255,7 @@ void start_thread(void *aux)
   if_.eip = (void (*) (void))args->wrapper;
   if_.esp = args->esp;
 
-  // from process_activate
-  pagedir_activate (cur->pcb->pagedir);
-  tss_update ();
-
-  free(args);
+  // free(args);
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
 }
 
@@ -305,7 +299,9 @@ syscall_handler(struct intr_frame *f)
       bitmap_mark(cur->pcb->bitmap, 0); // mark main thread as used
     }
 
+    lock_acquire(&cur->pcb->lock);
     size_t pthread_tid = bitmap_scan_and_flip(cur->pcb->bitmap, 1, 1, false);
+    lock_release(&cur->pcb->lock);
     if (pthread_tid == BITMAP_ERROR)
     {
       f->eax = -1;
@@ -313,8 +309,10 @@ syscall_handler(struct intr_frame *f)
     }
 
     void *stack_top = PHYS_BASE - (pthread_tid * PTHREAD_SIZE); // chunk
+    // printf("create st %p\n", stack_top);
 
     // same from setup_stack stuff
+    // do we want to exit if oom
     uint8_t *kpage;
     bool success = false;
     kpage = palloc_get_page(PAL_USER | PAL_ZERO);
@@ -344,11 +342,13 @@ syscall_handler(struct intr_frame *f)
     *(void **)stack_top = 0;
 
     struct pthread_args *pthread_args = malloc(sizeof(struct pthread_args));
-
     pthread_args->wrapper = wrapper;
     pthread_args->esp = stack_top;
+    pthread_args->pthread_tid = pthread_tid;
     pthread_args->pcb = cur->pcb;
-    pthread_args->pthread_chunk = stack_top - PTHREAD_SIZE; // haven't made use of this, do we want this to save to bottom or top of the chunk?
+    pthread_args->kpage = kpage;
+    pthread_args->res = NULL;
+    sema_init(&pthread_args->pthread_exit, 0);
 
     tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
     if (tid == TID_ERROR)
@@ -360,13 +360,52 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    list_push_front(&cur->pcb->list, &pthread_args->elem);
     f->eax = pthread_tid;
     break;
   }
 
   case SYS_PTHREAD_EXIT:
   {
-    printf("pthread exit\n");
+    void *res = *(void **)(f->esp + 4);
+
+    lock_acquire(&cur->pcb->lock);
+    ASSERT(bitmap_test(cur->pcb->bitmap, cur->pthread_args->pthread_tid) == true);
+    lock_release(&cur->pcb->lock);
+
+    cur->pthread_args->res = res;
+    exit(0);
+    break;
+  }
+
+  case SYS_PTHREAD_JOIN:
+  {
+    size_t pthread_tid = *(size_t *)(f->esp + 4);
+    void **res = *(void ***)(f->esp + 8);
+
+    bool found = false;
+    struct pthread_args *pthread_args = NULL;
+
+    for (struct list_elem *e = list_begin(&cur->pcb->list); e != list_end(&cur->pcb->list); e = list_next(e))
+    {
+      pthread_args = list_entry(e, struct pthread_args, elem);
+      if (pthread_args->pthread_tid == pthread_tid)
+      {
+        found = true;
+        list_remove(e);
+        break;
+      }
+    }
+    ASSERT(found == true);
+
+    sema_down(&pthread_args->pthread_exit);
+    if (res != NULL)
+    {
+      *res = pthread_args->res; // sketchy, but works?
+    }
+
+    free(pthread_args);
+    f->eax = pthread_tid;
     break;
   }
 
@@ -780,13 +819,17 @@ static int write(int fd, const void * buffer, unsigned size){
 */
 void exit(int status){
   struct thread *thread_curr = thread_current();
-  struct parent_child *parent_child = thread_curr->parent_child;
 
-  printf("%s: exit(%d)\n", thread_curr->parent_child->user_prog_name, status);
+  if (!thread_curr->pcb->multithread || (thread_curr->pcb->multithread && thread_curr->pthread_args == NULL))
+  {
+    struct parent_child *parent_child = thread_curr->parent_child;
 
-  lock_acquire(&parent_child->parent_child_lock);
-  parent_child->exit_status = status;
-  lock_release(&parent_child->parent_child_lock);
+    printf("%s: exit(%d)\n", thread_curr->parent_child->user_prog_name, status);
+
+    lock_acquire(&parent_child->parent_child_lock);
+    parent_child->exit_status = status;
+    lock_release(&parent_child->parent_child_lock);
+  }
 
   thread_exit();
 }

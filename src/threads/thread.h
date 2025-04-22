@@ -113,8 +113,7 @@ struct thread
   struct list parent_child_list; // list of processes
 
   struct pcb * pcb;
-  uint8_t *pthread_chunk; // top of 8 mb chunk
-  // size_t pthread_tid; // based off of pcb bitmap indices
+  struct pthread_args * pthread_args; // per main/pthread
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -142,6 +141,26 @@ struct pcb {
    struct file **fd_table; /* file descriptor table */
    uint32_t *pagedir; /* Page directory. */
    struct bitmap * bitmap; // 0-31 for pthread tid
+
+   struct list list;
+};
+
+struct pthread_args
+{
+   struct list_elem elem;
+
+   // start_thread
+   void (*wrapper)(void *, void *);
+   void *esp;
+   size_t pthread_tid;
+
+   // save for later
+   struct pcb *pcb;
+   uint8_t *kpage;
+   void * res;
+
+   // synch
+   struct semaphore pthread_exit; // exit/join
 };
 #endif
 
