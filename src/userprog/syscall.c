@@ -353,6 +353,7 @@ syscall_handler(struct intr_frame *f)
     tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
     if (tid == TID_ERROR)
     {
+      pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
       palloc_free_page(kpage);
       bitmap_reset(cur->pcb->bitmap, pthread_tid);
       free(pthread_args);

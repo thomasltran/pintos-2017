@@ -470,6 +470,7 @@ do_thread_exit (void)
   spinlock_acquire (&all_lock);
   list_remove (&cur->allelem);
   spinlock_release (&all_lock);
+  lock_own_ready_queue();
 
   // clean up pcb
   if (!cur->pcb->multithread)
@@ -505,8 +506,7 @@ do_thread_exit (void)
     }
   }
 
-  lock_own_ready_queue();
-  cur->status = THREAD_DYING;
+  cur->status = THREAD_DYING;  
 
   // this has to happen before schedule? multi-oom freezes after like 1-2 iterations
   // should we flip as late as possible, does it matter
@@ -527,7 +527,7 @@ thread_exit (void)
 #ifdef USERPROG
   // could just add a bool to do_thread_exit for last to not check agin
   lock_acquire(&cur->pcb->lock);
-  if (bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1)
+  if (!cur->pcb->multithread || bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1)
   {
     lock_release(&cur->pcb->lock);
     process_exit();
