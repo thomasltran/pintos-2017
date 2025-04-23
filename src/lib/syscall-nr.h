@@ -32,7 +32,12 @@ enum
 
     SYS_PTHREAD_CREATE,
     SYS_PTHREAD_EXIT,
-    SYS_PTHREAD_JOIN
+    SYS_PTHREAD_JOIN,
+
+    SYS_MUTEX_INIT,
+    SYS_MUTEX_LOCK,
+    SYS_MUTEX_UNLOCK,
+    SYS_MUTEX_DESTROY
   };
 
 #endif /* lib/syscall-nr.h */

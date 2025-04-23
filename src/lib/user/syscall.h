@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <debug.h>
+#include "lib/user/pthread-def.h"
 
 /* Process identifier. */
 typedef int pid_t;
@@ -18,8 +19,6 @@ typedef int mapid_t;
 /* Typical return values from main() and arguments to exit(). */
 #define EXIT_SUCCESS 0          /* Successful execution. */
 #define EXIT_FAILURE 1          /* Unsuccessful execution. */
-
-typedef void *(*userfun_t)(void *);
 
 /* Projects 2 and later. */
 void halt (void) NO_RETURN;

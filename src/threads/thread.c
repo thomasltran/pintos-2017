@@ -470,11 +470,13 @@ do_thread_exit (void)
   spinlock_acquire (&all_lock);
   list_remove (&cur->allelem);
   spinlock_release (&all_lock);
-  lock_own_ready_queue();
+
 
   // clean up pcb
   if (!cur->pcb->multithread)
   {
+    lock_own_ready_queue();
+    cur->status = THREAD_DYING;  
     palloc_free_page(cur->pcb);
   }
   else
@@ -483,6 +485,7 @@ do_thread_exit (void)
     bool last = bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1;
     lock_release(&cur->pcb->lock);
 
+    // pthread_args is NULL for main thread btw
     if (cur->pthread_args != NULL) // pthread
     {
       if (!last)
@@ -491,8 +494,8 @@ do_thread_exit (void)
         pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
         palloc_free_page(cur->pthread_args->kpage);
       }
-      sema_up(&cur->pthread_args->pthread_exit);
       bitmap_flip(cur->pcb->bitmap, cur->pthread_args->pthread_tid);
+      sema_up(&cur->pthread_args->pthread_exit);
     }
     else
     { // main thread
@@ -501,15 +504,15 @@ do_thread_exit (void)
 
     if (last)
     {
-      bitmap_destroy(cur->pcb->bitmap);
-      palloc_free_page(cur->pcb);
+      bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying
+    }
+    lock_own_ready_queue();
+    cur->status = THREAD_DYING;
+    if (last)
+    {
+      palloc_free_page(cur->pcb); // has to come after, could be con swi out before rq lock
     }
   }
-
-  cur->status = THREAD_DYING;  
-
-  // this has to happen before schedule? multi-oom freezes after like 1-2 iterations
-  // should we flip as late as possible, does it matter
 
   schedule ();
 

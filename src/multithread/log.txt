@@ -1,1 +1,4 @@
 pintos -v -k -T 60 --smp 2 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
+
+
+pintos -v --gdb --smp 2 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output

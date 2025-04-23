@@ -28,6 +28,11 @@ static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
 static bool check_fd(int fd);
 
+static struct {
+  struct lock kernel_lock;
+  bool inuse;
+} pthread_mutex_table[MUTEX_COUNT];
+
 /* Initialize the system call handler */
 void
 syscall_init (void) 
@@ -304,13 +309,14 @@ syscall_handler(struct intr_frame *f)
     lock_release(&cur->pcb->lock);
     if (pthread_tid == BITMAP_ERROR)
     {
+      printf("failed create\n");
       f->eax = -1;
       break;
     }
 
     void *stack_top = PHYS_BASE - (pthread_tid * PTHREAD_SIZE); // chunk
-    // printf("create st %p\n", stack_top);
-
+    //printf("create st %p\n", stack_top);
+    // printf("create %d\n", pthread_tid);
     // same from setup_stack stuff
     // do we want to exit if oom
     uint8_t *kpage;
@@ -318,6 +324,8 @@ syscall_handler(struct intr_frame *f)
     kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (kpage == NULL)
     {
+      printf("failed create\n");
+
       bitmap_reset(cur->pcb->bitmap, pthread_tid);
       f->eax = -1;
       break;
@@ -325,6 +333,8 @@ syscall_handler(struct intr_frame *f)
     success = install_page(stack_top - PGSIZE, kpage, true);
     if (!success)
     {
+      printf("failed create\n");
+
       palloc_free_page(kpage);
       bitmap_reset(cur->pcb->bitmap, pthread_tid);
       f->eax = -1;
@@ -353,6 +363,8 @@ syscall_handler(struct intr_frame *f)
     tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
     if (tid == TID_ERROR)
     {
+      printf("failed create\n");
+
       pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
       palloc_free_page(kpage);
       bitmap_reset(cur->pcb->bitmap, pthread_tid);
@@ -373,6 +385,8 @@ syscall_handler(struct intr_frame *f)
     lock_acquire(&cur->pcb->lock);
     ASSERT(bitmap_test(cur->pcb->bitmap, cur->pthread_args->pthread_tid) == true);
     lock_release(&cur->pcb->lock);
+
+    // printf("exit %d\n", cur->pthread_args->pthread_tid);
 
     cur->pthread_args->res = res;
     exit(0);
