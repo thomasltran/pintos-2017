@@ -490,11 +490,11 @@ do_thread_exit (void)
     {
       if (!last)
       {
-        void *stack_top = PHYS_BASE - (cur->pthread_args->pthread_tid * PTHREAD_SIZE);
+        void *stack_top = PHYS_BASE - (cur->pthread_args->bitmap_index * PTHREAD_SIZE);
         pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
         palloc_free_page(cur->pthread_args->kpage);
       }
-      bitmap_flip(cur->pcb->bitmap, cur->pthread_args->pthread_tid);
+      bitmap_flip(cur->pcb->bitmap, cur->pthread_args->bitmap_index);
       sema_up(&cur->pthread_args->pthread_exit);
     }
     else

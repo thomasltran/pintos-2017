@@ -47,11 +47,16 @@ bool isdir (int fd);
 int inumber (int fd);
 
 // returns tid used for join, -1 if fail
-uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg);
-uint32_t pthread_join(uint32_t tid, void ** res);
+int pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg);
+int pthread_join(int tid, void ** res);
 void pthread_exit(void * res);
 
+int pthread_mutex_init(pthread_mutex_t * pthread_mutex);
+int pthread_mutex_lock(pthread_mutex_t * pthread_mutex);
+int pthread_mutex_unlock(pthread_mutex_t * pthread_mutex);
+int pthread_mutex_destroy(pthread_mutex_t * pthread_mutex);
+
 void twrapper(void *userfun_ptr, void *userarg);
-uint32_t _pthread_create(userfun_t userfun, void *arg);
+int _pthread_create(userfun_t userfun, void *arg);
 
 #endif /* lib/user/syscall.h */

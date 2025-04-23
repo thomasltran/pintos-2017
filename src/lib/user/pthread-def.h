@@ -1,5 +1,5 @@
 typedef void *(*userfun_t)(void *);
 
 typedef struct {
-    int mutex_id;
-} mutex_t;
+    int pthread_mutex_id;
+} pthread_mutex_t;

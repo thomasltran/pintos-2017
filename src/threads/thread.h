@@ -152,12 +152,13 @@ struct pthread_args
    // start_thread
    void (*wrapper)(void *, void *);
    void *esp;
-   size_t pthread_tid;
 
    // save for later
    struct pcb *pcb;
    uint8_t *kpage;
    void * res;
+   size_t bitmap_index;
+   tid_t pthread_tid;
 
    // synch
    struct semaphore pthread_exit; // exit/join

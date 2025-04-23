@@ -191,18 +191,38 @@ void twrapper(void *userfun_ptr, void *userarg)
   pthread_exit(res);
 }
 
-uint32_t pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg)
+int pthread_create(void (*wrapper)(void *, void *), void *userfun, void *userarg)
 {
   return syscall3(SYS_PTHREAD_CREATE, wrapper, userfun, userarg);
 }
 
-uint32_t _pthread_create(userfun_t userfun, void *arg)
+int _pthread_create(userfun_t userfun, void *arg)
 {
   return pthread_create(twrapper, (void *)userfun, arg);
 }
 
-uint32_t pthread_join(uint32_t tid, void ** res){
+int pthread_join(int tid, void ** res){
   return syscall2(SYS_PTHREAD_JOIN, tid, res);
+}
+
+int pthread_mutex_init(pthread_mutex_t * pthread_mutex)
+{
+  return syscall1(SYS_MUTEX_INIT, pthread_mutex);
+}
+
+int pthread_mutex_lock(pthread_mutex_t * pthread_mutex)
+{
+  return syscall1(SYS_MUTEX_LOCK, pthread_mutex);
+}
+
+int pthread_mutex_unlock(pthread_mutex_t * pthread_mutex)
+{
+  return syscall1(SYS_MUTEX_UNLOCK, pthread_mutex);
+}
+
+int pthread_mutex_destroy(pthread_mutex_t * pthread_mutex)
+{
+  return syscall1(SYS_MUTEX_DESTROY, pthread_mutex);
 }
 
 void pthread_exit(void * res){
