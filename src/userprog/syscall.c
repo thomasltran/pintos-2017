@@ -28,8 +28,10 @@ static bool get_user_byte(const uint8_t *uaddr, uint8_t *kaddr);
 static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
 static bool check_fd(int fd);
-static int reserve_pthread_mutex_slot(void);
 
+static int reserve_pthread_mutex_slot(void);
+static int reserve_sem_slot(void);
+static int reserve_cond_slot(void);
 
 struct pthread_mutex_info
 {
@@ -37,7 +39,23 @@ struct pthread_mutex_info
   bool inuse;
 };
 
-static struct pthread_mutex_info * pthread_mutex_table = NULL;
+struct sem_info
+{
+  struct semaphore kernel_semaphore;
+  bool inuse;
+};
+
+struct cond_info
+{
+  struct condition kernel_condition;
+  bool inuse;
+};
+
+static struct pthread_mutex_info *pthread_mutex_table = NULL;
+static struct sem_info *sem_table = NULL;
+static struct cond_info *cond_table = NULL;
+// move to per process
+// **
 
 static int reserve_pthread_mutex_slot()
 {
@@ -47,6 +65,34 @@ static int reserve_pthread_mutex_slot()
     if (pthread_mutex_info->inuse == false)
     {
       pthread_mutex_info->inuse = true;
+      return i;
+    }
+  }
+  return -1;
+}
+
+static int reserve_sem_slot()
+{
+  for (int i = 0; i < MUTEX_COUNT; i++)
+  {
+    struct sem_info *sem_info = &sem_table[i];
+    if (sem_info->inuse == false)
+    {
+      sem_info->inuse = true;
+      return i;
+    }
+  }
+  return -1;
+}
+
+static int reserve_cond_slot()
+{
+  for (int i = 0; i < COND_COUNT; i++)
+  {
+    struct cond_info *cond_info = &cond_table[i];
+    if (cond_info->inuse == false)
+    {
+      cond_info->inuse = true;
       return i;
     }
   }
@@ -329,38 +375,48 @@ syscall_handler(struct intr_frame *f)
     lock_release(&cur->pcb->lock);
     if (bitmap_index == BITMAP_ERROR)
     {
-      printf("failed create\n");
+      printf("failed 1\n");
       f->eax = -1;
       break;
     }
 
     void *stack_top = PHYS_BASE - (bitmap_index * PTHREAD_SIZE); // chunk
-    //printf("create st %p\n", stack_top);
-    // printf("create %d\n", bitmap_index);
-    // same from setup_stack stuff
-    // do we want to exit if oom
-    uint8_t *kpage;
-    bool success = false;
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-    if (kpage == NULL)
+    void *stack_bottom = PHYS_BASE - ((bitmap_index + 1) * PTHREAD_SIZE);
+    // printf("create st %p\n", stack_top);
+    //  printf("create %d\n", bitmap_index);
+    //  same from setup_stack stuff
+    //  do we want to exit if oom
+    uint8_t * kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (kpage == NULL || !install_page(stack_top - PGSIZE, kpage, true))
     {
-      printf("failed create\n");
-
+      printf("failed create2\n");
+      if (kpage != NULL)
+      {
+        palloc_free_page(kpage);
+      }
       bitmap_reset(cur->pcb->bitmap, bitmap_index);
       f->eax = -1;
       break;
     }
-    success = install_page(stack_top - PGSIZE, kpage, true);
-    if (!success)
-    {
-      printf("failed create\n");
 
+    uint8_t * tls_kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (tls_kpage == NULL || !install_page(stack_bottom, tls_kpage, true))
+    {
+      printf("failed create3\n");
+      if (tls_kpage != NULL)
+      {
+        palloc_free_page(tls_kpage);
+      }
       palloc_free_page(kpage);
       bitmap_reset(cur->pcb->bitmap, bitmap_index);
       f->eax = -1;
       break;
     }
-    
+    // free the tls page, combine the pthread install into shorter
+
+    tls *tls_ptr = (tls *)stack_bottom;
+    memset(tls_ptr, 0, TLS_SIZE);
+
     // arg passing rev order
     stack_top -= sizeof(void *);
     *(void **)stack_top = arg;
@@ -377,16 +433,19 @@ syscall_handler(struct intr_frame *f)
     pthread_args->bitmap_index = bitmap_index;
     pthread_args->pcb = cur->pcb;
     pthread_args->kpage = kpage;
+    pthread_args->tls_kpage = tls_kpage;
     pthread_args->res = NULL;
     sema_init(&pthread_args->pthread_exit, 0);
 
     tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
     if (tid == TID_ERROR)
     {
-      printf("failed create\n");
+      printf("failed create4\n");
 
       pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+      pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
       palloc_free_page(kpage);
+      palloc_free_page(tls_kpage);
       bitmap_reset(cur->pcb->bitmap, bitmap_index);
       free(pthread_args);
       f->eax = -1;
@@ -400,103 +459,224 @@ syscall_handler(struct intr_frame *f)
     break;
   }
 
-  case SYS_PTHREAD_EXIT:
-  {
-    void *res = *(void **)(f->esp + 4);
-
-    // todo: add support for pthread exit main thread
-    lock_acquire(&cur->pcb->lock);
-    ASSERT(bitmap_test(cur->pcb->bitmap, cur->pthread_args->bitmap_index) == true);
-    lock_release(&cur->pcb->lock);
-
-    cur->pthread_args->res = res;
-    exit(0);
-    break;
-  }
-
-  case SYS_PTHREAD_JOIN:
-  {
-    tid_t pthread_tid = *(tid_t *)(f->esp + 4);
-    void **res = *(void ***)(f->esp + 8);
-
-    bool found = false;
-    struct pthread_args *pthread_args = NULL;
-
-    for (struct list_elem *e = list_begin(&cur->pcb->list); e != list_end(&cur->pcb->list); e = list_next(e))
+    case SYS_PTHREAD_EXIT:
     {
-      pthread_args = list_entry(e, struct pthread_args, elem);
-      if (pthread_args->pthread_tid == pthread_tid)
+      void *res = *(void **)(f->esp + 4);
+
+      // todo: add support for pthread exit main thread
+      lock_acquire(&cur->pcb->lock);
+      ASSERT(bitmap_test(cur->pcb->bitmap, cur->pthread_args->bitmap_index) == true);
+      lock_release(&cur->pcb->lock);
+
+      cur->pthread_args->res = res;
+      exit(0);
+      break;
+    }
+
+    case SYS_PTHREAD_JOIN:
+    {
+      tid_t pthread_tid = *(tid_t *)(f->esp + 4);
+      void **res = *(void ***)(f->esp + 8);
+
+      bool found = false;
+      struct pthread_args *pthread_args = NULL;
+
+      for (struct list_elem *e = list_begin(&cur->pcb->list); e != list_end(&cur->pcb->list); e = list_next(e))
       {
-        found = true;
-        list_remove(e);
-        break;
+        pthread_args = list_entry(e, struct pthread_args, elem);
+        if (pthread_args->pthread_tid == pthread_tid)
+        {
+          found = true;
+          list_remove(e);
+          break;
+        }
       }
-    }
-    ASSERT(found == true);
+      ASSERT(found == true);
 
-    sema_down(&pthread_args->pthread_exit);
-    if (res != NULL)
+      sema_down(&pthread_args->pthread_exit);
+      if (res != NULL)
+      {
+        *res = pthread_args->res; // sketchy, but works?
+      }
+
+      free(pthread_args);
+      f->eax = pthread_tid;
+      break;
+    }
+
+    case SYS_MUTEX_INIT:
     {
-      *res = pthread_args->res; // sketchy, but works?
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
+
+      if (pthread_mutex_table == NULL)
+      {
+        pthread_mutex_table = calloc(MUTEX_COUNT, sizeof(struct pthread_mutex_info));
+      }
+
+      int pthread_mutex_id = reserve_pthread_mutex_slot();
+      ASSERT(pthread_mutex_id != -1);
+
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex_id];
+
+      lock_init(&pthread_mutex_info->kernel_lock);
+      pthread_mutex->pthread_mutex_id = pthread_mutex_id;
+      f->eax = 0;
+      break;
     }
 
-    free(pthread_args);
-    f->eax = pthread_tid;
-    break;
-  }
-
-  case SYS_MUTEX_INIT:
-  {
-    pthread_mutex_t * pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
-
-    if (pthread_mutex_table == NULL)
+    case SYS_MUTEX_LOCK:
     {
-      pthread_mutex_table = calloc(MUTEX_COUNT, sizeof(struct pthread_mutex_info));
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
+
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+
+      lock_acquire(&pthread_mutex_info->kernel_lock);
+      f->eax = 0;
+      break;
     }
 
-    int pthread_mutex_id = reserve_pthread_mutex_slot();
-    ASSERT(pthread_mutex_id != -1);
+    case SYS_MUTEX_UNLOCK:
+    {
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-    struct pthread_mutex_info * pthread_mutex_info = &pthread_mutex_table[pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
 
-    lock_init(&pthread_mutex_info->kernel_lock);
-    pthread_mutex->pthread_mutex_id = pthread_mutex_id;
-    f->eax = 0;
-    break;
-  }
+      lock_release(&pthread_mutex_info->kernel_lock);
+      f->eax = 0;
+      break;
+    }
 
-  case SYS_MUTEX_LOCK:
-  {
-    pthread_mutex_t * pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
+    case SYS_MUTEX_DESTROY:
+    {
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-    struct pthread_mutex_info * pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
 
-    lock_acquire(&pthread_mutex_info->kernel_lock);
-    f->eax = 0;
-    break;
-  }
+      pthread_mutex_info->inuse = false;
+      f->eax = 0;
+      break;
+    }
 
-  case SYS_MUTEX_UNLOCK:
-  {
-    pthread_mutex_t * pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
+    case SYS_SEM_INIT:
+    {
+      sem_t *sem = *(sem_t **)(f->esp + 4);
+      unsigned int val = *(unsigned int *)(f->esp + 8);
 
-    struct pthread_mutex_info * pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (sem_table == NULL)
+      {
+        sem_table = calloc(SEM_COUNT, sizeof(struct sem_info));
+      }
 
-    lock_release(&pthread_mutex_info->kernel_lock);
-    f->eax = 0;
-    break;
-  }
+      int sem_id = reserve_sem_slot();
+      ASSERT(sem_id != -1);
 
-  case SYS_MUTEX_DESTROY:
-  {
-    pthread_mutex_t * pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
+      struct sem_info *sem_info = &sem_table[sem_id];
 
-    struct pthread_mutex_info * pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      sema_init(&sem_info->kernel_semaphore, val);
+      sem->sem_id = sem_id;
+      f->eax = 0;
+      break;
+    }
 
-    pthread_mutex_info->inuse = false;
-    f->eax = 0;
-    break;
-  }
+    case SYS_SEM_POST:
+    {
+      sem_t *sem = *(sem_t **)(f->esp + 4);
+
+      struct sem_info *sem_info = &sem_table[sem->sem_id];
+
+      sema_up(&sem_info->kernel_semaphore);
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_SEM_DOWN:
+    {
+      sem_t *sem = *(sem_t **)(f->esp + 4);
+
+      struct sem_info *sem_info = &sem_table[sem->sem_id];
+
+      sema_down(&sem_info->kernel_semaphore);
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_SEM_DESTROY:
+    {
+      sem_t *sem = *(sem_t **)(f->esp + 4);
+
+      struct sem_info *sem_info = &sem_table[sem->sem_id];
+
+      sem_info->inuse = false;
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_COND_INIT:
+    {
+      pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
+      if (cond_table == NULL)
+      {
+        cond_table = calloc(COND_COUNT, sizeof(struct cond_info));
+      }
+
+      int cond_id = reserve_cond_slot();
+      ASSERT(cond_id != -1);
+
+      struct cond_info *cond_info = &cond_table[cond_id];
+
+      cond_init(&cond_info->kernel_condition);
+      cond->cond_id = cond_id;
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_COND_SIGNAL:
+    {
+      pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
+
+      struct cond_info *cond_info = &cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+
+      cond_signal(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_COND_BROADCAST:
+    {
+      pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
+
+      struct cond_info *cond_info = &cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+
+      cond_broadcast(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
+      f->eax = 0;
+      break;
+    }
+
+    case SYS_COND_WAIT:
+    {
+      pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
+      pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
+
+      struct cond_info *cond_info = &cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+
+      cond_wait(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
+      break;
+    }
+
+    case SYS_COND_DESTROY:
+    {
+      pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
+
+      struct cond_info *cond_info = &cond_table[cond->cond_id];
+      cond_info->inuse = false;
+      f->eax = 0;
+      break;
+    }
 
     /* comments here that checks ptrs, buffers, fd, extract func params etc. mostly applies to the other syscall cases as well */
     // read

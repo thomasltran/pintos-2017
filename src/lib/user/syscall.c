@@ -205,6 +205,10 @@ int pthread_join(int tid, void ** res){
   return syscall2(SYS_PTHREAD_JOIN, tid, res);
 }
 
+void pthread_exit(void * res){
+  syscall1(SYS_PTHREAD_EXIT, res);
+}
+
 int pthread_mutex_init(pthread_mutex_t * pthread_mutex)
 {
   return syscall1(SYS_MUTEX_INIT, pthread_mutex);
@@ -225,6 +229,47 @@ int pthread_mutex_destroy(pthread_mutex_t * pthread_mutex)
   return syscall1(SYS_MUTEX_DESTROY, pthread_mutex);
 }
 
-void pthread_exit(void * res){
-  syscall1(SYS_PTHREAD_EXIT, res);
+int sem_init(sem_t * sem, unsigned int val)
+{
+  return syscall2(SYS_SEM_INIT, sem, val);
+}
+
+int sem_post(sem_t * sem)
+{
+  return syscall1(SYS_SEM_POST, sem);
+}
+
+int sem_down(sem_t * sem)
+{
+  return syscall1(SYS_SEM_DOWN, sem);
+}
+
+int sem_destroy(sem_t * sem)
+{
+  return syscall1(SYS_SEM_DESTROY, sem);
+}
+
+int pthread_cond_init(pthread_cond_t * cond)
+{
+  return syscall1(SYS_COND_INIT, cond);
+}
+
+int pthread_cond_signal(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex)
+{
+  return syscall2(SYS_COND_SIGNAL, cond, pthread_mutex);
+}
+
+int pthread_cond_broadcast(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex)
+{
+  return syscall2(SYS_COND_BROADCAST, cond, pthread_mutex);
+}
+
+int pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex)
+{
+  return syscall2(SYS_COND_WAIT, cond, pthread_mutex);
+}
+
+int pthread_cond_destroy(pthread_cond_t * cond)
+{
+  return syscall1(SYS_COND_DESTROY, cond);
 }

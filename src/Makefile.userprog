@@ -15,11 +15,14 @@ lib_SRC += lib/string.c			# String functions.
 lib_SRC += lib/arithmetic.c		# 64-bit arithmetic for GCC.
 lib_SRC += lib/ustar.c			# Unix standard tar format utilities.
 lib_SRC += lib/atomic-ops.c		# Atomic instructions
+lib_SRC += lib/kernel/list.c
 
 # User level only library code.
 lib/user_SRC  = lib/user/debug.c	# Debug helpers.
 lib/user_SRC += lib/user/syscall.c	# System calls.
 lib/user_SRC += lib/user/console.c	# Console code.
+lib/user_SRC += lib/user/mm.c
+# lib/user_SRC += lib/user/threadpool.c
 
 LIB_OBJ = $(patsubst %.c,%.o,$(patsubst %.S,%.o,$(lib_SRC) $(lib/user_SRC)))
 LIB_DEP = $(patsubst %.o,%.d,$(LIB_OBJ))

@@ -26,6 +26,7 @@
 #include "threads/ipi.h"
 #include "threads/palloc.h"
 #include "userprog/pagedir.h"
+#include "lib/user/pthread-def.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -491,8 +492,11 @@ do_thread_exit (void)
       if (!last)
       {
         void *stack_top = PHYS_BASE - (cur->pthread_args->bitmap_index * PTHREAD_SIZE);
+        void *stack_bottom = PHYS_BASE - ((cur->pthread_args->bitmap_index + 1) * PTHREAD_SIZE);
         pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+        pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
         palloc_free_page(cur->pthread_args->kpage);
+        palloc_free_page(cur->pthread_args->tls_kpage);
       }
       bitmap_flip(cur->pcb->bitmap, cur->pthread_args->bitmap_index);
       sema_up(&cur->pthread_args->pthread_exit);

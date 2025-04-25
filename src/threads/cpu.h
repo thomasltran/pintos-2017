@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include "threads/interrupt.h"
 
-#define NCPU_MAX 8      /* Max number of cpus */
+#define NCPU_MAX 32      /* Max number of cpus */
 
 /* List of sleeping threads per CPU */
 struct sleep_queue

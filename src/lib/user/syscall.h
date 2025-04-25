@@ -56,6 +56,17 @@ int pthread_mutex_lock(pthread_mutex_t * pthread_mutex);
 int pthread_mutex_unlock(pthread_mutex_t * pthread_mutex);
 int pthread_mutex_destroy(pthread_mutex_t * pthread_mutex);
 
+int sem_init(sem_t * sem, unsigned int val);
+int sem_post(sem_t * sem);
+int sem_down(sem_t * sem);
+int sem_destroy(sem_t * sem);
+
+int pthread_cond_init(pthread_cond_t * cond);
+int pthread_cond_signal(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex);
+int pthread_cond_broadcast(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex);
+int pthread_cond_wait(pthread_cond_t * cond, pthread_mutex_t * pthread_mutex);
+int pthread_cond_destroy(pthread_cond_t * cond);
+
 void twrapper(void *userfun_ptr, void *userarg);
 int _pthread_create(userfun_t userfun, void *arg);
 

@@ -22,6 +22,7 @@
 #include "threads/thread.h"
 #include "lib/stdio.h"
 #include "lib/string.h"
+#include "lib/user/pthread-def.h"
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, struct parent_child *parent_child, char **argv, int argc, void (**eip)(void), void **esp);
@@ -697,6 +698,22 @@ setup_stack (void **esp)
       else
         palloc_free_page (kpage);
     }
+
+  void *stack_bottom = PHYS_BASE - ((0 + 1) * PTHREAD_SIZE);
+  uint8_t *tls_kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  if (tls_kpage == NULL || !install_page(stack_bottom, tls_kpage, true))
+  {
+    success = false;
+    if (tls_kpage != NULL)
+    {
+      palloc_free_page(tls_kpage);
+    }
+    palloc_free_page(kpage);
+  }
+
+  tls *tls_ptr = (tls *)stack_bottom;
+  memset(tls_ptr, 0, TLS_SIZE);
+
   return success;
 }
 

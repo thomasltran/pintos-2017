@@ -156,6 +156,7 @@ struct pthread_args
    // save for later
    struct pcb *pcb;
    uint8_t *kpage;
+   uint8_t *tls_kpage;
    void * res;
    size_t bitmap_index;
    tid_t pthread_tid;

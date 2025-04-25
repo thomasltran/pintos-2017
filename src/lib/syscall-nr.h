@@ -37,7 +37,18 @@ enum
     SYS_MUTEX_INIT,
     SYS_MUTEX_LOCK,
     SYS_MUTEX_UNLOCK,
-    SYS_MUTEX_DESTROY
+    SYS_MUTEX_DESTROY,
+
+    SYS_SEM_INIT,
+    SYS_SEM_POST,
+    SYS_SEM_DOWN,
+    SYS_SEM_DESTROY,
+
+    SYS_COND_INIT,
+    SYS_COND_SIGNAL,
+    SYS_COND_BROADCAST,
+    SYS_COND_WAIT,
+    SYS_COND_DESTROY
   };
 
 #endif /* lib/syscall-nr.h */
