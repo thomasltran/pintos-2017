@@ -33,27 +33,6 @@ static int reserve_pthread_mutex_slot(void);
 static int reserve_sem_slot(void);
 static int reserve_cond_slot(void);
 
-struct pthread_mutex_info
-{
-  struct lock kernel_lock;
-  bool inuse;
-};
-
-struct sem_info
-{
-  struct semaphore kernel_semaphore;
-  bool inuse;
-};
-
-struct cond_info
-{
-  struct condition kernel_condition;
-  bool inuse;
-};
-
-static struct pthread_mutex_info *pthread_mutex_table = NULL;
-static struct sem_info *sem_table = NULL;
-static struct cond_info *cond_table = NULL;
 // move to per process
 // **
 
@@ -61,7 +40,7 @@ static int reserve_pthread_mutex_slot()
 {
   for (int i = 0; i < MUTEX_COUNT; i++)
   {
-    struct pthread_mutex_info * pthread_mutex_info = &pthread_mutex_table[i];
+    struct pthread_mutex_info *pthread_mutex_info = &thread_current()->pcb->pthread_mutex_table[i];
     if (pthread_mutex_info->inuse == false)
     {
       pthread_mutex_info->inuse = true;
@@ -75,7 +54,7 @@ static int reserve_sem_slot()
 {
   for (int i = 0; i < MUTEX_COUNT; i++)
   {
-    struct sem_info *sem_info = &sem_table[i];
+    struct sem_info *sem_info = &thread_current()->pcb->sem_table[i];
     if (sem_info->inuse == false)
     {
       sem_info->inuse = true;
@@ -89,7 +68,7 @@ static int reserve_cond_slot()
 {
   for (int i = 0; i < COND_COUNT; i++)
   {
-    struct cond_info *cond_info = &cond_table[i];
+    struct cond_info *cond_info = &thread_current()->pcb->cond_table[i];
     if (cond_info->inuse == false)
     {
       cond_info->inuse = true;
@@ -366,6 +345,11 @@ syscall_handler(struct intr_frame *f)
     if (cur->pcb->bitmap == NULL)
     {
       cur->pcb->bitmap = bitmap_create(33);
+      if (cur->pcb->bitmap == NULL)
+      {
+        f->eax = -1;
+        break;
+      }
       cur->pcb->multithread = true;
       bitmap_mark(cur->pcb->bitmap, 0); // mark main thread as used
     }
@@ -375,21 +359,16 @@ syscall_handler(struct intr_frame *f)
     lock_release(&cur->pcb->lock);
     if (bitmap_index == BITMAP_ERROR)
     {
-      printf("failed 1\n");
       f->eax = -1;
       break;
     }
 
     void *stack_top = PHYS_BASE - (bitmap_index * PTHREAD_SIZE); // chunk
     void *stack_bottom = PHYS_BASE - ((bitmap_index + 1) * PTHREAD_SIZE);
-    // printf("create st %p\n", stack_top);
-    //  printf("create %d\n", bitmap_index);
-    //  same from setup_stack stuff
-    //  do we want to exit if oom
+
     uint8_t * kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (kpage == NULL || !install_page(stack_top - PGSIZE, kpage, true))
     {
-      printf("failed create2\n");
       if (kpage != NULL)
       {
         palloc_free_page(kpage);
@@ -402,7 +381,6 @@ syscall_handler(struct intr_frame *f)
     uint8_t * tls_kpage = palloc_get_page(PAL_USER | PAL_ZERO);
     if (tls_kpage == NULL || !install_page(stack_bottom, tls_kpage, true))
     {
-      printf("failed create3\n");
       if (tls_kpage != NULL)
       {
         palloc_free_page(tls_kpage);
@@ -428,6 +406,16 @@ syscall_handler(struct intr_frame *f)
     *(void **)stack_top = 0;
 
     struct pthread_args *pthread_args = malloc(sizeof(struct pthread_args));
+    if (pthread_args == NULL)
+    {
+      pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+      pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
+      palloc_free_page(kpage);
+      palloc_free_page(tls_kpage);
+      bitmap_reset(cur->pcb->bitmap, bitmap_index);
+      f->eax = -1;
+      break;
+    }
     pthread_args->wrapper = wrapper;
     pthread_args->esp = stack_top;
     pthread_args->bitmap_index = bitmap_index;
@@ -440,8 +428,6 @@ syscall_handler(struct intr_frame *f)
     tid_t tid = thread_create("pthread", NICE_DEFAULT, start_thread, pthread_args);
     if (tid == TID_ERROR)
     {
-      printf("failed create4\n");
-
       pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
       pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
       palloc_free_page(kpage);
@@ -491,7 +477,11 @@ syscall_handler(struct intr_frame *f)
           break;
         }
       }
-      ASSERT(found == true);
+      if (found != true)
+      {
+        f->eax = -1;
+        break;
+      }
 
       sema_down(&pthread_args->pthread_exit);
       if (res != NULL)
@@ -500,7 +490,7 @@ syscall_handler(struct intr_frame *f)
       }
 
       free(pthread_args);
-      f->eax = pthread_tid;
+      f->eax = 0;
       break;
     }
 
@@ -508,15 +498,24 @@ syscall_handler(struct intr_frame *f)
     {
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-      if (pthread_mutex_table == NULL)
+      if (cur->pcb->pthread_mutex_table == NULL)
       {
-        pthread_mutex_table = calloc(MUTEX_COUNT, sizeof(struct pthread_mutex_info));
+        cur->pcb->pthread_mutex_table = calloc(MUTEX_COUNT, sizeof(struct pthread_mutex_info));
+        if (cur->pcb->pthread_mutex_table == NULL)
+        {
+          f->eax = -1;
+          break;
+        }
       }
 
       int pthread_mutex_id = reserve_pthread_mutex_slot();
-      ASSERT(pthread_mutex_id != -1);
+      if (pthread_mutex_id == -1)
+      {
+        f->eax = -1;
+        break;
+      }
 
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex_id];
 
       lock_init(&pthread_mutex_info->kernel_lock);
       pthread_mutex->pthread_mutex_id = pthread_mutex_id;
@@ -528,7 +527,12 @@ syscall_handler(struct intr_frame *f)
     {
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       lock_acquire(&pthread_mutex_info->kernel_lock);
       f->eax = 0;
@@ -539,7 +543,12 @@ syscall_handler(struct intr_frame *f)
     {
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       lock_release(&pthread_mutex_info->kernel_lock);
       f->eax = 0;
@@ -550,7 +559,12 @@ syscall_handler(struct intr_frame *f)
     {
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 4);
 
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       pthread_mutex_info->inuse = false;
       f->eax = 0;
@@ -562,15 +576,24 @@ syscall_handler(struct intr_frame *f)
       sem_t *sem = *(sem_t **)(f->esp + 4);
       unsigned int val = *(unsigned int *)(f->esp + 8);
 
-      if (sem_table == NULL)
+      if (cur->pcb->sem_table == NULL)
       {
-        sem_table = calloc(SEM_COUNT, sizeof(struct sem_info));
+        cur->pcb->sem_table = calloc(SEM_COUNT, sizeof(struct sem_info));
+        if (cur->pcb->sem_table == NULL)
+        {
+          f->eax = -1;
+          break;
+        }
       }
 
       int sem_id = reserve_sem_slot();
-      ASSERT(sem_id != -1);
+      if (sem_id == -1)
+      {
+        f->eax = -1;
+        break;
+      }
 
-      struct sem_info *sem_info = &sem_table[sem_id];
+      struct sem_info *sem_info = &cur->pcb->sem_table[sem_id];
 
       sema_init(&sem_info->kernel_semaphore, val);
       sem->sem_id = sem_id;
@@ -582,7 +605,12 @@ syscall_handler(struct intr_frame *f)
     {
       sem_t *sem = *(sem_t **)(f->esp + 4);
 
-      struct sem_info *sem_info = &sem_table[sem->sem_id];
+      struct sem_info *sem_info = &cur->pcb->sem_table[sem->sem_id];
+      if (!sem_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       sema_up(&sem_info->kernel_semaphore);
       f->eax = 0;
@@ -593,7 +621,12 @@ syscall_handler(struct intr_frame *f)
     {
       sem_t *sem = *(sem_t **)(f->esp + 4);
 
-      struct sem_info *sem_info = &sem_table[sem->sem_id];
+      struct sem_info *sem_info = &cur->pcb->sem_table[sem->sem_id];
+      if (!sem_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       sema_down(&sem_info->kernel_semaphore);
       f->eax = 0;
@@ -604,7 +637,12 @@ syscall_handler(struct intr_frame *f)
     {
       sem_t *sem = *(sem_t **)(f->esp + 4);
 
-      struct sem_info *sem_info = &sem_table[sem->sem_id];
+      struct sem_info *sem_info = &cur->pcb->sem_table[sem->sem_id];
+      if (!sem_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       sem_info->inuse = false;
       f->eax = 0;
@@ -614,15 +652,24 @@ syscall_handler(struct intr_frame *f)
     case SYS_COND_INIT:
     {
       pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
-      if (cond_table == NULL)
+      if (cur->pcb->cond_table == NULL)
       {
-        cond_table = calloc(COND_COUNT, sizeof(struct cond_info));
+        cur->pcb->cond_table = calloc(COND_COUNT, sizeof(struct cond_info));
+        if (cur->pcb->cond_table == NULL)
+        {
+          f->eax = -1;
+          break;
+        }
       }
 
       int cond_id = reserve_cond_slot();
-      ASSERT(cond_id != -1);
+      if (cond_id == -1)
+      {
+        f->eax = -1;
+        break;
+      }
 
-      struct cond_info *cond_info = &cond_table[cond_id];
+      struct cond_info *cond_info = &cur->pcb->cond_table[cond_id];
 
       cond_init(&cond_info->kernel_condition);
       cond->cond_id = cond_id;
@@ -635,8 +682,18 @@ syscall_handler(struct intr_frame *f)
       pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
 
-      struct cond_info *cond_info = &cond_table[cond->cond_id];
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct cond_info *cond_info = &cur->pcb->cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!cond_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       cond_signal(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
       f->eax = 0;
@@ -648,8 +705,18 @@ syscall_handler(struct intr_frame *f)
       pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
 
-      struct cond_info *cond_info = &cond_table[cond->cond_id];
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct cond_info *cond_info = &cur->pcb->cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!cond_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       cond_broadcast(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
       f->eax = 0;
@@ -661,10 +728,21 @@ syscall_handler(struct intr_frame *f)
       pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
       pthread_mutex_t *pthread_mutex = *(pthread_mutex_t **)(f->esp + 8);
 
-      struct cond_info *cond_info = &cond_table[cond->cond_id];
-      struct pthread_mutex_info *pthread_mutex_info = &pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      struct cond_info *cond_info = &cur->pcb->cond_table[cond->cond_id];
+      struct pthread_mutex_info *pthread_mutex_info = &cur->pcb->pthread_mutex_table[pthread_mutex->pthread_mutex_id];
+      if (!cond_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
+      if (!pthread_mutex_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
 
       cond_wait(&cond_info->kernel_condition, &pthread_mutex_info->kernel_lock);
+      f->eax = 0;
       break;
     }
 
@@ -672,7 +750,13 @@ syscall_handler(struct intr_frame *f)
     {
       pthread_cond_t *cond = *(pthread_cond_t **)(f->esp + 4);
 
-      struct cond_info *cond_info = &cond_table[cond->cond_id];
+      struct cond_info *cond_info = &cur->pcb->cond_table[cond->cond_id];
+      if (!cond_info->inuse)
+      {
+        f->eax = -1;
+        break;
+      }
+
       cond_info->inuse = false;
       f->eax = 0;
       break;

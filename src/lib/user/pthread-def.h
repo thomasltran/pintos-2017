@@ -17,7 +17,7 @@ typedef struct
 typedef struct
 {
     int pthread_id;
-    void * data; // [0]
+    void * data[0]; // [0]
 } tls;
 // array of void * 
 #define PTHREAD_SIZE (8 * 1024 * 1024)
@@ -38,6 +38,6 @@ static inline tls *get_tls_ptr(void)
 }
 
 // change to an offset with the array approach
-// #define get_tls(field) (get_tls_ptr()->data[field])
-#define get_tls(field) (get_tls_ptr()->field)
-#define set_tls(field, value) (get_tls_ptr()->field = (value))
+#define get_tls(field) (get_tls_ptr()->data[field])
+// #define get_tls(field) (get_tls_ptr()->field)
+#define set_tls(field, value) (get_tls_ptr()->data[field] = (value))

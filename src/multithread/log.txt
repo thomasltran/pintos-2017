@@ -1,61 +1,7 @@
-pintos -v -k -T 60 --smp 2 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
+pintos -v -k -T 60 --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
 
 
-pintos -v --gdb --smp 2 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
+pintos -v --gdb --smp 32 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
 
 
 time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg
-
-multithreaded pintos
-32
-real	0m15.091s
-user	4m36.774s
-sys	0m2.571s
-
-
-16
-real	0m21.576s
-user	3m37.892s
-sys	0m1.339s
-
-8
-real	0m44.674s
-user	3m45.132s
-sys	0m1.105s
-
-4
-real	1m26.255s
-user	3m51.495s
-sys	0m0.931s
-
-
-2
-real	2m5.436s
-user	3m9.264s
-sys	0m0.667s
-
-1
-real	2m54.794s
-user	2m53.501s
-sys	0m0.661s
-
-posix threads
-8
-real	0m29.129s
-user	2m47.604s
-sys	0m0.002s
-
-4
-real	0m56.472s
-user	2m47.671s
-sys	0m0.001s
-
-2
-real	1m45.272s
-user	2m47.336s
-sys	0m0.001s
-
-1
-real	2m47.616s
-user	2m47.356s
-sys	0m0.001s

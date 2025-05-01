@@ -24,10 +24,15 @@ void *thread_func(void *arg)
   int num = (int)var;
   char *test = _mm_malloc(5, lock);
   snprintf(test, 5, "hi%d", num);
-  set_tls(data, test);
+  set_tls(0, test);
 
-  void * res = get_tls(data);
+  // set_tls(5, (void*)var);
+  // printf("%d\n", (int)(uintptr_t)get_tls(5));
+
+  void * res = get_tls(0);
   printf("%s\n", (char*)res);
+
+
 
   _mm_free(test, lock);
   // _mm_free(test2, lock);
@@ -61,7 +66,7 @@ test_main (void)
     int result = (int)(uintptr_t)ret;
     printf("join %d\n", result);
   }
-  void *res = get_tls(data);
+  void *res = get_tls(0);
   if(res == NULL){
     printf("tls NULL in main\n");
   }

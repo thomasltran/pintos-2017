@@ -18,6 +18,24 @@ enum thread_status
   THREAD_DYING          /* About to be destroyed. */
 };
 
+struct pthread_mutex_info
+{
+  struct lock kernel_lock;
+  bool inuse;
+};
+
+struct sem_info
+{
+  struct semaphore kernel_semaphore;
+  bool inuse;
+};
+
+struct cond_info
+{
+  struct condition kernel_condition;
+  bool inuse;
+};
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -141,6 +159,10 @@ struct pcb {
    struct file **fd_table; /* file descriptor table */
    uint32_t *pagedir; /* Page directory. */
    struct bitmap * bitmap; // 0-31 for pthread tid
+
+   struct pthread_mutex_info *pthread_mutex_table;
+   struct sem_info *sem_table;
+   struct cond_info *cond_table;
 
    struct list list;
 };

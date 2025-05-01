@@ -273,9 +273,11 @@ do_thread_create (const char *name, int nice, thread_func *function, void *aux)
     list_init(&t->pcb->list);
     lock_init(&t->pcb->lock);
 
+    t->pcb->pthread_mutex_table = NULL;
+    t->pcb->sem_table = NULL;
+    t->pcb->cond_table = NULL;
+
     t->pthread_args = NULL;
-
-
 
     return t;
 }
@@ -509,6 +511,9 @@ do_thread_exit (void)
     if (last)
     {
       bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying
+      free(cur->pcb->pthread_mutex_table);
+      free(cur->pcb->sem_table);
+      free(cur->pcb->cond_table);
     }
     lock_own_ready_queue();
     cur->status = THREAD_DYING;
