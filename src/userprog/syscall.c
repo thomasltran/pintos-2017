@@ -344,6 +344,7 @@ syscall_handler(struct intr_frame *f)
 
     if (cur->pcb->bitmap == NULL)
     {
+      // malloc chcek
       cur->pcb->bitmap = bitmap_create(33);
       if (cur->pcb->bitmap == NULL)
       {
@@ -455,6 +456,7 @@ syscall_handler(struct intr_frame *f)
       lock_release(&cur->pcb->lock);
 
       cur->pthread_args->res = res;
+      printf("exit res %d\n", (int)(uintptr_t)cur->pthread_args->res);
       exit(0);
       break;
     }
@@ -486,7 +488,8 @@ syscall_handler(struct intr_frame *f)
       sema_down(&pthread_args->pthread_exit);
       if (res != NULL)
       {
-        *res = pthread_args->res; // sketchy, but works?
+        *res = pthread_args->res; // sketchy, doesn't work
+        // printf("join res %d\n", (int)(uintptr_t)pthread_args->res);
       }
 
       free(pthread_args);

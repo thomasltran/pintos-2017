@@ -505,20 +505,49 @@ do_thread_exit (void)
     }
     else
     { // main thread
+      // printf("last0\n");
       bitmap_flip(cur->pcb->bitmap, 0);
     }
 
     if (last)
     {
+      // check tid
+      printf("last1\n");
       bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying
       free(cur->pcb->pthread_mutex_table);
       free(cur->pcb->sem_table);
       free(cur->pcb->cond_table);
+
+      for (struct list_elem *e = list_begin(&cur->pcb->list); e != list_end(&cur->pcb->list); e = list_next(e))
+      {
+        struct pthread_args *pthread_args = list_entry(e, struct pthread_args, elem);
+        printf("tid %d res %d\n", pthread_args->pthread_tid, (int)(uintptr_t)pthread_args->res);
+        e = list_remove(e);
+        free(pthread_args);
+      }
+
+      uint32_t *pd;
+      pd = cur->pcb->pagedir;
+      if (pd != NULL)
+      {
+        // should auto clean up the last thread's 8mb chunk if not main thread too
+        /* Correct ordering here is crucial.  We must set
+           cur->pcb->pagedir to NULL before switching page directories,
+           so that a timer interrupt can't switch back to the
+           process page directory.  We must activate the base page
+           directory before destroying the process's page
+           directory, or our active page directory will be one
+           that's been freed (and cleared). */
+        cur->pcb->pagedir = NULL;
+        pagedir_activate(NULL);
+        pagedir_destroy(pd);
+      }
     }
     lock_own_ready_queue();
     cur->status = THREAD_DYING;
     if (last)
     {
+      // will pagedir being destoryed means this free as well
       palloc_free_page(cur->pcb); // has to come after, could be con swi out before rq lock
     }
   }

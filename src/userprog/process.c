@@ -221,7 +221,6 @@ void
 process_exit(void)
 {
   struct thread *cur = thread_current();
-  uint32_t *pd;
   int tid = cur->tid;
 
   for (struct list_elem *e = list_begin(&cur->parent_child_list);
@@ -299,21 +298,6 @@ process_exit(void)
      to the kernel-only page directory. */
 
   ASSERT(tid == thread_current()->tid);
-  pd = cur->pcb->pagedir;
-  if (pd != NULL)
-  {
-    // should auto clean up the last thread's 8mb chunk if not main thread too
-    /* Correct ordering here is crucial.  We must set
-       cur->pcb->pagedir to NULL before switching page directories,
-       so that a timer interrupt can't switch back to the
-       process page directory.  We must activate the base page
-       directory before destroying the process's page
-       directory, or our active page directory will be one
-       that's been freed (and cleared). */
-    cur->pcb->pagedir = NULL;
-    pagedir_activate(NULL);
-    pagedir_destroy(pd);
-  }
 }
 
 /* Sets up the CPU for running user code in the current

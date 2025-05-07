@@ -1,10 +1,5 @@
 Functionality of system calls:
 - Test argument passing on Pintos command line.
-3	args-none
-3	args-single
-3	args-multiple
-3	args-many
-3	args-dbl-space
-
-- Test "exec" system call.
-5	exec-arg
+3	pthread-create
+3	pthread-mult
+3	pthread-limit
