@@ -296,6 +296,33 @@ process_exit(void)
 
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
+  uint32_t *pd;
+  pd = cur->pcb->pagedir;
+  if (pd != NULL)
+  {
+    /* Correct ordering here is crucial.  We must set
+      cur->pcb->pagedir to NULL before switching page directories,
+      so that a timer interrupt can't switch back to the
+      process page directory.  We must activate the base page
+      directory before destroying the process's page
+      directory, or our active page directory will be one
+      that's been freed (and cleared). */
+    if (cur->pcb->multithread)
+    {
+      bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying
+      free(cur->pcb->pthread_mutex_table);
+      free(cur->pcb->sem_table);
+      free(cur->pcb->cond_table);
+    }
+
+    cur->pcb->pagedir = NULL;
+
+    // pagedir_destroy should clean this up, having this here causes corruption
+    // palloc_free_page(cur->pcb);
+
+    pagedir_activate(NULL);
+    pagedir_destroy(pd);
+  }
 
   ASSERT(tid == thread_current()->tid);
 }

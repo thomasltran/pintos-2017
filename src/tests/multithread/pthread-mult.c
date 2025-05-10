@@ -5,7 +5,7 @@
 #include "tests/lib.h"
 #include <stdio.h>
 
-#define NUM_THREADS 5
+#define NUM_THREADS 32
 
 void * thread_func(void *);
 
@@ -32,9 +32,8 @@ test_main (void)
       msg("ERROR ERORR");
     }
     else{
-      msg("result %d for tid %d", (int)(uintptr_t)ret, tids[i]);
+      msg("result %d", (int)(uintptr_t)ret);
 
     }
   }
-  exit(0);
 }

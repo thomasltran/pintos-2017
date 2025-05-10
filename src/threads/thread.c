@@ -55,7 +55,7 @@ static void kernel_thread_entry (thread_func *, void *aux);
 static void idle (void *aux UNUSED);
 static struct thread *next_thread_to_run (void);
 static bool is_thread (struct thread *) UNUSED;
-static void do_thread_exit (void) NO_RETURN;
+static void do_thread_exit(bool last) NO_RETURN;
 static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
@@ -461,96 +461,45 @@ unlock_own_ready_queue (void)
 }
 
 static void
-do_thread_exit (void)
+do_thread_exit(bool last)
 {
   struct thread * cur = thread_current ();
+
+  if (!last && cur->pcb->multithread)
+  {
+    lock_acquire(&cur->pcb->lock);
+
+    if (cur->pthread_args != NULL) // pthread_args is NULL for main thread btw
+    {
+
+      void *stack_top = PHYS_BASE - (cur->pthread_args->bitmap_index * PTHREAD_SIZE);
+      void *stack_bottom = PHYS_BASE - ((cur->pthread_args->bitmap_index + 1) * PTHREAD_SIZE);
+
+      ASSERT(cur->pcb->pagedir != NULL);
+      pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
+      pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
+      palloc_free_page(cur->pthread_args->kpage);
+      palloc_free_page(cur->pthread_args->tls_kpage);
+
+      bitmap_flip(cur->pcb->bitmap, cur->pthread_args->bitmap_index);
+      sema_up(&cur->pthread_args->pthread_exit);
+    }
+
+    lock_release(&cur->pcb->lock);
+  }
+
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
-  ASSERT (cpu_can_acquire_spinlock);
+  ASSERT(cpu_can_acquire_spinlock);
 
-  spinlock_acquire (&all_lock);
-  list_remove (&cur->allelem);
-  spinlock_release (&all_lock);
+  spinlock_acquire(&all_lock);
+  list_remove(&cur->allelem);
+  spinlock_release(&all_lock);
 
-
-  // clean up pcb
-  if (!cur->pcb->multithread)
-  {
-    lock_own_ready_queue();
-    cur->status = THREAD_DYING;  
-    palloc_free_page(cur->pcb);
-  }
-  else
-  {
-    lock_acquire(&cur->pcb->lock);
-    bool last = bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1;
-    lock_release(&cur->pcb->lock);
-
-    // pthread_args is NULL for main thread btw
-    if (cur->pthread_args != NULL) // pthread
-    {
-      if (!last)
-      {
-        void *stack_top = PHYS_BASE - (cur->pthread_args->bitmap_index * PTHREAD_SIZE);
-        void *stack_bottom = PHYS_BASE - ((cur->pthread_args->bitmap_index + 1) * PTHREAD_SIZE);
-        pagedir_clear_page(cur->pcb->pagedir, stack_top - PGSIZE);
-        pagedir_clear_page(cur->pcb->pagedir, stack_bottom);
-        palloc_free_page(cur->pthread_args->kpage);
-        palloc_free_page(cur->pthread_args->tls_kpage);
-      }
-      bitmap_flip(cur->pcb->bitmap, cur->pthread_args->bitmap_index);
-      sema_up(&cur->pthread_args->pthread_exit);
-    }
-    else
-    { // main thread
-      // printf("last0\n");
-      bitmap_flip(cur->pcb->bitmap, 0);
-    }
-
-    if (last)
-    {
-      // check tid
-      printf("last1\n");
-      bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying
-      free(cur->pcb->pthread_mutex_table);
-      free(cur->pcb->sem_table);
-      free(cur->pcb->cond_table);
-
-      for (struct list_elem *e = list_begin(&cur->pcb->list); e != list_end(&cur->pcb->list); e = list_next(e))
-      {
-        struct pthread_args *pthread_args = list_entry(e, struct pthread_args, elem);
-        printf("tid %d res %d\n", pthread_args->pthread_tid, (int)(uintptr_t)pthread_args->res);
-        e = list_remove(e);
-        free(pthread_args);
-      }
-
-      uint32_t *pd;
-      pd = cur->pcb->pagedir;
-      if (pd != NULL)
-      {
-        // should auto clean up the last thread's 8mb chunk if not main thread too
-        /* Correct ordering here is crucial.  We must set
-           cur->pcb->pagedir to NULL before switching page directories,
-           so that a timer interrupt can't switch back to the
-           process page directory.  We must activate the base page
-           directory before destroying the process's page
-           directory, or our active page directory will be one
-           that's been freed (and cleared). */
-        cur->pcb->pagedir = NULL;
-        pagedir_activate(NULL);
-        pagedir_destroy(pd);
-      }
-    }
-    lock_own_ready_queue();
-    cur->status = THREAD_DYING;
-    if (last)
-    {
-      // will pagedir being destoryed means this free as well
-      palloc_free_page(cur->pcb); // has to come after, could be con swi out before rq lock
-    }
-  }
+  lock_own_ready_queue();
+  cur->status = THREAD_DYING;
 
   schedule ();
 
@@ -566,9 +515,11 @@ thread_exit (void)
   struct thread * cur = thread_current ();
 
 #ifdef USERPROG
-  // could just add a bool to do_thread_exit for last to not check agin
   lock_acquire(&cur->pcb->lock);
-  if (!cur->pcb->multithread || bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1)
+
+  bool last = cur->pcb->bitmap != NULL ? bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1 : false;
+
+  if (!cur->pcb->multithread || last)
   {
     lock_release(&cur->pcb->lock);
     process_exit();
@@ -578,7 +529,7 @@ thread_exit (void)
     lock_release(&cur->pcb->lock);
   }
 #endif
-  do_thread_exit ();
+  do_thread_exit(last);
 }
 
 /* Yields the CPU.  The current thread is not put to sleep and
@@ -604,7 +555,7 @@ thread_yield (void)
 void
 thread_exit_ap (void)
 {
-  do_thread_exit ();
+  do_thread_exit (false);
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'. */

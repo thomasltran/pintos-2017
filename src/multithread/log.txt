@@ -5,3 +5,5 @@ pintos -v --gdb --smp 32 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -
 
 
 time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg
+
+pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-mult -a pthread-mult -- -q -f run pthread-mult

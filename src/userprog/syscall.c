@@ -356,10 +356,12 @@ syscall_handler(struct intr_frame *f)
     }
 
     lock_acquire(&cur->pcb->lock);
+
     size_t bitmap_index = bitmap_scan_and_flip(cur->pcb->bitmap, 1, 1, false);
-    lock_release(&cur->pcb->lock);
+
     if (bitmap_index == BITMAP_ERROR)
     {
+      lock_release(&cur->pcb->lock);
       f->eax = -1;
       break;
     }
@@ -375,6 +377,7 @@ syscall_handler(struct intr_frame *f)
         palloc_free_page(kpage);
       }
       bitmap_reset(cur->pcb->bitmap, bitmap_index);
+      lock_release(&cur->pcb->lock);
       f->eax = -1;
       break;
     }
@@ -388,10 +391,12 @@ syscall_handler(struct intr_frame *f)
       }
       palloc_free_page(kpage);
       bitmap_reset(cur->pcb->bitmap, bitmap_index);
+      lock_release(&cur->pcb->lock);
       f->eax = -1;
       break;
     }
-    // free the tls page, combine the pthread install into shorter
+
+    lock_release(&cur->pcb->lock);
 
     tls *tls_ptr = (tls *)stack_bottom;
     memset(tls_ptr, 0, TLS_SIZE);
@@ -456,7 +461,6 @@ syscall_handler(struct intr_frame *f)
       lock_release(&cur->pcb->lock);
 
       cur->pthread_args->res = res;
-      printf("exit res %d\n", (int)(uintptr_t)cur->pthread_args->res);
       exit(0);
       break;
     }
@@ -488,8 +492,7 @@ syscall_handler(struct intr_frame *f)
       sema_down(&pthread_args->pthread_exit);
       if (res != NULL)
       {
-        *res = pthread_args->res; // sketchy, doesn't work
-        // printf("join res %d\n", (int)(uintptr_t)pthread_args->res);
+        *res = pthread_args->res;
       }
 
       free(pthread_args);
