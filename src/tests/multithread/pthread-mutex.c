@@ -5,7 +5,8 @@
 #include "tests/lib.h"
 #include <stdio.h>
 
-#define NUM_THREADS 5
+#define NUM_THREADS 32
+#define ITER 100000
 pthread_mutex_t counter_lock;
 
 int counter = 0;
@@ -14,10 +15,11 @@ void * thread_func(void *);
 
 void * thread_func(void *arg)
 {
-  pthread_mutex_lock(&counter_lock);
-  msg("counter: %d", counter);
-  counter +=1;
-  pthread_mutex_unlock(&counter_lock);
+  for(int i = 0; i < ITER; ++i){
+    pthread_mutex_lock(&counter_lock);
+    counter +=1;
+    pthread_mutex_unlock(&counter_lock);
+  }
 
   return arg;
 }
@@ -40,6 +42,7 @@ test_main (void)
       msg("ERROR: JOIN FAILED");
     }
   }
+  msg("counter: %d", counter);
   pthread_mutex_destroy(&counter_lock);
   msg("end");
   exit(0);
