@@ -10,11 +10,9 @@ void * thread_func(void *);
 
 void * thread_func(void *arg)
 {
-  for(int i = 0; i<100000000; i+=2)
-  {
-    i--;
-  }
-  return (void *)(uintptr_t)arg;
+  for(int i = 0; i<100000000; i++)
+  {}
+  return arg;
 }
 
 void

@@ -3,3 +3,4 @@ Functionality of system calls:
 3	pthread-create
 3	pthread-mult
 3	pthread-limit
+3	pthread-recl

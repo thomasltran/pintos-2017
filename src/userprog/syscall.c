@@ -287,14 +287,26 @@ void start_thread(void *aux)
   struct thread * cur = thread_current();
   struct pthread_args * args = (struct pthread_args *)aux;
   ASSERT(args != NULL);
+  ASSERT(args->pcb != NULL);
+  ASSERT(&args->pcb != &cur->pcb);
 
-  cur->pthread_args = args;
+  struct pcb * old_pcb = cur->pcb;
+
+  lock_acquire(&args->pcb->lock);
+  lock_acquire(&old_pcb->lock);
+
   cur->pcb = args->pcb;
+  cur->pthread_args = args;
 
   // from process_activate
   // tell to use this pagedir for this new pthread
   pagedir_activate(cur->pcb->pagedir);
   tss_update();
+
+  lock_release(&old_pcb->lock);
+  lock_release(&args->pcb->lock);
+  
+  palloc_free_page(old_pcb);
 
   // from start_process
   struct intr_frame if_;

@@ -33,7 +33,6 @@ test_main (void)
     }
     else{
       msg("result %d", (int)(uintptr_t)ret);
-
     }
   }
 }

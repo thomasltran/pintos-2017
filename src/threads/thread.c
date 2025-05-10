@@ -501,6 +501,10 @@ do_thread_exit(bool last)
   lock_own_ready_queue();
   cur->status = THREAD_DYING;
 
+  if(last){
+    palloc_free_page(cur->pcb);
+  }
+
   schedule ();
 
   NOT_REACHED ();
@@ -517,9 +521,9 @@ thread_exit (void)
 #ifdef USERPROG
   lock_acquire(&cur->pcb->lock);
 
-  bool last = cur->pcb->bitmap != NULL ? bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1 : false;
+  bool last = cur->pcb->bitmap != NULL ? bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1 : !cur->pcb->multithread;
 
-  if (!cur->pcb->multithread || last)
+  if (last)
   {
     lock_release(&cur->pcb->lock);
     process_exit();
