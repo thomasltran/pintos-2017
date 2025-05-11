@@ -11,7 +11,7 @@
 
 #define NUM_THREADS 32
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 /* When to switch from parallel to serial */
@@ -23,7 +23,6 @@ static int insertion_sort_threshold = INSERTION_SORT_THRESHOLD;
 
 static int nthreads = NUM_THREADS;
 static int seed = 44;
-static int N = 3000000;
 
 typedef void (*sort_func)(int *, int);
 
@@ -185,10 +184,54 @@ benchmark(const char *benchmark_name UNUSED, sort_func sorter, int *a0, int N, b
     _mm_free(a, mem_lock);
 }
 
+static void
+usage(char *av0, int exvalue)
+{
+    printf("Usage: %s [-i <n>] [-n <n>] [-b] [-q] [-s <n>] <N>\n"
+           " -n        number of threads in pool, default %d\n"
+           " -s        specify srand() seed\n",
+           av0, NUM_THREADS);
+    exit(exvalue);
+}
 
 int main(int argc, char * argv[]){
-  mm_init(mymemory,  128 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
+
+  int N = 3000000;
+
+  for (int i = 1; i < argc; i++)
+  {
+      if (argv[i][0] == '-')
+      {
+          switch (argv[i][1])
+          {
+          case 'n':
+              nthreads = atoi(argv[++i]);
+              break;
+          case 's':
+              seed = atoi(argv[++i]);
+              break;
+          case 'h':
+              usage(argv[0], 0);
+              break;
+          default:
+              usage(argv[0], 0);
+              exit(0);
+              break;
+          }
+      }
+      else
+      {
+          N = atoi(argv[i]);
+          if (N > 20000000)
+          {
+              printf("N must be less than 20000000\n");
+              printf("%d * 4 * 2 > 256 MB\n", N * 4 * 3);
+              exit(0);
+          }
+      }
+  }
 
     random_init(seed);
 
@@ -197,8 +240,8 @@ int main(int argc, char * argv[]){
         a0[i] = random_ulong();
         //printf("%u\n", a0[i]);    
     }
-        printf("Using %d threads, parallel/serials threshold=%d insertion sort threshold=%d\n", 
-        nthreads, min_task_size, insertion_sort_threshold);
+    printf("Using %d threads, parallel/serials threshold=%d insertion sort threshold=%d\n", 
+    nthreads, min_task_size, insertion_sort_threshold);
     benchmark("mergesort parallel", mergesort_parallel, a0, N, true);
 
   pthread_mutex_destroy(&mem_lock);

@@ -11,7 +11,7 @@
 
 #define NUM_THREADS 32
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 typedef void (*sort_func)(int *, int);
@@ -19,7 +19,6 @@ typedef void (*sort_func)(int *, int);
 static int nthreads = NUM_THREADS;
 static int seed = 44;
 static int depth = 18;
-static int N = 3000000; // N * sizeof(int) * 2 bc 2 malloc calls with this
 
 static bool
 check_sorted(int a[], int n) 
@@ -166,12 +165,58 @@ benchmark(const char *benchmark_name UNUSED, sort_func sorter, int *a0, int N, b
     _mm_free(a, mem_lock);
 }
 
-
+static void
+usage(char *av0, int depth)
+{
+    printf("Usage: %s [-d <n>] [-n <n>] [-b] [-q] [-s <n>] <N>\n"
+           " -d        parallel recursion depth, default %d\n"
+           " -n        number of threads in pool, default %d\n"
+           " -s        specify srand() seed\n",
+           av0, depth, NUM_THREADS);
+    exit(0);
+}
 
 int main(int argc, char * argv[]){
-  mm_init(mymemory,  128 * 1024 * 1024);
-  pthread_mutex_init(&mem_lock);
+    mm_init(mymemory, 256 * 1024 * 1024);
+    pthread_mutex_init(&mem_lock);
 
+    int N = 3000000; // N * sizeof(int) * 2 bc 2 malloc calls with this
+
+    for (int i = 1; i < argc; i++)
+    {
+        if (argv[i][0] == '-')
+        {
+            switch (argv[i][1])
+            {
+            case 'd':
+                depth = atoi(argv[++i]);
+                break;
+            case 'n':
+                nthreads = atoi(argv[++i]);
+                break;
+            case 's':
+                seed = atoi(argv[++i]);
+                break;
+            case 'h':
+                usage(argv[0], depth);
+                break;
+            default:
+                usage(argv[0], depth);
+                exit(0);
+                break;
+            }
+        }
+        else
+        {
+            N = atoi(argv[i]);
+            if (N > 30000000)
+            {
+                printf("N must be less than 30000000\n");
+                printf("%d * 4 * 2 > 256 MB\n", N * 4 * 2);
+                exit(0);
+            }
+        }
+    }
     random_init(seed);
 
     int i, * a0 = _mm_malloc(N * sizeof(int), mem_lock);
@@ -182,6 +227,6 @@ int main(int argc, char * argv[]){
 
     benchmark("qsort parallel", qsort_parallel, a0, N, true);
 
-  pthread_mutex_destroy(&mem_lock);
-  return 0;
+    pthread_mutex_destroy(&mem_lock);
+    return 0;
 }

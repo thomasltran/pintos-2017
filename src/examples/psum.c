@@ -5,10 +5,14 @@
 #include "lib/user/mm.h"
 #include <stdio.h>
 
+#include <stdlib.h>
+
 #define NUM_THREADS 32
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
+
+static int nthreads = NUM_THREADS;
 
 struct problem_parameters {
     unsigned beg, end;
@@ -44,13 +48,51 @@ parallel_sum(struct thread_pool * pool, void * _data)
     return (void *)(lresult + rresult);
 }
 
+static void usage(char *av0, int nthreads)
+{
+    printf("Usage: %s [-n <n>] <N>\n"
+           " -n        number of threads in pool, default %d\n",
+           av0, nthreads);
+    exit(0);
+}
 
 int main(int argc, char * argv[]){
-  mm_init(mymemory,  128 * 1024 * 1024); // 33554432
-  pthread_mutex_init(&mem_lock);
+    mm_init(mymemory, 256 * 1024 * 1024);
+    pthread_mutex_init(&mem_lock);
 
-  struct thread_pool * pool = thread_pool_new(NUM_THREADS);
-  int len = 3000000; // 28000000 bc len * sizeof int right below
+    int len = 3000000; // len * sizeof int right below
+
+    for (int i = 1; i < argc; i++)
+    {
+        if (argv[i][0] == '-')
+        {
+            switch (argv[i][1])
+            {
+            case 'n':
+                nthreads = atoi(argv[++i]);
+                break;
+            case 'h':
+                usage(argv[0], nthreads);
+                break;
+            default:
+                usage(argv[0], nthreads);
+                exit(0);
+                break;
+            }
+        }
+        else
+        {
+            len = atoi(argv[i]);
+            if (len > 60000000)
+            {
+                printf("N must be less than 60000000\n");
+                printf("%d * 4 > 256 MB\n", len * 4);
+                exit(0);
+            }
+        }
+    }
+
+  struct thread_pool * pool = thread_pool_new(nthreads);
 
   int * v = _mm_malloc(sizeof(int) * len, mem_lock);
   struct problem_parameters roottask = {

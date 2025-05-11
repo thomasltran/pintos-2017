@@ -6,15 +6,18 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <stdlib.h>
+
 #define NUM_THREADS 32
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 #define MAX_N (18)
 #define WORD_BITS (sizeof(long) * 8)
 #define MAX_LONGS ((MAX_N + WORD_BITS - 1) / WORD_BITS * MAX_N)
 
+static int nthreads = NUM_THREADS;
 static int max_parallel_depth = 6;
 static int valid_solutions[] = {0, 1, 0, 0, 2, 10, 4, 40, 92, 352, 724, 2680, 14200,
                                 73712, 365596, 2279184, 14772512, 95815104, 666090624};
@@ -126,6 +129,7 @@ static void benchmark(int N, int threads) {
     state.N = N;
     state.row = 0;
 
+    printf("nthreads %d\n", threads);
     struct thread_pool* pool = thread_pool_new(threads);
     
     struct future* fut = thread_pool_submit(pool, backtrack, &state);
@@ -143,12 +147,54 @@ static void benchmark(int N, int threads) {
     }
 }
 
+static void usage(char *av0, int depth, int nthreads)
+{
+    printf("Usage: %s [-d <n>] [-n <n>] <N>\n"
+           " -d        parallel recursion depth, default %d\n"
+           " -n        number of threads in pool, default %d\n",
+           av0, depth, nthreads);
+    exit(0);
+}
+
 int main(int argc, char * argv[]){
-  mm_init(mymemory,  128 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
   int N = 14; // max 18
-    benchmark(N, NUM_THREADS);
+
+  for (int i = 1; i < argc; i++)
+  {
+      if (argv[i][0] == '-')
+      {
+          switch (argv[i][1])
+          {
+          case 'd':
+              max_parallel_depth = atoi(argv[++i]);
+              break;
+          case 'n':
+              nthreads = atoi(argv[++i]);
+              break;
+          case 'h':
+              usage(argv[0], max_parallel_depth, nthreads);
+              break;
+          default:
+              usage(argv[0], max_parallel_depth, nthreads);
+              exit(0);
+              break;
+          }
+      }
+      else
+      {
+          N = atoi(argv[i]);
+          if (N > MAX_N || N < 0)
+          {
+              printf("N must be between 0 and %d\n", MAX_N);
+              exit(0);
+          }
+      }
+  }
+
+  benchmark(N, nthreads);
 
   pthread_mutex_destroy(&mem_lock);
   return 0;

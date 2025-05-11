@@ -33,9 +33,6 @@ static int reserve_pthread_mutex_slot(void);
 static int reserve_sem_slot(void);
 static int reserve_cond_slot(void);
 
-// move to per process
-// **
-
 static int reserve_pthread_mutex_slot()
 {
   for (int i = 0; i < MUTEX_COUNT; i++)
