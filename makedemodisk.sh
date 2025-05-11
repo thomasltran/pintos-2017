@@ -11,9 +11,11 @@
 #
 
 # CHANGE this line to install a P3/P4 kernel
-BUILDDIR=./userprog/build
+BUILDDIR=./multithread/build
 EXAMPLEDIR=./examples
 DISKIMAGE=usbdisk.img
+
+DEMODIR=./multithread/build/tests/multithread
 
 # check that BUILDDIR exists
 test -d ${BUILDDIR} || cat << EOF
@@ -47,6 +49,11 @@ pintos -v -k --qemu \
         -p ${EXAMPLEDIR}/cat -a cat \
         -p ${EXAMPLEDIR}/insult -a insult \
         -p ${EXAMPLEDIR}/shell.c -a shell.c \
+        -p ${DEMODIR}/tp-base -a tp-base \
+        -p ${DEMODIR}/mergesort -a mergesort \
+        -p ${DEMODIR}/nqueens -a nqueens \
+        -p ${DEMODIR}/psum -a psum \
+        -p ${DEMODIR}/quicksort -a quicksort \
         -- -q -f
 
 # Set the kernel command line to run the 'shell' as the first program
