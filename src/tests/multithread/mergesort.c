@@ -9,9 +9,11 @@
 
 #include <stdlib.h>
 
-#define NUM_THREADS 32
+#define NUM_THREADS 1
+static int seed = 44;
+static int N = 20000000;
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 /* When to switch from parallel to serial */
@@ -22,8 +24,6 @@ static int min_task_size = SERIAL_MERGE_SORT_THRESHOLD;
 static int insertion_sort_threshold = INSERTION_SORT_THRESHOLD;
 
 static int nthreads = NUM_THREADS;
-static int seed = 44;
-static int N = 3000000;
 
 typedef void (*sort_func)(int *, int);
 
@@ -189,7 +189,7 @@ benchmark(const char *benchmark_name UNUSED, sort_func sorter, int *a0, int N, b
 void
 test_main (void) 
 {
-  mm_init(mymemory,  128 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
     random_init(seed);

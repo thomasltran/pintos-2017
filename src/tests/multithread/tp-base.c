@@ -7,7 +7,7 @@
 
 #define NUM_THREADS 32
 
-char mymemory[32 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 void * thread_func(void *);
@@ -20,11 +20,11 @@ void * thread_func(void *arg)
 void
 test_main (void) 
 {
-  mm_init(mymemory,  32 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
-  struct thread_pool * pool = thread_pool_new(NUM_THREADS);
-  thread_pool_shutdown_and_destroy(pool);
+  // struct thread_pool * pool = thread_pool_new(NUM_THREADS);
+  // thread_pool_shutdown_and_destroy(pool);
 
   pthread_mutex_destroy(&mem_lock);
 }

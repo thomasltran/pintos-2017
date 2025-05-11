@@ -9,17 +9,18 @@
 
 #include <stdlib.h>
 
-#define NUM_THREADS 32
+#define NUM_THREADS 1
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 typedef void (*sort_func)(int *, int);
 // ./quicksort -n 16 -s 44 -d 15 30000000
+
 static int nthreads = NUM_THREADS;
 static int seed = 44;
 static int depth = 18;
-static int N = 3000000; // N * sizeof(int) * 2 bc 2 malloc calls with this
+static int N = 30000000; // N * sizeof(int) * 2 bc 2 malloc calls with this
 
 static bool
 check_sorted(int a[], int n) 
@@ -171,7 +172,7 @@ benchmark(const char *benchmark_name UNUSED, sort_func sorter, int *a0, int N, b
 void
 test_main (void) 
 {
-  mm_init(mymemory,  128 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
     random_init(seed);

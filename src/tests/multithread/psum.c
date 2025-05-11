@@ -5,9 +5,10 @@
 #include "lib/user/mm.h"
 #include <stdio.h>
 
-#define NUM_THREADS 32
+#define NUM_THREADS 1
+static int len = 60000000;
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 struct problem_parameters {
@@ -48,11 +49,10 @@ parallel_sum(struct thread_pool * pool, void * _data)
 void
 test_main (void) 
 {
-  mm_init(mymemory,  128 * 1024 * 1024); // 33554432
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
   struct thread_pool * pool = thread_pool_new(NUM_THREADS);
-  int len = 3000000; // 28000000 bc len * sizeof int right below
 
   int * v = _mm_malloc(sizeof(int) * len, mem_lock);
   struct problem_parameters roottask = {

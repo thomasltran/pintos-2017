@@ -1,11 +1,3 @@
-pintos -v -k -T 60 --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
-
-
-pintos -v --gdb --smp 32 --kvm  --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg < /dev/null 2> tests/multithread/exec-arg.errors > tests/multithread/exec-arg.output
-
-
-time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/exec-arg -a exec-arg -p tests/multithread/child-args -a child-args -- -q  -f run exec-arg
-
 pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-mult -a pthread-mult -- -q -f run pthread-mult
 
 for i in {1..200}; do   echo "Run $i" >> pintos_output.log;   pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-recl -a pthread-recl -- -q -f run pthread-recl >> ../pintos_output.log 2>&1; done
@@ -15,5 +7,223 @@ for i in {1..200}; do   echo "Run $i" >> pintos_output.log;   pintos -v -k -T 60
 
 pintos -v -k -T 60 --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base
 
+pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base
 
-pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/quicksort -a quicksort -- -q  -f run quicksort
+// make in examples/
+// in src/, do ../makedemodisk.sh
+// in src/, do ./rundisk.sh
+
+// run in demo, can adjust flags see examples/ for limits
+mergesort -n 32 -s 44 20000000
+nqueens -n 32 14
+psum -n 32 6000000
+quicksort -n 32 -s 44 -d 18 30000000
+
+time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/quicksort -a quicksort -- -q  -f run quicksort
+32
+real	0m7.594s
+user	0m52.784s
+sys	0m4.454s
+16
+real	0m6.028s
+user	0m19.080s
+sys	0m1.832s
+8
+real	0m6.768s
+user	0m12.810s
+sys	0m1.487s
+4
+real	0m8.186s
+user	0m9.860s
+sys	0m0.993s
+2
+real	0m8.657s
+user	0m9.003s
+sys	0m0.774s
+1
+real	0m9.734s
+user	0m8.564s
+sys	0m0.848s
+
+
+time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/mergesort -a mergesort -- -q  -f run mergesort
+32
+real	0m6.345s
+user	0m59.104s
+sys	0m3.366s
+16
+real	0m5.623s
+user	0m19.416s
+sys	0m2.118s
+8
+real	0m6.927s
+user	0m12.063s
+sys	0m1.968s
+4
+real	0m8.071s
+user	0m8.233s
+sys	0m2.315s
+2
+real	0m8.738s
+user	0m8.292s
+sys	0m0.820s
+1
+real	0m8.848s
+user	0m7.720s
+sys	0m0.810s
+
+time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/nqueens -a nqueens -- -q  -f run nqueens
+32
+real	0m29.302s
+user	7m51.082s
+sys	0m11.035s
+16
+real	0m33.802s
+user	6m37.501s
+sys	0m7.663s
+8
+real	0m55.640s
+user	6m27.341s
+sys	0m5.590s
+4
+real	1m57.841s
+user	7m28.566s
+sys	0m2.390s
+2
+real	3m3.512s
+user	5m57.604s
+sys	0m1.258s
+1
+real	6m41.938s
+user	6m40.299s
+sys	0m0.755s
+
+time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/psum -a psum -- -q  -f run psum
+32
+real	0m26.993s
+user	1m41.744s
+sys	0m37.418s
+16
+real	0m18.724s
+user	0m34.517s
+sys	0m10.151s
+8
+real	0m22.738s
+user	0m28.945s
+sys	0m9.789s
+4
+real	0m26.133s
+user	0m22.509s
+sys	0m1.232s
+2
+real	0m17.603s
+user	0m16.230s
+sys	0m0.828s
+1
+real	0m17.516s
+user	0m16.404s
+sys	0m0.772s
+
+ms
+32
+real	0m1.418s
+user	0m9.529s
+sys	0m1.993s
+16
+real	0m1.838s
+user	0m7.700s
+sys	0m1.467s
+8
+real	0m4.044s
+user	0m7.089s
+sys	0m0.874s
+4
+real	0m5.876s
+user	0m6.910s
+sys	0m0.441s
+2
+real	0m6.723s
+user	0m6.923s
+sys	0m0.241s
+1
+real	0m6.986s
+user	0m6.883s
+sys	0m0.179s
+
+nq
+32
+real	0m12.866s
+user	6m10.547s
+sys	0m13.431s
+16
+real	0m21.030s
+user	5m25.151s
+sys	0m2.263s
+8
+real	0m42.960s
+user	5m26.359s
+sys	0m2.118s
+4
+real	1m29.959s
+user	5m24.894s
+sys	0m1.825s
+2
+real	2m42.194s
+user	5m22.369s
+sys	0m1.175s
+1
+real	5m23.029s
+user	5m22.289s
+sys	0m1.176s
+
+psum
+32
+real	0m3.549s
+user	0m3.819s
+sys	1m42.277s
+16
+real	0m4.469s
+user	0m4.665s
+sys	0m59.282s
+8
+real	0m4.773s
+user	0m4.536s
+sys	0m23.488s
+4
+real	0m3.300s
+user	0m2.855s
+sys	0m7.509s
+2
+real	0m2.008s
+user	0m1.520s
+sys	0m2.561s
+1
+real	0m1.337s
+user	0m1.169s
+sys	0m1.101s
+
+qs
+32
+real	0m2.077s
+user	0m13.293s
+sys	0m10.682s
+16
+real	0m2.144s
+user	0m10.545s
+sys	0m3.684s
+8
+real	0m2.922s
+user	0m10.025s
+sys	0m1.053s
+4
+real	0m5.693s
+user	0m10.011s
+sys	0m1.022s
+2
+real	0m7.398s
+user	0m9.776s
+sys	0m0.472s
+1
+real	0m9.843s
+user	0m9.761s
+sys	0m0.257s

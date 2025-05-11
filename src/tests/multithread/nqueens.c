@@ -7,8 +7,9 @@
 #include <string.h>
 
 #define NUM_THREADS 32
+static int N = 14; // max 18
 
-char mymemory[128 * 1024 * 1024]; // set chunk of memory
+char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;
 
 #define MAX_N (18)
@@ -146,11 +147,11 @@ static void benchmark(int N, int threads) {
 void
 test_main (void) 
 {
-  mm_init(mymemory,  128 * 1024 * 1024);
+  mm_init(mymemory,  256 * 1024 * 1024);
   pthread_mutex_init(&mem_lock);
 
-  int N = 14; // max 18
-    benchmark(N, NUM_THREADS);
+
+benchmark(N, NUM_THREADS);
 
   pthread_mutex_destroy(&mem_lock);
 }

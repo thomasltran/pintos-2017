@@ -294,6 +294,7 @@ process_exit(void)
     }
   }
 
+  lock_acquire(&cur->pcb->lock);
   /* Destroy the  current process's page directory and switch back
      to the kernel-only page directory. */
   uint32_t *pd;
@@ -323,6 +324,8 @@ process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+
+  lock_release(&cur->pcb->lock);
 
   ASSERT(tid == thread_current()->tid);
 }
