@@ -4,7 +4,7 @@ tests/%.output: FILESYSSOURCE = --filesys-size=2
 tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
 
 tests/multithread_TESTS = $(addprefix tests/multithread/, \
-pthread-create pthread-mult pthread-limit pthread-recl pthread-mutex pthread-sem)
+pthread-create pthread-mult pthread-limit pthread-recl pthread-mutex pthread-sem pthread-con)
 
 tests/multithread_PROGS = $(tests/multithread_TESTS)
 
@@ -14,6 +14,7 @@ tests/multithread/pthread-limit_SRC = tests/multithread/pthread-limit.c tests/ma
 tests/multithread/pthread-recl_SRC = tests/multithread/pthread-recl.c tests/main.c
 tests/multithread/pthread-mutex_SRC = tests/multithread/pthread-mutex.c tests/main.c
 tests/multithread/pthread-sem_SRC = tests/multithread/pthread-sem.c tests/main.c
+tests/multithread/pthread-con_SRC = tests/multithread/pthread-con.c tests/main.c
 
 $(foreach prog,$(tests/multithread_PROGS),$(eval $(prog)_SRC += tests/lib.c))
 
