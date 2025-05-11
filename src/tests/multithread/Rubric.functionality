@@ -5,5 +5,5 @@ Functionality of system calls:
 3	pthread-limit
 3	pthread-recl
 3	pthread-mutex
-3	pthread-condvar
+3	pthread-con
 3	pthread-sem
