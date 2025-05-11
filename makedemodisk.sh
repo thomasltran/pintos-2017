@@ -50,10 +50,10 @@ pintos -v -k --qemu \
         -p ${EXAMPLEDIR}/insult -a insult \
         -p ${EXAMPLEDIR}/shell.c -a shell.c \
         -p ${DEMODIR}/tp-base -a tp-base \
-        -p ${DEMODIR}/mergesort -a mergesort \
-        -p ${DEMODIR}/nqueens -a nqueens \
-        -p ${DEMODIR}/psum -a psum \
-        -p ${DEMODIR}/quicksort -a quicksort \
+        -p ${EXAMPLEDIR}/mergesort -a mergesort \
+        -p ${EXAMPLEDIR}/nqueens -a nqueens \
+        -p ${EXAMPLEDIR}/psum -a psum \
+        -p ${EXAMPLEDIR}/quicksort -a quicksort \
         -- -q -f
 
 # Set the kernel command line to run the 'shell' as the first program

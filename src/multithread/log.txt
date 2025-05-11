@@ -16,4 +16,4 @@ for i in {1..200}; do   echo "Run $i" >> pintos_output.log;   pintos -v -k -T 60
 pintos -v -k -T 60 --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base
 
 
-pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base
+pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/quicksort -a quicksort -- -q  -f run quicksort
