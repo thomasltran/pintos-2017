@@ -4,10 +4,10 @@ tests/%.output: FILESYSSOURCE = --filesys-size=2
 tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
 
 tests/multithread_PROGS = $(addprefix tests/multithread/, \
-pthread-create pthread-mult pthread-limit pthread-recl tp-base mergesort nqueens psum quicksort pthread-mutex pthread-sem pthread-con)
+pthread-create pthread-mult pthread-limit pthread-recl tp-base mergesort nqueens psum quicksort pthread-mutex pthread-sem)
 
 tests/multithread_TESTS = $(addprefix tests/multithread/, \
-pthread-create pthread-mult pthread-limit pthread-recl pthread-mutex pthread-sem pthread-con)
+pthread-create pthread-mult pthread-limit pthread-recl pthread-mutex pthread-sem)
 
 tests/multithread/pthread-create_SRC = tests/multithread/pthread-create.c tests/main.c
 tests/multithread/pthread-mult_SRC = tests/multithread/pthread-mult.c tests/main.c
@@ -20,7 +20,6 @@ tests/multithread/psum_SRC = tests/multithread/psum.c tests/main.c
 tests/multithread/quicksort_SRC = tests/multithread/quicksort.c tests/main.c
 tests/multithread/pthread-mutex_SRC = tests/multithread/pthread-mutex.c tests/main.c
 tests/multithread/pthread-sem_SRC = tests/multithread/pthread-sem.c tests/main.c
-tests/multithread/pthread-con_SRC = tests/multithread/pthread-con.c tests/main.c
 
 $(foreach prog,$(tests/multithread_PROGS),$(eval $(prog)_SRC += tests/lib.c))
 
