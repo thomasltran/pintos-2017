@@ -1,0 +1,59 @@
+#include <syscall.h>
+#include "tests/main.h"
+#include "tests/lib.h"
+#include "lib/user/threadpool.h"
+#include "lib/user/mm.h"
+#include <stdio.h>
+
+#define NUM_THREADS 32
+
+char mymemory[32 * 1024 * 1024]; // set chunk of memory
+pthread_mutex_t mem_lock;
+
+struct arg2 {
+    uintptr_t a;
+    uintptr_t b;
+};
+
+static void *
+multiplier_task(struct thread_pool *pool UNUSED, struct arg2 * data)
+{
+    return (void *)(data->a * data->b);
+}
+
+void
+test_main (void) 
+{
+  mm_init(mymemory,  32 * 1024 * 1024);
+  pthread_mutex_init(&mem_lock);
+
+  struct thread_pool * pool = thread_pool_new(NUM_THREADS);
+
+#define NTASKS 200
+    struct future *f[NTASKS];
+    struct arg2 *args[NTASKS];
+    int i;
+    for (i = 0; i < NTASKS; i++) {
+        args[i] = _mm_malloc(sizeof (struct arg2), mem_lock);
+        args[i]->a = i;
+        args[i]->b = i+1;
+        f[i] = thread_pool_submit(pool, (fork_join_task_t) multiplier_task, args[i]);
+    }
+
+    bool success = true;
+    for (i = 0; i < NTASKS; i++) {
+        uintptr_t sprod = (uintptr_t) future_get(f[i]);
+        future_free(f[i]);
+        _mm_free(args[i], mem_lock);
+        if (sprod != i * (i + 1))
+            success = false;
+    }
+
+    if(!success){
+        printf("failed\n");
+    }
+
+  thread_pool_shutdown_and_destroy(pool);
+
+  pthread_mutex_destroy(&mem_lock);
+}

@@ -11,3 +11,9 @@ pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-m
 for i in {1..200}; do   echo "Run $i" >> pintos_output.log;   pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-recl -a pthread-recl -- -q -f run pthread-recl >> ../pintos_output.log 2>&1; done
 
 for i in {1..200}; do   echo "Run $i" >> pintos_output.log;   pintos -v -k -T 60 --smp 5 --kvm --filesys-size=2 -p tests/multithread/pthread-mult -a pthread-mult -- -q -f run pthread-mult >> ../pintos_output.log 2>&1; done
+
+
+pintos -v -k -T 60 --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base
+
+
+pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tp-base -a tp-base -- -q  -f run tp-base

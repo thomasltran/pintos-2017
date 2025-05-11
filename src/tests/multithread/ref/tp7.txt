@@ -1,0 +1,36 @@
+#include <syscall.h>
+#include "tests/main.h"
+#include "tests/lib.h"
+#include "lib/user/threadpool.h"
+#include "lib/user/mm.h"
+#include <stdio.h>
+
+#define NUM_THREADS 2
+
+char mymemory[32 * 1024 * 1024]; // set chunk of memory
+pthread_mutex_t mem_lock;
+
+void
+test_main (void) 
+{
+  mm_init(mymemory,  32 * 1024 * 1024);
+  pthread_mutex_init(&mem_lock);
+  int nrepetitions = 16;
+
+  printf("starting %d pools...\n", nrepetitions);
+    for (int i = 0; i < nrepetitions; i++)
+    {
+        struct thread_pool *threadpool = thread_pool_new(NUM_THREADS);
+        thread_pool_shutdown_and_destroy(threadpool);
+    }
+
+    printf("starting %d simultaneous pools...\n", nrepetitions);
+    struct thread_pool *threadpool[nrepetitions];
+    for (int i = 0; i < nrepetitions; i++)
+        threadpool[i] = thread_pool_new(NUM_THREADS);
+
+    for (int i = 0; i < nrepetitions; i++)
+        thread_pool_shutdown_and_destroy(threadpool[i]);
+
+  pthread_mutex_destroy(&mem_lock);
+}

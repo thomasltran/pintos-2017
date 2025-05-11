@@ -810,7 +810,18 @@ syscall_handler(struct intr_frame *f)
       }
 
       /* Validate FD */
-      if (!check_fd(fd))
+
+      if (fd == 0)
+      {
+        while(size > 0)
+        {
+          *(uint8_t *)buffer++ = input_getc();
+          size--;
+        }
+        f->eax = size;
+        break;
+      }
+      else if (!check_fd(fd))
       {
         f->eax = -1;
         exit(-1);
@@ -1142,18 +1153,8 @@ Returns:
 */
 static int write(int fd, const void * buffer, unsigned size){
   if(fd == 1){
-    lock_acquire(&fs_lock);
-    unsigned count = 0;
-    void *pos = (void *)buffer;
-    while(count < size){
-      int buffer_size = (size-count) > 200 ? 200 : size-count;
-
-      putbuf(pos, buffer_size);
-      count += buffer_size;
-      pos = (void *)buffer + count;
-    }
-    lock_release(&fs_lock);
-    return count;
+    putbuf(buffer, size);
+    return size;
   }
   else
   {

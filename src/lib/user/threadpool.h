@@ -1,3 +1,5 @@
+#include <syscall.h>
+
 /**
  * threadpool.h
  *
@@ -10,6 +12,7 @@
 
 struct thread_pool;
 struct future;
+extern pthread_mutex_t mem_lock;
 
 struct thread_pool *thread_pool_new(int nthreads);
 

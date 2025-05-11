@@ -1,0 +1,155 @@
+PiLo hda2
+Loading...........................................................
+Kernel command line: -q run shell
+CPU 0 is up
+Pintos booting with 1,007,616 kB RAM...
+PCI Device 0:0.0 (8086,1237): Intel - 82441FX (PCI Host) IRQ 0
+PCI Device 0:1.0 (8086,7000): Intel - 82371SB_ISA (PCI-ISA Bridge) IRQ 0
+PCI Device 0:1.1 (8086,7010): Intel - 82371SB_IDE (Unknown Type) IRQ 0
+PCI Device 0:1.3 (8086,7113): Intel - 82371AB/EB/MB_ACPI (Unknown Type) IRQ 9
+PCI Device 0:2.0 (1234,1111): Unknown Vendor - Unknown Device (VGA Controller) IRQ 0
+PCI Device 0:3.0 (8086,100e): Intel - 82544EM Gigabit Ethernet Controller (Ethernet) IRQ 11
+Calibrating timer...  994,304,000 loops/s.
+Initializing EHCI
+Initializing UHCI
+ide0: unexpected interrupt
+hda: 13,104 sectors (6 MB), model "QM00001", serial "QEMU HARDDISK"
+hda1: 945 sectors (472 kB), Pintos OS kernel (20)
+hda2: 9,072 sectors (4 MB), Pintos file system (21)
+hda3: 3,024 sectors (1 MB), Pintos scratch (22)
+filesys: using hda2
+scratch: using hda3
+CPU 1 is up
+CPU 2 is up
+CPU 3 is up
+CPU 4 is up
+CPU 5 is up
+CPU 6 is up
+CPU 7 is up
+CPU 8 is up
+CPU 9 is up
+CPU 10 is up
+CPU 11 is up
+CPU 12 is up
+CPU 13 is up
+CPU 14 is up
+CPU 15 is up
+CPU 16 is up
+CPU 17 is up
+CPU 18 is up
+CPU 19 is up
+CPU 20 is up
+CPU 21 is up
+CPU 22 is up
+CPU 23 is up
+CPU 24 is up
+CPU 25 is up
+CPU 26 is up
+CPU 27 is up
+CPU 28 is up
+CPU 29 is up
+CPU 30 is up
+CPU 31 is up
+Started 31 additional CPUs.
+Boot complete.
+Executing 'shell':
+Shell starting...
+--psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--nqueens
+(nqueens) begin
+Solving N = 14
+Solutions: 365596
+Solution ok.
+(nqueens) end
+nqueens: exit(0)
+"nqueens": exit code 0
+--qucik   icksort
+(quicksort) begin
+success
+(quicksort) end
+quicksort: exit(0)
+"quicksort": exit code 0
+--n mergesort
+(mergesort) begin
+Using 32 threads, parallel/serials threshold=1000 insertion sort threshold=16
+result ok.
+(mergesort) end
+mergesort: exit(0)
+"mergesort": exit code 0
+--exit    psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--psum
+(psum) begin
+result ok.
+(psum) end
+psum: exit(0)
+"psum": exit code 0
+--exit
+Shell exiting.shell: exit(0)
+Execution of 'shell' complete.
+Timer: 61717 ticks
+CPU0: 51898 idle ticks, 59 kernel ticks, 9760 user ticks, 170267 context switches
+CPU1: 51398 idle ticks, 100 kernel ticks, 10892 user ticks, 174703 context switches
+CPU2: 53583 idle ticks, 75 kernel ticks, 8714 user ticks, 172075 context switches
+CPU3: 51789 idle ticks, 78 kernel ticks, 10425 user ticks, 175476 context switches
+CPU4: 51812 idle ticks, 1 kernel ticks, 10607 user ticks, 178239 context switches
+CPU5: 53652 idle ticks, 69 kernel ticks, 8652 user ticks, 187470 context switches
+CPU6: 52630 idle ticks, 0 kernel ticks, 9789 user ticks, 173620 context switches
+CPU7: 54353 idle ticks, 78 kernel ticks, 7957 user ticks, 202447 context switches
+CPU8: 54131 idle ticks, 0 kernel ticks, 8289 user ticks, 190563 context switches
+CPU9: 51807 idle ticks, 0 kernel ticks, 10612 user ticks, 192543 context switches
+CPU10: 54429 idle ticks, 0 kernel ticks, 7991 user ticks, 209887 context switches
+CPU11: 54019 idle ticks, 0 kernel ticks, 8400 user ticks, 191138 context switches
+CPU12: 53155 idle ticks, 0 kernel ticks, 9265 user ticks, 193739 context switches
+CPU13: 51888 idle ticks, 0 kernel ticks, 10532 user ticks, 224138 context switches
+CPU14: 50799 idle ticks, 74 kernel ticks, 11496 user ticks, 197243 context switches
+CPU15: 54448 idle ticks, 0 kernel ticks, 7971 user ticks, 230122 context switches
+CPU16: 51853 idle ticks, 0 kernel ticks, 10547 user ticks, 239172 context switches
+CPU17: 50682 idle ticks, 113 kernel ticks, 11523 user ticks, 210447 context switches
+CPU18: 53002 idle ticks, 0 kernel ticks, 9418 user ticks, 216469 context switches
+CPU19: 52017 idle ticks, 0 kernel ticks, 10315 user ticks, 237105 context switches
+CPU20: 52675 idle ticks, 0 kernel ticks, 9745 user ticks, 219306 context switches
+CPU21: 49415 idle ticks, 171 kernel ticks, 12772 user ticks, 221215 context switches
+CPU22: 51762 idle ticks, 0 kernel ticks, 10641 user ticks, 257902 context switches
+CPU23: 51092 idle ticks, 126 kernel ticks, 11277 user ticks, 255608 context switches
+CPU24: 51566 idle ticks, 0 kernel ticks, 10853 user ticks, 263367 context switches
+CPU25: 49116 idle ticks, 0 kernel ticks, 13303 user ticks, 247335 context switches
+CPU26: 48212 idle ticks, 0 kernel ticks, 14206 user ticks, 247432 context switches
+CPU27: 50848 idle ticks, 0 kernel ticks, 11570 user ticks, 283461 context switches
+CPU28: 50682 idle ticks, 0 kernel ticks, 11721 user ticks, 276641 context switches
+CPU29: 52230 idle ticks, 0 kernel ticks, 10189 user ticks, 312319 context switches
+CPU30: 51396 idle ticks, 1 kernel ticks, 11023 user ticks, 330135 context switches
+CPU31: 51507 idle ticks, 0 kernel ticks, 10912 user ticks, 304726 context switches
+hda2 (filesys): 652 reads, 0 writes
+hda3 (scratch): 0 reads, 0 writes
+Console: 5081 characters output
+Keyboard: 80 keys pressed
+Exception: 0 page faults
+Powering off...

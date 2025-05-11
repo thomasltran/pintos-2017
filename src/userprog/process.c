@@ -710,6 +710,7 @@ setup_stack (void **esp)
         palloc_free_page (kpage);
     }
 
+#ifdef MULTITHREAD // multioom fails if tls installed
   void *stack_bottom = PHYS_BASE - ((0 + 1) * PTHREAD_SIZE);
   uint8_t *tls_kpage = palloc_get_page(PAL_USER | PAL_ZERO);
   if (tls_kpage == NULL || !install_page(stack_bottom, tls_kpage, true))
@@ -721,9 +722,12 @@ setup_stack (void **esp)
     }
     palloc_free_page(kpage);
   }
-
-  tls *tls_ptr = (tls *)stack_bottom;
-  memset(tls_ptr, 0, TLS_SIZE);
+  else
+  {
+    tls *tls_ptr = (tls *)stack_bottom;
+    memset(tls_ptr, 0, TLS_SIZE);
+  }
+#endif
 
   return success;
 }
