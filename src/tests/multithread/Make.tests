@@ -6,6 +6,9 @@ tests/%.output: PUTFILES = $(filter-out kernel.bin loader.bin, $^)
 tests/multithread_PROGS = $(addprefix tests/multithread/, \
 pthread-create pthread-mult pthread-limit pthread-recl tp-base mergesort nqueens psum quicksort pthread-mutex pthread-sem pthread-con)
 
+tests/multithread_TESTS = $(addprefix tests/multithread/, \
+pthread-create pthread-mult pthread-limit pthread-recl pthread-mutex pthread-sem pthread-con)
+
 tests/multithread/pthread-create_SRC = tests/multithread/pthread-create.c tests/main.c
 tests/multithread/pthread-mult_SRC = tests/multithread/pthread-mult.c tests/main.c
 tests/multithread/pthread-limit_SRC = tests/multithread/pthread-limit.c tests/main.c
