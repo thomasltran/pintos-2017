@@ -465,13 +465,13 @@ do_thread_exit(bool last)
 {
   struct thread * cur = thread_current ();
 
+  // not last thread, is a pthread
   if (!last && cur->pcb->multithread)
   {
     lock_acquire(&cur->pcb->lock);
 
     if (cur->pthread_args != NULL) // pthread_args is NULL for main thread btw
     {
-
       void *stack_top = PHYS_BASE - (cur->pthread_args->bitmap_index * PTHREAD_SIZE);
       void *stack_bottom = PHYS_BASE - ((cur->pthread_args->bitmap_index + 1) * PTHREAD_SIZE);
 
@@ -483,6 +483,9 @@ do_thread_exit(bool last)
 
       bitmap_flip(cur->pcb->bitmap, cur->pthread_args->bitmap_index);
       sema_up(&cur->pthread_args->pthread_exit);
+    }
+    else{
+      bitmap_flip(cur->pcb->bitmap, 0); // flip 0 for main
     }
 
     lock_release(&cur->pcb->lock);
@@ -501,7 +504,9 @@ do_thread_exit(bool last)
   lock_own_ready_queue();
   cur->status = THREAD_DYING;
 
-  if(last){
+  // last one tears down
+  if(last)
+  {
     palloc_free_page(cur->pcb);
   }
 
@@ -521,6 +526,7 @@ thread_exit (void)
 #ifdef USERPROG
   lock_acquire(&cur->pcb->lock);
 
+  // last thread in pcb, or not multithreaded
   bool last = cur->pcb->bitmap != NULL ? bitmap_count(cur->pcb->bitmap, 0, 33, true) == 1 : !cur->pcb->multithread;
 
   if (last)
@@ -699,8 +705,7 @@ init_boot_thread (struct thread *boot_thread, struct cpu *cpu)
   boot_thread->pcb->bitmap = NULL;
   boot_thread->pthread_args = NULL;
 
-  lock_init(&boot_thread->pcb->lock); // unused rn
-  // bitmap create here too
+  lock_init(&boot_thread->pcb->lock);
 }
 
 /* Does basic initialization of T as a blocked thread named

@@ -1,3 +1,5 @@
+// ported from CS3214, test by Dr. Back
+
 #include <syscall.h>
 #include "tests/main.h"
 #include "tests/lib.h"
@@ -9,7 +11,7 @@
 
 #include <stdlib.h>
 
-#define NUM_THREADS 1
+#define NUM_THREADS 32
 
 char mymemory[256 * 1024 * 1024]; // set chunk of memory
 pthread_mutex_t mem_lock;

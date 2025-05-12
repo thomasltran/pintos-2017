@@ -29,6 +29,7 @@ static bool copy_user_string(const char *usrc, char *kdst, size_t max_len);
 static const char *buffer_check(struct intr_frame *f, int set_eax_err);
 static bool check_fd(int fd);
 
+// loops thru synch primitive table, finds a free slot
 static int reserve_pthread_mutex_slot(void);
 static int reserve_sem_slot(void);
 static int reserve_cond_slot(void);
@@ -264,11 +265,13 @@ static const char *buffer_check(struct intr_frame *f, int set_eax_err)
   return filename;
 }
 
+// validate fd
 static bool check_fd(int fd)
 {
   return !(fd < FD_MIN || fd >= FD_MAX || thread_current()->pcb->fd_table == NULL || thread_current()->pcb->fd_table[fd] == NULL);
 }
 
+// from process.c
 static bool
 install_page(void *upage, void *kpage, bool writable)
 {
@@ -279,6 +282,7 @@ install_page(void *upage, void *kpage, bool writable)
   return (pagedir_get_page(t->pcb->pagedir, upage) == NULL && pagedir_set_page(t->pcb->pagedir, upage, kpage, writable));
 }
 
+// start func for thread_create
 void start_thread(void *aux)
 {
   struct thread * cur = thread_current();
@@ -314,7 +318,6 @@ void start_thread(void *aux)
   if_.eip = (void (*) (void))args->wrapper;
   if_.esp = args->esp;
 
-  // free(args);
   asm volatile("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
 }
 
@@ -353,7 +356,6 @@ syscall_handler(struct intr_frame *f)
 
     if (cur->pcb->bitmap == NULL)
     {
-      // malloc chcek
       cur->pcb->bitmap = bitmap_create(33);
       if (cur->pcb->bitmap == NULL)
       {
@@ -375,6 +377,7 @@ syscall_handler(struct intr_frame *f)
       break;
     }
 
+    // setup stack
     void *stack_top = PHYS_BASE - (bitmap_index * PTHREAD_SIZE); // chunk
     void *stack_bottom = PHYS_BASE - ((bitmap_index + 1) * PTHREAD_SIZE);
 
@@ -464,12 +467,16 @@ syscall_handler(struct intr_frame *f)
     {
       void *res = *(void **)(f->esp + 4);
 
-      // todo: add support for pthread exit main thread
+      if(cur->pthread_args == NULL) // main thread exit
+      {
+        exit(0);
+      }
+
       lock_acquire(&cur->pcb->lock);
       ASSERT(bitmap_test(cur->pcb->bitmap, cur->pthread_args->bitmap_index) == true);
+      cur->pthread_args->res = res;
       lock_release(&cur->pcb->lock);
 
-      cur->pthread_args->res = res;
       exit(0);
       break;
     }
@@ -498,7 +505,7 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      sema_down(&pthread_args->pthread_exit);
+      sema_down(&pthread_args->pthread_exit); // waits until pthread exits
       if (res != NULL)
       {
         *res = pthread_args->res;
@@ -807,6 +814,7 @@ syscall_handler(struct intr_frame *f)
       }
 
       /* Validate FD */
+      lock_acquire(&fs_lock);
 
       if (fd == 0)
       {
@@ -816,15 +824,17 @@ syscall_handler(struct intr_frame *f)
           size--;
         }
         f->eax = size;
+        lock_release(&fs_lock);
         break;
       }
       else if (!check_fd(fd))
       {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
 
-      lock_acquire(&fs_lock);
+
 
       /* Perform read operation */
       struct file *file = cur->pcb->fd_table[fd];
@@ -889,13 +899,14 @@ syscall_handler(struct intr_frame *f)
       int fd = *(int *)(f->esp + 4);
       unsigned position = *(unsigned *)(f->esp + 8);
 
+      lock_acquire(&fs_lock);
+
       if (!check_fd(fd))
       {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
-
-      lock_acquire(&fs_lock);
 
       struct file *cur_file = cur->pcb->fd_table[fd];
       file_seek(cur_file, position);
@@ -951,14 +962,13 @@ syscall_handler(struct intr_frame *f)
         break;
       }
 
-      lock_release(&fs_lock);
-
       if (cur->pcb->fd_table == NULL) {
         // calloc (since we know the size)
         cur->pcb->fd_table = calloc(FD_MAX, sizeof(struct file *));
         if (cur->pcb->fd_table == NULL)
         {
           f->eax = -1;
+          lock_release(&fs_lock);
           exit(-1);
         }
       }
@@ -971,8 +981,6 @@ syscall_handler(struct intr_frame *f)
           break;
         }
       }
-
-      lock_acquire(&fs_lock);
 
       /* Table is full (i.e. no free fds) */
       if (fd ==- 1) {
@@ -1018,14 +1026,14 @@ syscall_handler(struct intr_frame *f)
 
       int fd = *((int *)(f->esp + 4));
 
+      lock_acquire(&fs_lock);
       /* Validate FD */
       if (!check_fd(fd))
       {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
-
-      lock_acquire(&fs_lock);
 
       /* Get file size */
       f->eax = file_length(cur->pcb->fd_table[fd]);
@@ -1086,13 +1094,14 @@ syscall_handler(struct intr_frame *f)
 
       int fd = *((int *)(f->esp + 4));
 
+      lock_acquire(&fs_lock);
+
       if (!check_fd(fd))
       {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
-
-      lock_acquire(&fs_lock);
 
       file_close(cur->pcb->fd_table[fd]);
       cur->pcb->fd_table[fd] = NULL;
@@ -1112,13 +1121,14 @@ syscall_handler(struct intr_frame *f)
 
       int fd = *((int *)(f->esp + 4));
 
+      lock_acquire(&fs_lock);
+
       if (!check_fd(fd))
       {
         f->eax = -1;
+        lock_release(&fs_lock);
         exit(-1);
       }
-
-      lock_acquire(&fs_lock);
 
       f->eax = file_tell(cur->pcb->fd_table[fd]);
 
@@ -1149,18 +1159,20 @@ Returns:
   if some bytes could not be written
 */
 static int write(int fd, const void * buffer, unsigned size){
+  lock_acquire(&fs_lock);
   if(fd == 1){
     putbuf(buffer, size);
+    lock_release(&fs_lock);
     return size;
   }
   else
   {
     if (!check_fd(fd))
     {
+      lock_release(&fs_lock);
       exit(-1);
     }
 
-    lock_acquire(&fs_lock);
     struct file *cur_file = thread_current()->pcb->fd_table[fd];
 
     unsigned count = 0;
@@ -1202,3 +1214,5 @@ void exit(int status){
 
   thread_exit();
 }
+
+// pintos -v --gdb --smp 2 --qemu  --filesys-size=2 -p tests/multithread/early-exit -a early-exit -- -q  -f run early-exit

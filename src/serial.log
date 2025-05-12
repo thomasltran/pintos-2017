@@ -9,7 +9,7 @@ PCI Device 0:1.1 (8086,7010): Intel - 82371SB_IDE (Unknown Type) IRQ 0
 PCI Device 0:1.3 (8086,7113): Intel - 82371AB/EB/MB_ACPI (Unknown Type) IRQ 9
 PCI Device 0:2.0 (1234,1111): Unknown Vendor - Unknown Device (VGA Controller) IRQ 0
 PCI Device 0:3.0 (8086,100e): Intel - 82544EM Gigabit Ethernet Controller (Ethernet) IRQ 11
-Calibrating timer...  1,374,208,000 loops/s.
+Calibrating timer...  655,360,000 loops/s.
 Initializing EHCI
 Initializing UHCI
 ide0: unexpected interrupt
@@ -54,88 +54,63 @@ Started 31 additional CPUs.
 Boot complete.
 Executing 'shell':
 Shell starting...
---mergesort -n 32 -ss    44 2000000
-Using 32 threads, parallel/serials threshold=1000 insertion sort threshold=16
-result ok.
-mergesort: exit(0)
-"mergesort -n 32 -s 44 2000000": exit code 0
---real	0m9.843s
-exec failed
---user	0m9.761s
-exec failed
---sys	0m0.257s
-exec failed
---mergesort -n 32 -s 44 20000000
-Using 32 threads, parallel/serials threshold=1000 insertion sort threshold=16
-result ok.
-mergesort: exit(0)
-"mergesort -n 32 -s 44 20000000": exit code 0
---nqueens -n 32 14
-Solving N = 14
+--nqueens -n 32 11
+Solving N = 11
 nthreads 32
-Solutions: 365596
+Solutions: 2680
 Solution ok.
 nqueens: exit(0)
-"nqueens -n 32 14": exit code 0
---psum -n 32 6000000
+"nqueens -n 32 11": exit code 0
+--mergesort -n   h
+Usage: mergesort [-i <n>] [-n <n>] [-b] [-q] [-s <n>] <N>
+ -n        number of threads in pool, default 32
+ -s        specify srand() seed
+mergesort: exit(0)
+"mergesort -h": exit code 0
+--mergesort -n 32 -s 44 10000000
+Using 32 threads, parallel/serials threshold=1000 insertion sort threshold=16
 result ok.
-psum: exit(0)
-"psum -n 32 6000000": exit code 0
---quicksort -n 32 -s 44 -d 18 30000000
-success
-quicksort: exit(0)
-"quicksort -n 32 -s 44 -d 18 30000000": exit code 0
---quicksort -n 32 -s 44 -d 18 30000000 
-success
-quicksort: exit(0)
-"quicksort -n 32 -s 44 -d 18 3000000": exit code 0
---quicksort -n 32 -s 44 -d 18 30000000тт  
-success
-quicksort: exit(0)
-"quicksort -n 32 -s 44 -d 18 30000000": exit code 0
---quicksort -n 32 -s 44 -d 18 30000000                       15  2 -s 44 -d 18 300000
-success
-quicksort: exit(0)
-"quicksort -n 2 -s 44 -d 18 300000": exit code 0
+mergesort: exit(0)
+"mergesort -n 32 -s 44 10000000": exit code 0
 --exit
 Shell exiting.shell: exit(0)
 Execution of 'shell' complete.
-Timer: 165931 ticks
-CPU0: 155811 idle ticks, 57 kernel ticks, 10064 user ticks, 231393 context switches
-CPU1: 156477 idle ticks, 0 kernel ticks, 9812 user ticks, 235150 context switches
-CPU2: 156361 idle ticks, 165 kernel ticks, 9849 user ticks, 208982 context switches
-CPU3: 156935 idle ticks, 0 kernel ticks, 9471 user ticks, 212055 context switches
-CPU4: 157515 idle ticks, 0 kernel ticks, 8891 user ticks, 223405 context switches
-CPU5: 156800 idle ticks, 0 kernel ticks, 9605 user ticks, 216565 context switches
-CPU6: 156389 idle ticks, 0 kernel ticks, 10018 user ticks, 222439 context switches
-CPU7: 155476 idle ticks, 38 kernel ticks, 10831 user ticks, 213376 context switches
-CPU8: 157924 idle ticks, 0 kernel ticks, 8481 user ticks, 238824 context switches
-CPU9: 156891 idle ticks, 0 kernel ticks, 9514 user ticks, 207642 context switches
-CPU10: 157375 idle ticks, 0 kernel ticks, 9031 user ticks, 215459 context switches
-CPU11: 155390 idle ticks, 0 kernel ticks, 11015 user ticks, 224278 context switches
-CPU12: 156733 idle ticks, 0 kernel ticks, 9674 user ticks, 240867 context switches
-CPU13: 154802 idle ticks, 190 kernel ticks, 11381 user ticks, 226246 context switches
-CPU14: 156643 idle ticks, 168 kernel ticks, 9562 user ticks, 245035 context switches
-CPU15: 157835 idle ticks, 0 kernel ticks, 8572 user ticks, 276449 context switches
-CPU16: 153778 idle ticks, 0 kernel ticks, 12533 user ticks, 243994 context switches
-CPU17: 156759 idle ticks, 0 kernel ticks, 9648 user ticks, 267119 context switches
-CPU18: 155141 idle ticks, 0 kernel ticks, 11266 user ticks, 265878 context switches
-CPU19: 153869 idle ticks, 0 kernel ticks, 12537 user ticks, 241640 context switches
-CPU20: 154253 idle ticks, 0 kernel ticks, 12152 user ticks, 276280 context switches
-CPU21: 155112 idle ticks, 151 kernel ticks, 11125 user ticks, 290312 context switches
-CPU22: 154447 idle ticks, 144 kernel ticks, 11781 user ticks, 286101 context switches
-CPU23: 154040 idle ticks, 165 kernel ticks, 12167 user ticks, 300800 context switches
-CPU24: 154292 idle ticks, 0 kernel ticks, 12114 user ticks, 312997 context switches
-CPU25: 155728 idle ticks, 0 kernel ticks, 10679 user ticks, 305747 context switches
-CPU26: 152262 idle ticks, 315 kernel ticks, 13746 user ticks, 291121 context switches
-CPU27: 154182 idle ticks, 0 kernel ticks, 12222 user ticks, 311818 context switches
-CPU28: 155324 idle ticks, 0 kernel ticks, 11081 user ticks, 329527 context switches
-CPU29: 155704 idle ticks, 0 kernel ticks, 10702 user ticks, 334929 context switches
-CPU30: 154051 idle ticks, 0 kernel ticks, 12338 user ticks, 348993 context switches
-CPU31: 154354 idle ticks, 0 kernel ticks, 12052 user ticks, 366784 context switches
-hda2 (filesys): 636 reads, 0 writes
+Timer: 23856 ticks
+CPU0: 23308 idle ticks, 62 kernel ticks, 487 user ticks, 20801 context switches
+CPU1: 23807 idle ticks, 0 kernel ticks, 107 user ticks, 24351 context switches
+CPU2: 23769 idle ticks, 0 kernel ticks, 142 user ticks, 28741 context switches
+CPU3: 23771 idle ticks, 0 kernel ticks, 139 user ticks, 21865 context switches
+CPU4: 23774 idle ticks, 0 kernel ticks, 138 user ticks, 25176 context switches
+CPU5: 23227 idle ticks, 128 kernel ticks, 489 user ticks, 30405 context switches
+CPU6: 23537 idle ticks, 162 kernel ticks, 186 user ticks, 31987 context switches
+CPU7: 23752 idle ticks, 0 kernel ticks, 168 user ticks, 28487 context switches
+CPU8: 23753 idle ticks, 0 kernel ticks, 159 user ticks, 28829 context switches
+CPU9: 23768 idle ticks, 0 kernel ticks, 145 user ticks, 29940 context switches
+CPU10: 23783 idle ticks, 0 kernel ticks, 129 user ticks, 32023 context switches
+CPU11: 23778 idle ticks, 0 kernel ticks, 131 user ticks, 25543 context switches
+CPU12: 23769 idle ticks, 0 kernel ticks, 147 user ticks, 28590 context switches
+CPU13: 23727 idle ticks, 0 kernel ticks, 184 user ticks, 32343 context switches
+CPU14: 23742 idle ticks, 74 kernel ticks, 150 user ticks, 28727 context switches
+CPU15: 22783 idle ticks, 0 kernel ticks, 1009 user ticks, 33375 context switches
+CPU16: 23712 idle ticks, 0 kernel ticks, 203 user ticks, 37390 context switches
+CPU17: 23753 idle ticks, 0 kernel ticks, 143 user ticks, 31332 context switches
+CPU18: 23694 idle ticks, 0 kernel ticks, 217 user ticks, 38759 context switches
+CPU19: 23745 idle ticks, 0 kernel ticks, 147 user ticks, 29841 context switches
+CPU20: 23766 idle ticks, 0 kernel ticks, 143 user ticks, 30933 context switches
+CPU21: 23733 idle ticks, 0 kernel ticks, 180 user ticks, 39923 context switches
+CPU22: 23685 idle ticks, 0 kernel ticks, 223 user ticks, 38327 context switches
+CPU23: 23614 idle ticks, 0 kernel ticks, 296 user ticks, 39406 context switches
+CPU24: 23438 idle ticks, 221 kernel ticks, 209 user ticks, 41072 context switches
+CPU25: 23715 idle ticks, 0 kernel ticks, 197 user ticks, 38474 context switches
+CPU26: 23724 idle ticks, 0 kernel ticks, 192 user ticks, 43179 context switches
+CPU27: 23718 idle ticks, 0 kernel ticks, 194 user ticks, 36306 context switches
+CPU28: 23638 idle ticks, 0 kernel ticks, 273 user ticks, 44430 context switches
+CPU29: 23468 idle ticks, 0 kernel ticks, 462 user ticks, 44518 context switches
+CPU30: 23657 idle ticks, 0 kernel ticks, 253 user ticks, 42667 context switches
+CPU31: 23599 idle ticks, 0 kernel ticks, 310 user ticks, 47942 context switches
+hda2 (filesys): 239 reads, 0 writes
 hda3 (scratch): 0 reads, 0 writes
-Console: 5472 characters output
-Keyboard: 347 keys pressed
+Console: 4621 characters output
+Keyboard: 70 keys pressed
 Exception: 0 page faults
 Powering off...

@@ -1,3 +1,5 @@
+// ported from CS3214, test by Dr. Back
+
 #include <syscall.h>
 #include "tests/main.h"
 #include "tests/lib.h"
@@ -5,7 +7,7 @@
 #include "lib/user/mm.h"
 #include <stdio.h>
 
-#define NUM_THREADS 1
+#define NUM_THREADS 32
 static int len = 60000000;
 
 char mymemory[256 * 1024 * 1024]; // set chunk of memory

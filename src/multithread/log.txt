@@ -19,7 +19,11 @@ nqueens -n 32 14
 psum -n 32 6000000
 quicksort -n 32 -s 44 -d 18 30000000
 
-time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/quicksort -a quicksort -- -q  -f run quicksort
+time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/quicksort -a quicksort -- -q  -f run quicksort
+
+pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/primes -a primes -- -q  -f run primes
+
+pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/tls -a tls -- -q  -f run tls
 32
 real	0m7.594s
 user	0m52.784s
@@ -46,7 +50,7 @@ user	0m8.564s
 sys	0m0.848s
 
 
-time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/mergesort -a mergesort -- -q  -f run mergesort
+time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/mergesort -a mergesort -- -q  -f run mergesort
 32
 real	0m6.345s
 user	0m59.104s
@@ -72,7 +76,7 @@ real	0m8.848s
 user	0m7.720s
 sys	0m0.810s
 
-time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/nqueens -a nqueens -- -q  -f run nqueens
+time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/nqueens -a nqueens -- -q  -f run nqueens
 32
 real	0m29.302s
 user	7m51.082s
@@ -98,7 +102,7 @@ real	6m41.938s
 user	6m40.299s
 sys	0m0.755s
 
-time pintos -v -k --smp 1 --kvm -m 1024 --filesys-size=2 -p tests/multithread/psum -a psum -- -q  -f run psum
+time pintos -v -k --smp 32 --kvm -m 1024 --filesys-size=2 -p tests/multithread/psum -a psum -- -q  -f run psum
 32
 real	0m26.993s
 user	1m41.744s

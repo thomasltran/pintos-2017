@@ -130,8 +130,8 @@ struct thread
   struct parent_child * parent_child; // reference a child thread holds to its struct process
   struct list parent_child_list; // list of processes
 
-  struct pcb * pcb;
-  struct pthread_args * pthread_args; // per main/pthread
+  struct pcb * pcb; // shared between a process
+  struct pthread_args * pthread_args; // per pthread, not main
 #endif
   /* Owned by thread.c. */
   unsigned magic; /* Detects stack overflow. */
@@ -154,28 +154,28 @@ struct parent_child // struct to manage parent/child threads in process.c
 };
 
 struct pcb {
-   struct lock lock; // todo: think
+   struct lock lock; // pcb lock
    bool multithread; // related to pthreads
-   struct file **fd_table; /* file descriptor table */
-   uint32_t *pagedir; /* Page directory. */
-   struct bitmap * bitmap; // 0-31 for pthread tid
+   struct file **fd_table; // fd table
+   uint32_t *pagedir; // pagedir
+   struct bitmap * bitmap; // 1-32 for pthread tid, 0 for main thread
+   struct list list; // list of pthreads
 
+   // synch primitives for user progs
    struct pthread_mutex_info *pthread_mutex_table;
    struct sem_info *sem_table;
    struct cond_info *cond_table;
-
-   struct list list;
 };
 
 struct pthread_args
 {
-   struct list_elem elem;
+   struct list_elem elem; // inclusion in pcb list
 
    // start_thread
-   void (*wrapper)(void *, void *);
-   void *esp;
+   void (*wrapper)(void *, void *); // twrapper
+   void *esp; // esp
 
-   // save for later
+   // save for start_thread, exit, etc.
    struct pcb *pcb;
    uint8_t *kpage;
    uint8_t *tls_kpage;

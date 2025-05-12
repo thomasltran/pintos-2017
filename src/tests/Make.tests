@@ -16,6 +16,7 @@ endif
 
 TIMEOUT = 60
 SMP = 2
+MEM = 4
 
 clean::
 	rm -f $(OUTPUTS) $(ERRORS) $(RESULTS) 
@@ -53,7 +54,7 @@ $(foreach test,$(TESTS),$(eval $(test).output: TEST_BASENAME := $(notdir $(test)
 # Prevent an environment variable VERBOSE from surprising us.
 VERBOSE =
 
-TESTCMD = pintos -v -k -T $(TIMEOUT) --smp $(SMP)
+TESTCMD = pintos -v -k -T $(TIMEOUT) --smp $(SMP) -m $(MEM)
 TESTCMD += $(SIMULATOR)
 TESTCMD += $(PINTOSOPTS)
 ifeq ($(filter userprog, $(KERNEL_SUBDIRS)), userprog)

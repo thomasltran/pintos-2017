@@ -1,4 +1,4 @@
-/* Spawns multiple pthreads, retrieves it's return value */
+/* pthread mult ran 50 times, make sure mem is being managed properly */
 
 #include <syscall.h>
 #include "tests/main.h"

@@ -1,4 +1,4 @@
-/* Spawns 33 pthreads, retrieves it's return value */
+/* attempts to spawn 33 pthreads, retrieves it's return value */
 
 #include <syscall.h>
 #include "tests/main.h"

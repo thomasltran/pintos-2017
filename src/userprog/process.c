@@ -308,6 +308,7 @@ process_exit(void)
       directory before destroying the process's page
       directory, or our active page directory will be one
       that's been freed (and cleared). */
+    // last thread cleans up if multithreaded
     if (cur->pcb->multithread)
     {
       bitmap_destroy(cur->pcb->bitmap); // cur->status can't be dying

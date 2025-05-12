@@ -1,3 +1,4 @@
+// work helping, single deque/lock
 #include "threadpool.h"
 #include "lib/kernel/list.h"
 #include "lib/user/mm.h"
@@ -49,7 +50,6 @@ struct future
 
 static void *worker_body(void *arg)
 {
-    set_tls(0, arg);
     set_tls(0, arg);
     struct worker * current_worker = (struct worker *)get_tls(0);
     struct thread_pool *pool = current_worker->pool;
